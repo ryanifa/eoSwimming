@@ -40,10 +40,34 @@ def search_latest_swim(session: requests.Session, user_id: str, timezone: str) -
         json=body,
     )
     r.raise_for_status()
-    items = r.json()["data"]["data"]["items"]
+    payload = r.json()
+    items = _extract_items(payload)
+    if items is None:
+        raise RuntimeError(
+            f"Could not locate 'items' in search response. Top-level keys: "
+            f"{list(payload.keys()) if isinstance(payload, dict) else type(payload).__name__}. "
+            f"Full payload: {json.dumps(payload)[:1500]}"
+        )
     if not items:
         raise RuntimeError("No swim sessions found in the last 90 days.")
     return items[0]
+
+
+def _extract_items(payload):
+    """Recursively find the first list under an 'items' key."""
+    if isinstance(payload, dict):
+        if "items" in payload and isinstance(payload["items"], list):
+            return payload["items"]
+        for v in payload.values():
+            found = _extract_items(v)
+            if found is not None:
+                return found
+    elif isinstance(payload, list):
+        for v in payload:
+            found = _extract_items(v)
+            if found is not None:
+                return found
+    return None
 
 
 def get_json(session: requests.Session, path: str) -> dict:
