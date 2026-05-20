@@ -78,15 +78,15 @@ def get_json(session: requests.Session, path: str) -> dict:
 
 def detect_lap_count(swim_data) -> int:
     """Find the number of laps from the main swim data payload."""
+    if isinstance(swim_data, list) and swim_data:
+        swim_data = swim_data[0]
     if isinstance(swim_data, dict):
-        for key in ("laps", "lapList", "lapData", "lapMetrics"):
-            val = swim_data.get(key)
-            if isinstance(val, list) and val:
-                return len(val)
-        for key in ("lapCount", "totalLaps", "numLaps"):
+        for key in ("laps", "lapCount", "totalLaps", "numLaps"):
             val = swim_data.get(key)
             if isinstance(val, int) and val > 0:
                 return val
+            if isinstance(val, list) and val:
+                return len(val)
     return 0
 
 
