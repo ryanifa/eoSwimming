@@ -1,0 +1,85 @@
+name: Composite video with overlay (latest swim)
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: "Direct download URL for the source video (transfer.sh, public Dropbox/Drive direct link, GitHub Release asset, etc.)"
+        required: true
+      swim_start_seconds:
+        description: "Seconds into the video where the swim begins (overlay aligns here)"
+        required: true
+        default: "0"
+      overlay_scale:
+        description: "Scale factor for the overlay (1.0 = 1920x1080; use 2.0 for 4K video)"
+        required: false
+        default: "1.0"
+      fps:
+        description: "Overlay frame rate"
+        required: false
+        default: "60"
+
+jobs:
+  composite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - run: pip install -r requirements.txt
+
+      - name: Fetch latest swim
+        env:
+          EO_EMAIL: ${{ secrets.EO_EMAIL }}
+          EO_PASSWORD: ${{ secrets.EO_PASSWORD }}
+          EO_TIMEZONE: Europe/Amsterdam
+        run: python fetch_latest_swim.py
+
+      - name: Download source video
+        run: |
+          mkdir -p input
+          curl -L --fail --max-time 600 -o input/source.mp4 "${{ inputs.video_url }}"
+          ls -lh input/
+          ffprobe -v error -show_entries format=duration,size:stream=width,height -of default=noprint_wrappers=1 input/source.mp4
+
+      - name: Render overlay
+        run: python render_overlay.py --fps ${{ inputs.fps }}
+
+      - name: Locate overlay file
+        id: find_overlay
+        run: |
+          OVERLAY=$(find data -name overlay.mov | head -1)
+          if [ -z "$OVERLAY" ]; then
+            echo "No overlay.mov produced." >&2
+            exit 1
+          fi
+          echo "overlay=$OVERLAY" >> "$GITHUB_OUTPUT"
+          echo "swim_dir=$(dirname $OVERLAY)" >> "$GITHUB_OUTPUT"
+
+      - name: Composite
+        run: |
+          python composite_video.py \
+            --video input/source.mp4 \
+            --overlay "${{ steps.find_overlay.outputs.overlay }}" \
+            --out "${{ steps.find_overlay.outputs.swim_dir }}/composite.mp4" \
+            --swim-start ${{ inputs.swim_start_seconds }} \
+            --overlay-scale ${{ inputs.overlay_scale }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: swim-composite-video
+          path: |
+            data/**/composite.mp4
+            data/**/overlay.mov
+            data/**/swim.json
+            data/**/analysis.md
+          if-no-files-found: error
+          retention-days: 30
