@@ -1,0 +1,55 @@
+name: Fetch swim by date
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Date (YYYY-MM-DD). Defaults to today."
+        required: false
+        default: ""
+      swim_id:
+        description: "Optional. If empty, only lists swims for the date. If set, fetches + analyses that one swim."
+        required: false
+        default: ""
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: List swims for date
+        if: inputs.swim_id == ''
+        env:
+          EO_EMAIL: ${{ secrets.EO_EMAIL }}
+          EO_PASSWORD: ${{ secrets.EO_PASSWORD }}
+          EO_TIMEZONE: Europe/Amsterdam
+          SWIM_DATE: ${{ inputs.date }}
+        run: python list_swims.py
+
+      - name: Fetch selected swim
+        if: inputs.swim_id != ''
+        env:
+          EO_EMAIL: ${{ secrets.EO_EMAIL }}
+          EO_PASSWORD: ${{ secrets.EO_PASSWORD }}
+          SWIM_ID: ${{ inputs.swim_id }}
+        run: python fetch_one_swim.py
+
+      - name: Analyse
+        if: inputs.swim_id != ''
+        run: python analyze.py
+
+      - uses: actions/upload-artifact@v4
+        if: inputs.swim_id != ''
+        with:
+          name: swim-${{ inputs.swim_id }}
+          path: data/
+          if-no-files-found: error
+          retention-days: 30
