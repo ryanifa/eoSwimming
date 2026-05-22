@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -15,8 +16,18 @@ API_URL = "https://api.app.eolab.com/"
 PAGE_SIZE = 50
 
 
+def _log(msg: str) -> None:
+    print(msg, flush=True)
+
+
 def signin(session: requests.Session, email: str, password: str) -> tuple[str, str]:
-    r = session.post(f"{API_URL}signin/email", json={"email": email, "password": password})
+    t0 = time.monotonic()
+    r = session.post(
+        f"{API_URL}signin/email",
+        json={"email": email, "password": password},
+        timeout=30,
+    )
+    _log(f"[signin] status={r.status_code} took={time.monotonic() - t0:.2f}s")
     r.raise_for_status()
     payload = r.json()
     if not payload.get("data"):
@@ -72,34 +83,47 @@ def search_swims(session: requests.Session, user_id: str, timezone: str, target_
         "userId": user_id,
     }
 
+    _log(f"[search] target={target_iso} body.dateTimeFilter={body['dateTimeFilter']}")
+
     matched: list[dict] = []
     page = 1
     while True:
+        t0 = time.monotonic()
         r = session.post(
             f"{API_URL}swim/data/search?pageSize={PAGE_SIZE}&pageNo={page}&locale=en_US",
             json=body,
             timeout=30,
         )
+        dt = time.monotonic() - t0
         r.raise_for_status()
         payload = r.json()
         items = _find_items(payload) or []
+        total_pages = _find_total_pages(payload)
+        dates = [(it.get("swimDate") or it.get("date") or "")[:10] for it in items]
+        first_d = dates[0] if dates else ""
+        last_d = dates[-1] if dates else ""
+        _log(
+            f"[search] page={page} status={r.status_code} took={dt:.2f}s "
+            f"items={len(items)} totalPages={total_pages} "
+            f"first={first_d} last={last_d}"
+        )
         if not items:
             break
         passed_target = False
-        for it in items:
-            swim_date_str = (it.get("swimDate") or it.get("date") or "")[:10]
-            if swim_date_str == target_iso:
+        for it, d in zip(items, dates):
+            if d == target_iso:
                 matched.append(it)
-            elif swim_date_str and swim_date_str < target_iso:
+            elif d and d < target_iso:
                 passed_target = True
         if passed_target:
+            _log(f"[search] page {page} contained dates before {target_iso}, stopping")
             break
-        total_pages = _find_total_pages(payload)
         if total_pages and page >= total_pages:
             break
         if len(items) < PAGE_SIZE:
             break
         page += 1
+    _log(f"[search] matched={len(matched)} pages_scanned={page}")
     return matched
 
 
