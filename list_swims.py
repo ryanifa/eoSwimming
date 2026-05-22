@@ -53,26 +53,20 @@ def _find_total_pages(payload):
 
 
 def search_swims(session: requests.Session, user_id: str, timezone: str, target_date: date) -> list[dict]:
-    """Fetch swims and return only those on `target_date`."""
-    today = date.today()
-    diff_days = (today - target_date).days
-    if diff_days < 0:
+    """Fetch swims on `target_date` by asking the API for that exact day."""
+    if (date.today() - target_date).days < 0:
         return []
-    if diff_days <= 7:
-        custom_string = "seven-days"
-    elif diff_days <= 30:
-        custom_string = "thirty-days"
-    elif diff_days <= 90:
-        custom_string = "ninety-days"
-    else:
-        custom_string = "all"
+
+    target_iso = target_date.isoformat()
+    start_iso = target_iso
+    end_iso = (target_date + timedelta(days=1)).isoformat()
 
     body = {
         "dateTimeFilter": {
             "time": 5,
-            "customStartDate": "",
-            "customEndDate": "",
-            "customString": custom_string,
+            "customStartDate": start_iso,
+            "customEndDate": end_iso,
+            "customString": "custom",
             "timezone": timezone,
         },
         "userId": user_id,
@@ -84,16 +78,22 @@ def search_swims(session: requests.Session, user_id: str, timezone: str, target_
         r = session.post(
             f"{API_URL}swim/data/search?pageSize={PAGE_SIZE}&pageNo={page}&locale=en_US",
             json=body,
+            timeout=30,
         )
         r.raise_for_status()
         payload = r.json()
         items = _find_items(payload) or []
         if not items:
             break
+        passed_target = False
         for it in items:
             swim_date_str = (it.get("swimDate") or it.get("date") or "")[:10]
-            if swim_date_str == target_date.isoformat():
+            if swim_date_str == target_iso:
                 matched.append(it)
+            elif swim_date_str and swim_date_str < target_iso:
+                passed_target = True
+        if passed_target:
+            break
         total_pages = _find_total_pages(payload)
         if total_pages and page >= total_pages:
             break
