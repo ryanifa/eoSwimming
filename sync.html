@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>eo Swim sync tool</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    margin: 0; padding: 20px; background: #0e1a17; color: #eaeaea;
+  }
+  h1 { margin: 0 0 10px; font-size: 20px; font-weight: 600; }
+  .hint { color: #8aa0a0; font-size: 13px; margin-bottom: 16px; }
+  .drops { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .drop {
+    border: 2px dashed #2c4540; border-radius: 8px; padding: 14px;
+    text-align: center; color: #8aa0a0; cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .drop:hover, .drop.drag { border-color: #4ea1ff; background: #142826; color: #fff; }
+  .drop.loaded { border-color: #2ca27a; color: #b6f0d2; background: #11231d; }
+  .drop input { display: none; }
+  .main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  video {
+    width: 100%; max-height: 480px; background: black; border-radius: 6px;
+  }
+  canvas {
+    width: 100%; height: 480px; background: #0a1513;
+    border: 1px solid #2c4540; border-radius: 6px; display: block;
+  }
+  .controls {
+    margin-top: 16px; padding: 16px; background: #11231f;
+    border: 1px solid #2c4540; border-radius: 8px;
+  }
+  .row { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+  .row:last-child { margin-bottom: 0; }
+  label { width: 220px; color: #8aa0a0; font-size: 13px; }
+  input[type=range] { flex: 1; }
+  input[type=number] {
+    width: 110px; padding: 6px 8px; background: #0a1513; border: 1px solid #2c4540;
+    color: #fff; border-radius: 4px; font-family: monospace; font-size: 14px;
+  }
+  .offset {
+    font-size: 28px; font-weight: 600; font-family: monospace;
+    color: #4ea1ff; padding: 8px 14px; background: #0a1513;
+    border-radius: 6px; border: 1px solid #2c4540;
+  }
+  button {
+    padding: 8px 16px; background: #1f6bff; color: white; border: 0;
+    border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 600;
+  }
+  button:hover { background: #4286ff; }
+  button.secondary { background: #2c4540; }
+  button.secondary:hover { background: #3a5a54; }
+  .legend { display: flex; gap: 16px; margin-top: 8px; font-size: 12px; color: #8aa0a0; }
+  .legend span::before {
+    content: "■"; margin-right: 4px; vertical-align: middle;
+  }
+  .legend .l::before { color: #4ea1ff; }
+  .legend .r::before { color: #ff8a3d; }
+  .legend .m::before { color: #ff4040; }
+  details { margin-top: 14px; color: #8aa0a0; font-size: 13px; }
+  details summary { cursor: pointer; }
+</style>
+</head>
+<body>
+
+<h1>eo SwimBETTER — video sync tool</h1>
+<div class="hint">
+  Drop your video and <code>lapforcetime.json</code> below.
+  Adjust the offset until the force spikes line up with the visible hand entries in the video.
+  Copy the resulting <strong>swim_start_seconds</strong> into the Composite workflow.
+</div>
+
+<div class="drops">
+  <label class="drop" id="dropVideo">
+    <strong>Drop video file</strong><br>
+    <small>or click to choose (mp4, mov, webm)</small>
+    <input type="file" id="videoInput" accept="video/*">
+  </label>
+  <label class="drop" id="dropJson">
+    <strong>Drop lapforcetime.json</strong><br>
+    <small>from your data/&lt;swim&gt;/ folder</small>
+    <input type="file" id="jsonInput" accept=".json,application/json">
+  </label>
+</div>
+
+<div class="main">
+  <video id="video" controls playsinline></video>
+  <canvas id="chart"></canvas>
+</div>
+
+<div class="legend">
+  <span class="l">Left propulsion (N)</span>
+  <span class="r">Right propulsion (N)</span>
+  <span class="m">Current video position</span>
+</div>
+
+<div class="controls">
+  <div class="row">
+    <label>Coarse offset (s):</label>
+    <input type="range" id="coarse" min="-30" max="60" step="0.5" value="0">
+    <span id="coarseVal" style="font-family:monospace;width:60px;text-align:right;">0.0</span>
+  </div>
+  <div class="row">
+    <label>Fine offset (s):</label>
+    <input type="range" id="fine" min="-1" max="1" step="0.01" value="0">
+    <span id="fineVal" style="font-family:monospace;width:60px;text-align:right;">0.00</span>
+  </div>
+  <div class="row">
+    <label>swim_start_seconds:</label>
+    <span class="offset" id="offset">0.00</span>
+    <input type="number" id="offsetEdit" step="0.01" value="0">
+    <button id="copyBtn">Copy</button>
+    <button class="secondary" id="resetBtn">Reset</button>
+  </div>
+  <div class="row">
+    <label>Tip — what to look for:</label>
+    <span style="font-size:13px;color:#8aa0a0">
+      In the video: first hand entering the water after the push-off.
+      In the chart: the first big spike in either L (blue) or R (orange).
+      Drag offset until the red line sits on that spike at the moment of hand entry.
+    </span>
+  </div>
+</div>
+
+<details>
+  <summary>How it works</summary>
+  <p>
+    Your swim data starts at <code>t = 0</code> (the moment the eo paddles started recording).
+    Your video starts at its own <code>t = 0</code>. The <em>offset</em> is how many seconds into
+    the video the swim data should begin: if your swim starts at 5.20 s into the video, set
+    <code>swim_start_seconds = 5.20</code>.
+  </p>
+  <p>
+    Once you've found the value, run the
+    <strong>Composite video with overlay</strong> workflow and paste this number.
+  </p>
+</details>
+
+<script>
+const $ = id => document.getElementById(id);
+const video = $('video');
+const canvas = $('chart');
+const ctx = canvas.getContext('2d');
+const coarse = $('coarse');
+const fine = $('fine');
+const offsetEl = $('offset');
+const offsetEdit = $('offsetEdit');
+
+let data = null;
+let lastDraw = 0;
+
+function offset() { return parseFloat(coarse.value) + parseFloat(fine.value); }
+
+function setOffset(v) {
+  const c = Math.round(v * 2) / 2;
+  const f = v - c;
+  coarse.value = c;
+  fine.value = Math.max(-1, Math.min(1, f));
+  updateLabels();
+}
+
+function updateLabels() {
+  $('coarseVal').textContent = parseFloat(coarse.value).toFixed(1);
+  $('fineVal').textContent = parseFloat(fine.value).toFixed(2);
+  const o = offset();
+  offsetEl.textContent = o.toFixed(2);
+  offsetEdit.value = o.toFixed(2);
+  drawChart();
+}
+
+function fitCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = canvas.clientWidth * dpr;
+  canvas.height = canvas.clientHeight * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function drawChart() {
+  if (!data) {
+    ctx.fillStyle = '#0a1513';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#5a7670';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Drop lapforcetime.json above', canvas.clientWidth / 2, canvas.clientHeight / 2);
+    return;
+  }
+
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  const padL = 40, padR = 10, padT = 14, padB = 28;
+  const cw = w - padL - padR;
+  const ch = h - padT - padB;
+
+  ctx.fillStyle = '#0a1513';
+  ctx.fillRect(0, 0, w, h);
+
+  const times = data.time;
+  const lf = data.left.forward;
+  const rf = data.right.forward;
+  const tMin = times[0];
+  const tMax = times[times.length - 1];
+  let yMin = 0, yMax = 0;
+  for (let i = 0; i < lf.length; i++) {
+    if (lf[i] < yMin) yMin = lf[i];
+    if (lf[i] > yMax) yMax = lf[i];
+    if (rf[i] < yMin) yMin = rf[i];
+    if (rf[i] > yMax) yMax = rf[i];
+  }
+  const yPad = (yMax - yMin) * 0.05;
+  yMin -= yPad; yMax += yPad;
+
+  const xOf = t => padL + ((t - tMin) / (tMax - tMin)) * cw;
+  const yOf = v => padT + ch - ((v - yMin) / (yMax - yMin)) * ch;
+
+  ctx.strokeStyle = '#1d322d';
+  ctx.lineWidth = 1;
+  for (let s = Math.ceil(tMin / 1000); s * 1000 <= tMax; s += 5) {
+    const x = xOf(s * 1000);
+    ctx.beginPath();
+    ctx.moveTo(x, padT);
+    ctx.lineTo(x, padT + ch);
+    ctx.stroke();
+    ctx.fillStyle = '#5a7670';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(s + 's', x, h - 8);
+  }
+  const y0 = yOf(0);
+  ctx.beginPath();
+  ctx.moveTo(padL, y0);
+  ctx.lineTo(padL + cw, y0);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#4ea1ff';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  for (let i = 0; i < times.length; i++) {
+    const x = xOf(times[i]);
+    const y = yOf(lf[i]);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle = '#ff8a3d';
+  ctx.beginPath();
+  for (let i = 0; i < times.length; i++) {
+    const x = xOf(times[i]);
+    const y = yOf(rf[i]);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  const o = offset();
+  const dataT = (video.currentTime - o) * 1000;
+  if (dataT >= tMin && dataT <= tMax) {
+    const x = xOf(dataT);
+    ctx.strokeStyle = '#ff4040';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, padT);
+    ctx.lineTo(x, padT + ch);
+    ctx.stroke();
+    ctx.fillStyle = '#ff4040';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('data t = ' + (dataT / 1000).toFixed(2) + 's', x + 4, padT + 12);
+  }
+}
+
+function tick() {
+  drawChart();
+  requestAnimationFrame(tick);
+}
+
+function setupDrop(elId, inputId, onFile) {
+  const el = $(elId);
+  const input = $(inputId);
+  el.addEventListener('click', () => input.click());
+  input.addEventListener('change', e => {
+    if (e.target.files[0]) onFile(e.target.files[0], el);
+  });
+  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag'); });
+  el.addEventListener('dragleave', () => el.classList.remove('drag'));
+  el.addEventListener('drop', e => {
+    e.preventDefault();
+    el.classList.remove('drag');
+    if (e.dataTransfer.files[0]) onFile(e.dataTransfer.files[0], el);
+  });
+}
+
+setupDrop('dropVideo', 'videoInput', (file, el) => {
+  video.src = URL.createObjectURL(file);
+  el.classList.add('loaded');
+  el.querySelector('strong').textContent = '✓ ' + file.name;
+});
+
+setupDrop('dropJson', 'jsonInput', (file, el) => {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      let parsed = JSON.parse(e.target.result);
+      if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+      if (!parsed.time || !parsed.left || !parsed.right) {
+        throw new Error('Missing required keys (time, left, right)');
+      }
+      data = parsed;
+      el.classList.add('loaded');
+      el.querySelector('strong').textContent = '✓ ' + file.name + ' (' + parsed.time.length + ' samples)';
+      drawChart();
+    } catch (err) {
+      alert('Failed to parse JSON: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+});
+
+coarse.addEventListener('input', updateLabels);
+fine.addEventListener('input', updateLabels);
+offsetEdit.addEventListener('change', e => setOffset(parseFloat(e.target.value) || 0));
+
+$('copyBtn').addEventListener('click', () => {
+  navigator.clipboard.writeText(offsetEl.textContent);
+  $('copyBtn').textContent = 'Copied!';
+  setTimeout(() => $('copyBtn').textContent = 'Copy', 1200);
+});
+$('resetBtn').addEventListener('click', () => setOffset(0));
+
+window.addEventListener('resize', () => { fitCanvas(); drawChart(); });
+fitCanvas();
+updateLabels();
+tick();
+</script>
+
+</body>
+</html>
