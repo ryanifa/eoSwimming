@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>eo Swim sync tool</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    margin: 0; padding: 20px; background: #0e1a17; color: #eaeaea;
+    max-width: 1400px; margin-left: auto; margin-right: auto;
+  }
+  h1 { margin: 0 0 6px; font-size: 22px; font-weight: 600; }
+  .hint { color: #8aa0a0; font-size: 13px; margin-bottom: 16px; }
+  .drops { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .drop {
+    border: 2px dashed #2c4540; border-radius: 8px; padding: 14px;
+    text-align: center; color: #8aa0a0; cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .drop:hover, .drop.drag { border-color: #4ea1ff; background: #142826; color: #fff; }
+  .drop.loaded { border-color: #2ca27a; color: #b6f0d2; background: #11231d; }
+  .drop input { display: none; }
+
+  .stage {
+    position: relative; background: #000; border-radius: 8px;
+    border: 1px solid #2c4540; overflow: hidden; margin-bottom: 12px;
+    aspect-ratio: 16 / 9;
+  }
+  .stage video { width: 100%; height: 100%; display: block; }
+  .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+  .timeline {
+    background: #0a1513; border: 1px solid #2c4540; border-radius: 6px;
+    height: 110px; margin-bottom: 12px;
+  }
+  .timeline canvas { display: block; width: 100%; height: 100%; }
+
+  .player { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .player video { width: 100%; max-width: 600px; }
+
+  .controls {
+    padding: 14px 16px; background: #11231f;
+    border: 1px solid #2c4540; border-radius: 8px;
+  }
+  .row { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; flex-wrap: wrap; }
+  .row:last-child { margin-bottom: 0; }
+  label { width: 200px; color: #8aa0a0; font-size: 13px; }
+  input[type=range] { flex: 1; min-width: 200px; }
+  input[type=number] {
+    width: 110px; padding: 6px 8px; background: #0a1513; border: 1px solid #2c4540;
+    color: #fff; border-radius: 4px; font-family: monospace; font-size: 14px;
+  }
+  .offset {
+    font-size: 26px; font-weight: 600; font-family: monospace;
+    color: #4ea1ff; padding: 6px 14px; background: #0a1513;
+    border-radius: 6px; border: 1px solid #2c4540;
+  }
+  button {
+    padding: 7px 14px; background: #1f6bff; color: white; border: 0;
+    border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 600;
+  }
+  button:hover { background: #4286ff; }
+  button.secondary { background: #2c4540; }
+  button.secondary:hover { background: #3a5a54; }
+  .legend { display: flex; gap: 16px; margin: 4px 0 8px; font-size: 12px; color: #8aa0a0; }
+  .legend span::before { content: "■"; margin-right: 4px; vertical-align: middle; }
+  .legend .l::before { color: #4ea1ff; }
+  .legend .r::before { color: #ff8a3d; }
+  .legend .m::before { color: #ff4040; }
+  details { margin-top: 14px; color: #8aa0a0; font-size: 13px; }
+  details summary { cursor: pointer; }
+</style>
+</head>
+<body>
+
+<h1>eo SwimBETTER — video sync tool</h1>
+<div class="hint">
+  Drop your video and <code>lapforcetime.json</code> below. The live preview shows exactly
+  what the composited output will look like. Drag the offset until the force spikes in the
+  scrolling chart line up with the hand entries in the video.
+</div>
+
+<div class="drops">
+  <label class="drop" id="dropVideo">
+    <strong>Drop video file</strong><br>
+    <small>or click to choose (mp4, mov, webm)</small>
+    <input type="file" id="videoInput" accept="video/*">
+  </label>
+  <label class="drop" id="dropJson">
+    <strong>Drop lapforcetime.json</strong><br>
+    <small>from your data/&lt;swim&gt;/ folder</small>
+    <input type="file" id="jsonInput" accept=".json,application/json">
+  </label>
+</div>
+
+<div class="stage" id="stage">
+  <video id="video" muted playsinline></video>
+  <canvas id="overlay"></canvas>
+</div>
+
+<div class="legend">
+  <span class="l">Left propulsion (N)</span>
+  <span class="r">Right propulsion (N)</span>
+  <span class="m">Current data position</span>
+  <span style="margin-left:auto">Use the slider below to scrub the video</span>
+</div>
+
+<div class="timeline">
+  <canvas id="timelineCanvas"></canvas>
+</div>
+
+<div class="player">
+  <button id="playBtn">▶ Play</button>
+  <input type="range" id="seek" min="0" max="100" step="0.01" value="0">
+  <span id="timeLabel" style="font-family:monospace;color:#8aa0a0;min-width:120px;text-align:right;">0:00 / 0:00</span>
+</div>
+
+<div class="controls">
+  <div class="row">
+    <label>Coarse offset (s):</label>
+    <input type="range" id="coarse" min="-30" max="60" step="0.5" value="0">
+    <span id="coarseVal" style="font-family:monospace;width:60px;text-align:right;">0.0</span>
+  </div>
+  <div class="row">
+    <label>Fine offset (s):</label>
+    <input type="range" id="fine" min="-1" max="1" step="0.01" value="0">
+    <span id="fineVal" style="font-family:monospace;width:60px;text-align:right;">0.00</span>
+  </div>
+  <div class="row">
+    <label>swim_start_seconds:</label>
+    <span class="offset" id="offsetVal">0.00</span>
+    <input type="number" id="offsetEdit" step="0.01" value="0">
+    <button id="copyBtn">Copy</button>
+    <button class="secondary" id="resetBtn">Reset</button>
+  </div>
+</div>
+
+<details>
+  <summary>How it works</summary>
+  <p>
+    Your swim data starts at <code>t = 0</code> (the moment the eo paddles started recording).
+    Your video starts at its own <code>t = 0</code>. The <em>offset</em> is how many seconds
+    into the video the swim data should begin: if the first stroke happens at 5.20 s into
+    the video, set <code>swim_start_seconds = 5.20</code>.
+  </p>
+  <p>
+    Once you've found the value, run the <strong>Composite video with overlay</strong>
+    workflow in Actions and paste this number. The server will render the same overlay you
+    see here and burn it into the video.
+  </p>
+</details>
+
+<script>
+const $ = id => document.getElementById(id);
+const video = $('video');
+const stage = $('stage');
+const overlayCanvas = $('overlay');
+const overlayCtx = overlayCanvas.getContext('2d');
+const tl = $('timelineCanvas');
+const tlCtx = tl.getContext('2d');
+const coarse = $('coarse');
+const fine = $('fine');
+const offsetEl = $('offsetVal');
+const offsetEdit = $('offsetEdit');
+const seek = $('seek');
+const timeLabel = $('timeLabel');
+const playBtn = $('playBtn');
+
+const WINDOW_MS = 4000;
+let data = null;
+
+function offset() { return parseFloat(coarse.value) + parseFloat(fine.value); }
+
+function setOffset(v) {
+  const c = Math.round(v * 2) / 2;
+  const f = Math.max(-1, Math.min(1, v - c));
+  coarse.value = c;
+  fine.value = f;
+  updateLabels();
+}
+
+function updateLabels() {
+  $('coarseVal').textContent = parseFloat(coarse.value).toFixed(1);
+  $('fineVal').textContent = parseFloat(fine.value).toFixed(2);
+  const o = offset();
+  offsetEl.textContent = o.toFixed(2);
+  offsetEdit.value = o.toFixed(2);
+}
+
+function fmtTime(s) {
+  if (!isFinite(s)) return '0:00';
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return m + ':' + (sec < 10 ? '0' : '') + sec;
+}
+
+function fitCanvas(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const r = canvas.getBoundingClientRect();
+  canvas.width = r.width * dpr;
+  canvas.height = r.height * dpr;
+  canvas.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function valueAt(times, values, tMs) {
+  if (!times || !times.length) return 0;
+  const idx = Math.floor(tMs / 10);
+  if (idx < 0 || idx >= values.length) return 0;
+  return values[idx];
+}
+
+function drawOverlay() {
+  const w = overlayCanvas.clientWidth;
+  const h = overlayCanvas.clientHeight;
+  overlayCtx.clearRect(0, 0, w, h);
+  if (!data) return;
+
+  const times = data.time;
+  const lf = data.left.forward;
+  const rf = data.right.forward;
+  const tMin = times[0];
+  const tMax = times[times.length - 1];
+
+  const o = offset();
+  const dataT = (video.currentTime - o) * 1000;
+
+  // --- bottom: scrolling chart ---
+  const chartH = h * 0.28;
+  const chartY = h - chartH - 10;
+  const chartW = w * 0.84;
+  const chartX = w * 0.08;
+
+  overlayCtx.fillStyle = 'rgba(0, 53, 47, 0.55)';
+  roundedRect(overlayCtx, chartX - 6, chartY - 30, chartW + 12, chartH + 50, 8);
+  overlayCtx.fill();
+
+  // Determine y range from full data
+  let yMin = -50;
+  let yMax = 0;
+  for (let i = 0; i < lf.length; i++) {
+    if (lf[i] > yMax) yMax = lf[i];
+    if (rf[i] > yMax) yMax = rf[i];
+  }
+  yMax *= 1.1;
+
+  const tLeft = dataT - WINDOW_MS / 2;
+  const tRight = dataT + WINDOW_MS / 2;
+  const xOf = t => chartX + ((t - tLeft) / (tRight - tLeft)) * chartW;
+  const yOf = v => chartY + chartH - ((v - yMin) / (yMax - yMin)) * chartH;
+
+  // axes
+  overlayCtx.strokeStyle = 'rgba(255,255,255,0.25)';
+  overlayCtx.lineWidth = 1;
+  overlayCtx.strokeRect(chartX, chartY, chartW, chartH);
+  const y0 = yOf(0);
+  overlayCtx.beginPath();
+  overlayCtx.moveTo(chartX, y0);
+  overlayCtx.lineTo(chartX + chartW, y0);
+  overlayCtx.stroke();
+
+  // y-axis label
+  overlayCtx.fillStyle = '#fff';
+  overlayCtx.font = '11px sans-serif';
+  overlayCtx.textAlign = 'left';
+  overlayCtx.fillText('Propulsion (N)', chartX, chartY - 8);
+
+  // tick labels for time
+  overlayCtx.fillStyle = '#fff';
+  overlayCtx.font = '10px monospace';
+  overlayCtx.textAlign = 'center';
+  for (let s = Math.ceil(tLeft / 1000); s * 1000 <= tRight; s++) {
+    const x = xOf(s * 1000);
+    if (x >= chartX && x <= chartX + chartW) {
+      overlayCtx.fillText(s + 's', x, chartY + chartH + 14);
+    }
+  }
+
+  // plot L
+  drawSeries(overlayCtx, times, lf, tLeft, tRight, xOf, yOf, '#4ea1ff');
+  // plot R
+  drawSeries(overlayCtx, times, rf, tLeft, tRight, xOf, yOf, '#ff8a3d');
+
+  // now line at center
+  const xNow = chartX + chartW / 2;
+  overlayCtx.strokeStyle = 'rgba(255,64,64,0.85)';
+  overlayCtx.lineWidth = 2;
+  overlayCtx.beginPath();
+  overlayCtx.moveTo(xNow, chartY);
+  overlayCtx.lineTo(xNow, chartY + chartH);
+  overlayCtx.stroke();
+
+  // legend
+  overlayCtx.font = '11px sans-serif';
+  overlayCtx.textAlign = 'right';
+  overlayCtx.fillStyle = '#4ea1ff';
+  overlayCtx.fillText('■ Left', chartX + chartW - 50, chartY + 14);
+  overlayCtx.fillStyle = '#ff8a3d';
+  overlayCtx.fillText('■ Right', chartX + chartW - 6, chartY + 14);
+
+  // --- top-left: metrics panel ---
+  const inRange = dataT >= tMin && dataT <= tMax;
+  const curL = inRange ? valueAt(times, lf, dataT) : 0;
+  const curR = inRange ? valueAt(times, rf, dataT) : 0;
+
+  const pw = Math.min(260, w * 0.22);
+  const ph = Math.min(120, h * 0.18);
+  const px = 14, py = 14;
+  overlayCtx.fillStyle = 'rgba(0, 53, 47, 0.7)';
+  roundedRect(overlayCtx, px, py, pw, ph, 8);
+  overlayCtx.fill();
+  overlayCtx.strokeStyle = 'rgba(255,255,255,0.4)';
+  overlayCtx.stroke();
+
+  overlayCtx.fillStyle = '#fff';
+  overlayCtx.textAlign = 'left';
+  overlayCtx.font = 'bold ' + Math.round(ph * 0.22) + 'px sans-serif';
+  const tDisp = inRange ? (dataT / 1000).toFixed(2) : '—';
+  overlayCtx.fillText('t = ' + tDisp + ' s', px + 12, py + ph * 0.32);
+  overlayCtx.font = Math.round(ph * 0.2) + 'px monospace';
+  overlayCtx.fillStyle = '#4ea1ff';
+  overlayCtx.fillText('L  ' + curL.toFixed(1).padStart(6) + ' N', px + 12, py + ph * 0.62);
+  overlayCtx.fillStyle = '#ff8a3d';
+  overlayCtx.fillText('R  ' + curR.toFixed(1).padStart(6) + ' N', px + 12, py + ph * 0.9);
+}
+
+function drawSeries(ctx, times, values, tLeft, tRight, xOf, yOf, color) {
+  let started = false;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  const iStart = Math.max(0, Math.floor(tLeft / 10));
+  const iEnd = Math.min(times.length, Math.ceil(tRight / 10) + 1);
+  for (let i = iStart; i < iEnd; i++) {
+    const x = xOf(times[i]);
+    const y = yOf(values[i]);
+    if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+function roundedRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawTimeline() {
+  const w = tl.clientWidth;
+  const h = tl.clientHeight;
+  tlCtx.fillStyle = '#0a1513';
+  tlCtx.fillRect(0, 0, w, h);
+  if (!data) {
+    tlCtx.fillStyle = '#5a7670';
+    tlCtx.font = '13px sans-serif';
+    tlCtx.textAlign = 'center';
+    tlCtx.fillText('Drop lapforcetime.json above', w / 2, h / 2);
+    return;
+  }
+  const times = data.time;
+  const lf = data.left.forward;
+  const rf = data.right.forward;
+  const tMin = times[0];
+  const tMax = times[times.length - 1];
+  const padL = 36, padR = 8, padT = 10, padB = 18;
+  const cw = w - padL - padR;
+  const ch = h - padT - padB;
+  let yMin = 0, yMax = 0;
+  for (let i = 0; i < lf.length; i++) {
+    if (lf[i] < yMin) yMin = lf[i];
+    if (lf[i] > yMax) yMax = lf[i];
+    if (rf[i] < yMin) yMin = rf[i];
+    if (rf[i] > yMax) yMax = rf[i];
+  }
+  const xOf = t => padL + ((t - tMin) / (tMax - tMin)) * cw;
+  const yOf = v => padT + ch - ((v - yMin) / (yMax - yMin)) * ch;
+
+  tlCtx.strokeStyle = '#1d322d';
+  tlCtx.lineWidth = 1;
+  for (let s = 0; s * 1000 <= tMax; s += 5) {
+    const x = xOf(s * 1000);
+    tlCtx.beginPath();
+    tlCtx.moveTo(x, padT);
+    tlCtx.lineTo(x, padT + ch);
+    tlCtx.stroke();
+    tlCtx.fillStyle = '#5a7670';
+    tlCtx.font = '10px monospace';
+    tlCtx.textAlign = 'center';
+    tlCtx.fillText(s + 's', x, h - 4);
+  }
+
+  tlCtx.strokeStyle = '#4ea1ff';
+  tlCtx.lineWidth = 1;
+  tlCtx.beginPath();
+  for (let i = 0; i < times.length; i++) {
+    const x = xOf(times[i]);
+    const y = yOf(lf[i]);
+    if (i === 0) tlCtx.moveTo(x, y); else tlCtx.lineTo(x, y);
+  }
+  tlCtx.stroke();
+  tlCtx.strokeStyle = '#ff8a3d';
+  tlCtx.beginPath();
+  for (let i = 0; i < times.length; i++) {
+    const x = xOf(times[i]);
+    const y = yOf(rf[i]);
+    if (i === 0) tlCtx.moveTo(x, y); else tlCtx.lineTo(x, y);
+  }
+  tlCtx.stroke();
+
+  const dataT = (video.currentTime - offset()) * 1000;
+  if (dataT >= tMin && dataT <= tMax) {
+    const x = xOf(dataT);
+    tlCtx.strokeStyle = '#ff4040';
+    tlCtx.lineWidth = 2;
+    tlCtx.beginPath();
+    tlCtx.moveTo(x, padT);
+    tlCtx.lineTo(x, padT + ch);
+    tlCtx.stroke();
+  }
+}
+
+function tick() {
+  fitCanvas(overlayCanvas);
+  fitCanvas(tl);
+  drawOverlay();
+  drawTimeline();
+  if (video.duration) {
+    seek.value = (video.currentTime / video.duration) * 100;
+    timeLabel.textContent = fmtTime(video.currentTime) + ' / ' + fmtTime(video.duration);
+  }
+  requestAnimationFrame(tick);
+}
+
+function setupDrop(elId, inputId, onFile) {
+  const el = $(elId);
+  const input = $(inputId);
+  el.addEventListener('click', () => input.click());
+  input.addEventListener('change', e => {
+    if (e.target.files[0]) onFile(e.target.files[0], el);
+  });
+  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag'); });
+  el.addEventListener('dragleave', () => el.classList.remove('drag'));
+  el.addEventListener('drop', e => {
+    e.preventDefault();
+    el.classList.remove('drag');
+    if (e.dataTransfer.files[0]) onFile(e.dataTransfer.files[0], el);
+  });
+}
+
+setupDrop('dropVideo', 'videoInput', (file, el) => {
+  video.src = URL.createObjectURL(file);
+  el.classList.add('loaded');
+  el.querySelector('strong').textContent = '✓ ' + file.name;
+});
+
+setupDrop('dropJson', 'jsonInput', (file, el) => {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      let parsed = JSON.parse(e.target.result);
+      if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+      if (!parsed.time || !parsed.left || !parsed.right) {
+        throw new Error('Missing required keys (time, left, right)');
+      }
+      data = parsed;
+      el.classList.add('loaded');
+      el.querySelector('strong').textContent = '✓ ' + file.name + ' (' + parsed.time.length + ' samples)';
+    } catch (err) {
+      alert('Failed to parse JSON: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+});
+
+coarse.addEventListener('input', updateLabels);
+fine.addEventListener('input', updateLabels);
+offsetEdit.addEventListener('change', e => setOffset(parseFloat(e.target.value) || 0));
+
+seek.addEventListener('input', e => {
+  if (video.duration) video.currentTime = (e.target.value / 100) * video.duration;
+});
+
+playBtn.addEventListener('click', () => {
+  if (video.paused) { video.play(); playBtn.textContent = '⏸ Pause'; }
+  else { video.pause(); playBtn.textContent = '▶ Play'; }
+});
+video.addEventListener('play', () => playBtn.textContent = '⏸ Pause');
+video.addEventListener('pause', () => playBtn.textContent = '▶ Play');
+
+$('copyBtn').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(offsetEl.textContent);
+    $('copyBtn').textContent = 'Copied!';
+    setTimeout(() => $('copyBtn').textContent = 'Copy', 1200);
+  } catch {
+    offsetEdit.select();
+  }
+});
+$('resetBtn').addEventListener('click', () => setOffset(0));
+
+updateLabels();
+tick();
+</script>
+
+</body>
+</html>
