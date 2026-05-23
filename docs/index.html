@@ -652,10 +652,8 @@ function drawPathSquare(ox, oy, S, view, dataT) {
   ctx.textAlign = 'center';
   ctx.fillText(view.xLabel, plotX + plotS / 2, oy + S + titleH - 3);
 
-  // optional 90deg CCW rotation of the plotted graph: (x,y) -> (-y, x)
-  const rot = !!view.rotate;
-  const PX = (cx, cy) => rot ? mapX(-cy) : mapX(cx);
-  const PY = (cx, cy) => rot ? mapY(cx) : mapY(cy);
+  const PX = (cx, cy) => mapX(cx);
+  const PY = (cx, cy) => mapY(cy);
 
   const sides = [];
   if (showLeftOn()) sides.push(['left', false]);
@@ -706,7 +704,7 @@ function drawPathPanel(w, h, dataT, inRange) {
 
   const views = [];
   if ($('viewHeadon') && $('viewHeadon').checked && pathDepth)
-    views.push({ title: 'Head On', glyph: 'headon', rotate: true, xLabel: 'depth (cm)', yLabel: 'lat (cm)',
+    views.push({ title: 'Head On', glyph: 'headon', xLabel: 'lat (cm)', yLabel: 'depth (cm)',
                  x: { file: 'depth', key: 'xAxis' }, y: { file: 'depth', key: 'depth' } });
   if ($('viewOverhead') && $('viewOverhead').checked && pathSweep)
     views.push({ title: 'Overhead', glyph: 'overhead', xLabel: 'lat (cm)', yLabel: 'fwd (cm)',
