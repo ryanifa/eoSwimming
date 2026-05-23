@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 
 API_URL = "https://api.app.eolab.com/"
 PAGE_SIZE = 50
+MAX_PAGES = 40
 
 
 def _log(msg: str) -> None:
@@ -87,6 +88,7 @@ def search_swims(session: requests.Session, user_id: str, timezone: str, target_
 
     matched: list[dict] = []
     page = 1
+    prev_ids: tuple = ()
     while True:
         t0 = time.monotonic()
         r = session.post(
@@ -109,6 +111,13 @@ def search_swims(session: requests.Session, user_id: str, timezone: str, target_
         )
         if not items:
             break
+
+        page_ids = tuple(it.get("swimId") for it in items)
+        if page_ids == prev_ids:
+            _log(f"[search] page {page} returned the same swims as the previous page, stopping")
+            break
+        prev_ids = page_ids
+
         passed_target = False
         for it, d in zip(items, dates):
             if d == target_iso:
@@ -121,6 +130,9 @@ def search_swims(session: requests.Session, user_id: str, timezone: str, target_
         if total_pages and page >= total_pages:
             break
         if len(items) < PAGE_SIZE:
+            break
+        if page >= MAX_PAGES:
+            _log(f"[search] hit MAX_PAGES={MAX_PAGES} guard, stopping")
             break
         page += 1
     _log(f"[search] matched={len(matched)} pages_scanned={page}")
