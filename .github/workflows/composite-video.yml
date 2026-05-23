@@ -3,6 +3,9 @@ name: Composite video with overlay (latest swim)
 on:
   workflow_dispatch:
     inputs:
+      swim_id:
+        description: "Swim ID to render (run 'Fetch swim by date' first to find it)"
+        required: true
       video_url:
         description: "Direct download URL for the source video (transfer.sh, public Dropbox/Drive direct link, GitHub Release asset, etc.)"
         required: true
@@ -30,14 +33,14 @@ on:
         description: "Show Hand velocity (m/s)"
         type: boolean
         default: false
-      show_left:
-        description: "Show left side (solid line)"
-        type: boolean
-        default: true
-      show_right:
-        description: "Show right side (dashed line)"
-        type: boolean
-        default: true
+      sides:
+        description: "Which side(s) to draw (left = solid, right = dashed)"
+        type: choice
+        default: both
+        options:
+          - both
+          - left
+          - right
       show_path:
         description: "Show hand-path panels (Head On / Overhead / Side On)"
         type: boolean
@@ -60,12 +63,12 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Fetch latest swim
+      - name: Fetch swim
         env:
           EO_EMAIL: ${{ secrets.EO_EMAIL }}
           EO_PASSWORD: ${{ secrets.EO_PASSWORD }}
-          EO_TIMEZONE: Europe/Amsterdam
-        run: python fetch_latest_swim.py
+          SWIM_ID: ${{ inputs.swim_id }}
+        run: python fetch_one_swim.py
 
       - name: Download source video
         run: |
@@ -74,6 +77,16 @@ jobs:
           ls -lh input/
           ffprobe -v error -show_entries format=duration,size:stream=width,height -of default=noprint_wrappers=1 input/source.mp4
 
+      - name: Locate swim directory
+        run: |
+          SWIM_DIR=$(ls -d data/*_${{ inputs.swim_id }} 2>/dev/null | head -1)
+          if [ -z "$SWIM_DIR" ]; then
+            echo "No data directory for swim ${{ inputs.swim_id }} (fetch failed?)." >&2
+            exit 1
+          fi
+          echo "SWIM_DIR=$SWIM_DIR" >> "$GITHUB_ENV"
+          echo "Using $SWIM_DIR"
+
       - name: Render overlay
         env:
           SERIES_PROPULSIVE: ${{ inputs.series_propulsive }}
@@ -81,21 +94,10 @@ jobs:
           SERIES_VERTICAL: ${{ inputs.series_vertical }}
           SERIES_LATERAL: ${{ inputs.series_lateral }}
           SERIES_HANDVELOCITY: ${{ inputs.series_handvelocity }}
-          SHOW_LEFT: ${{ inputs.show_left }}
-          SHOW_RIGHT: ${{ inputs.show_right }}
+          SHOW_LEFT: ${{ inputs.sides != 'right' }}
+          SHOW_RIGHT: ${{ inputs.sides != 'left' }}
           SHOW_PATH: ${{ inputs.show_path }}
-        run: python render_overlay.py --fps 60
-
-      - name: Locate overlay file
-        id: find_overlay
-        run: |
-          OVERLAY=$(find data -name overlay.mov | head -1)
-          if [ -z "$OVERLAY" ]; then
-            echo "No overlay.mov produced." >&2
-            exit 1
-          fi
-          echo "overlay=$OVERLAY" >> "$GITHUB_OUTPUT"
-          echo "swim_dir=$(dirname $OVERLAY)" >> "$GITHUB_OUTPUT"
+        run: python render_overlay.py "$SWIM_DIR" --fps 60
 
       - name: Composite
         run: |
@@ -104,8 +106,8 @@ jobs:
           echo "video width=$W -> overlay scale=$SCALE"
           python composite_video.py \
             --video input/source.mp4 \
-            --overlay "${{ steps.find_overlay.outputs.overlay }}" \
-            --out "${{ steps.find_overlay.outputs.swim_dir }}/composite.mp4" \
+            --overlay "$SWIM_DIR/overlay.mov" \
+            --out "$SWIM_DIR/composite.mp4" \
             --swim-start ${{ inputs.swim_start_seconds }} \
             --overlay-scale $SCALE
 
