@@ -214,6 +214,44 @@ let pathSweep = null;  // parsed lap-NN-pathsweep.json
 let pathDepth = null;  // parsed lap-NN-pathdepth.json
 
 const PHASE_COLOR = { catch: '#ff4040', pull: '#4ea1ff', recovery: '#9aa7a3', none: '#9aa7a3' };
+
+// Swimmer orientation figures, drawn fresh as SVG (no "100" text).
+const SWIMMER_SVG = {
+  side:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60" fill="none" ' +
+    'stroke="#cfe9ff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M18 34 C34 24 56 24 70 30"/>' +
+    '<path d="M18 34 C32 40 54 41 68 36"/>' +
+    '<circle cx="74" cy="31" r="6.5" fill="#cfe9ff" stroke="none"/>' +
+    '<path d="M80 29 L96 24"/>' +
+    '<path d="M44 31 L37 46"/>' +
+    '<path d="M18 34 L6 28 M18 34 L8 41"/>' +
+    '</svg>',
+  overhead:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 100" fill="none" ' +
+    'stroke="#cfe9ff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<circle cx="30" cy="14" r="7" fill="#cfe9ff" stroke="none"/>' +
+    '<path d="M30 21 L30 80"/>' +
+    '<path d="M30 30 L9 17"/>' +
+    '<path d="M30 40 L51 55"/>' +
+    '<path d="M30 80 L22 96 M30 80 L38 96"/>' +
+    '</svg>',
+  headon:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none" ' +
+    'stroke="#cfe9ff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<circle cx="40" cy="18" r="9" fill="#cfe9ff" stroke="none"/>' +
+    '<path d="M40 27 L40 52"/>' +
+    '<path d="M27 36 L40 31 L53 36"/>' +
+    '<path d="M27 36 L20 56 M53 36 L60 56"/>' +
+    '<path d="M40 52 L32 72 M40 52 L48 72"/>' +
+    '</svg>',
+};
+const swimmerImg = {};
+for (const k in SWIMMER_SVG) {
+  const im = new Image();
+  im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(SWIMMER_SVG[k]);
+  swimmerImg[k] = im;
+}
 function showLeftOn() { const el = $('showLeft'); return !el || el.checked; }
 function showRightOn() { const el = $('showRight'); return !el || el.checked; }
 
@@ -574,30 +612,25 @@ function pickStrokeFor(file, side) {
 }
 
 function drawSwimmerGlyph(ctx, cx, cy, s, kind) {
-  ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  ctx.lineWidth = 1.2;
-  ctx.setLineDash([]);
-  if (kind === 'side') {            // prone swimmer seen from the side, head left
-    ctx.beginPath(); ctx.arc(cx - s, cy, s * 0.28, 0, 7); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(cx - s + s * 0.28, cy); ctx.lineTo(cx + s, cy); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cx - s * 0.2, cy); ctx.lineTo(cx - s * 0.55, cy + s * 0.6); ctx.stroke();
-  } else if (kind === 'overhead') { // seen from above, head top, arms out
-    ctx.beginPath(); ctx.arc(cx, cy - s, s * 0.26, 0, 7); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(cx, cy - s + s * 0.26); ctx.lineTo(cx, cy + s); ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - s * 0.3); ctx.lineTo(cx - s * 0.6, cy - s * 0.75);
-    ctx.moveTo(cx, cy - s * 0.3); ctx.lineTo(cx + s * 0.6, cy - s * 0.75);
-    ctx.stroke();
-  } else {                          // head on, front view
-    ctx.beginPath(); ctx.arc(cx, cy - s * 0.5, s * 0.3, 0, 7); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(cx - s * 0.6, cy); ctx.lineTo(cx + s * 0.6, cy); ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(cx - s * 0.5, cy); ctx.lineTo(cx - s * 0.5, cy + s * 0.75);
-    ctx.moveTo(cx + s * 0.5, cy); ctx.lineTo(cx + s * 0.5, cy + s * 0.75);
-    ctx.stroke();
+  const im = swimmerImg[kind];
+  const box = s * 2.4;
+  if (im && im.complete && im.naturalWidth) {
+    const ar = im.naturalWidth / im.naturalHeight;
+    let dw = box, dh = box;
+    if (ar >= 1) dh = box / ar; else dw = box * ar;
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    ctx.drawImage(im, cx - dw / 2, cy - dh / 2, dw, dh);
+    ctx.restore();
+    return;
   }
+  // fallback while the SVG is still loading
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, s * 0.3, 0, 7);
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -616,7 +649,7 @@ function drawPathSquare(ox, oy, S, view, dataT) {
   ctx.font = 'bold ' + Math.max(9, Math.round(S * 0.085)) + 'px sans-serif';
   ctx.textAlign = 'left';
   ctx.fillText(view.title, ox + 6, oy + 13);
-  drawSwimmerGlyph(ctx, ox + S - 15, oy + 11, 11, view.glyph);
+  drawSwimmerGlyph(ctx, ox + S - 16, oy + 14, 10, view.glyph);
 
   const pad = Math.max(16, S * 0.17);
   const plotX = ox + pad, plotY = oy + titleH + 4, plotS = S - pad - 8;
