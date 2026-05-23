@@ -106,6 +106,16 @@
     <small>from your data/&lt;swim&gt;/ folder</small>
     <input type="file" id="jsonInput" accept=".json,application/json">
   </label>
+  <label class="drop" id="dropSweep">
+    <strong>Drop lap-NN-pathsweep.json</strong><br>
+    <small>optional — hand path (Overhead / Side On)</small>
+    <input type="file" id="sweepInput" accept=".json,application/json">
+  </label>
+  <label class="drop" id="dropDepth">
+    <strong>Drop lap-NN-pathdepth.json</strong><br>
+    <small>optional — hand path (Head On / Side On)</small>
+    <input type="file" id="depthInput" accept=".json,application/json">
+  </label>
 </div>
 
 <div class="stage" id="stage">
@@ -114,8 +124,21 @@
 </div>
 
 <div class="series" id="seriesControls">
-  <div class="title">Charts to overlay (left = solid, right = dashed)</div>
+  <div class="title">
+    Charts to overlay (left = solid, right = dashed) &nbsp;
+    <label style="display:inline-flex;width:auto;color:#eaeaea;gap:5px;"><input type="checkbox" id="showLeft" checked> Left</label>
+    <label style="display:inline-flex;width:auto;color:#eaeaea;gap:5px;"><input type="checkbox" id="showRight" checked> Right</label>
+  </div>
   <span class="empty">Drop <code>lapforcetime.json</code> to choose data series.</span>
+</div>
+
+<div class="series" id="pathControls">
+  <div class="title">Hand path views (needs pathsweep / pathdepth)</div>
+  <label><input type="checkbox" id="showPath" checked> Show hand path</label>
+  <label><input type="checkbox" id="viewSide"> Side On</label>
+  <label><input type="checkbox" id="viewOverhead"> Overhead</label>
+  <label><input type="checkbox" id="viewHeadon"> Head On</label>
+  <span class="empty" id="pathHint">Drop a pathsweep / pathdepth file to enable.</span>
 </div>
 
 <div class="legend" id="legend">
@@ -187,6 +210,12 @@ const playBtn = $('playBtn');
 const WINDOW_MS = 4000;
 let data = null;
 let series = [];   // discovered series: {id, label, kind, color, data:{left,right,single}, enabled}
+let pathSweep = null;  // parsed lap-NN-pathsweep.json
+let pathDepth = null;  // parsed lap-NN-pathdepth.json
+
+const PHASE_COLOR = { catch: '#ff4040', pull: '#4ea1ff', recovery: '#9aa7a3', none: '#9aa7a3' };
+function showLeftOn() { const el = $('showLeft'); return !el || el.checked; }
+function showRightOn() { const el = $('showRight'); return !el || el.checked; }
 
 const FRIENDLY = {
   forward: 'Propulsive', propulsive: 'Propulsive', propulsion: 'Propulsive',
@@ -426,10 +455,11 @@ function drawOverlay() {
   }
 
   // plot each active series; left solid, right dashed, single solid
+  const wantL = showLeftOn(), wantR = showRightOn();
   for (const s of active) {
     const yFn = yFor(s);
-    if (s.data.left) drawSeries(overlayCtx, times, s.data.left, tLeft, tRight, xOf, yFn, s.color, false);
-    if (s.data.right) drawSeries(overlayCtx, times, s.data.right, tLeft, tRight, xOf, yFn, s.color, true);
+    if (s.data.left && wantL) drawSeries(overlayCtx, times, s.data.left, tLeft, tRight, xOf, yFn, s.color, false);
+    if (s.data.right && wantR) drawSeries(overlayCtx, times, s.data.right, tLeft, tRight, xOf, yFn, s.color, true);
     if (s.data.single) drawSeries(overlayCtx, times, s.data.single, tLeft, tRight, xOf, yFn, s.color, false);
   }
 
@@ -452,8 +482,8 @@ function drawOverlay() {
       const v = inRange ? valueAt(times, s.data.single, dataT) : 0;
       rows.push({ color: s.color, text: `${s.label}  ${v.toFixed(dec)} ${u}` });
     } else {
-      const l = (inRange && s.data.left) ? valueAt(times, s.data.left, dataT) : null;
-      const r = (inRange && s.data.right) ? valueAt(times, s.data.right, dataT) : null;
+      const l = (inRange && s.data.left && wantL) ? valueAt(times, s.data.left, dataT) : null;
+      const r = (inRange && s.data.right && wantR) ? valueAt(times, s.data.right, dataT) : null;
       const parts = [];
       if (l !== null) parts.push('L ' + l.toFixed(dec));
       if (r !== null) parts.push('R ' + r.toFixed(dec));
@@ -481,6 +511,151 @@ function drawOverlay() {
     overlayCtx.fillStyle = row.color;
     overlayCtx.fillText(row.text, px + 12, py + lineH * (i + 2));
   });
+
+  drawPathPanel(w, h, dataT, inRange);
+}
+
+// ---- hand-path views (Side On / Overhead / Head On) ----
+
+function strokesOf(file, side) {
+  if (!file) return [];
+  return (side === 'left' ? file.strokesLeft : file.strokesRight) || [];
+}
+
+function pickStroke(strokes, tMs) {
+  if (!strokes.length) return null;
+  let fallback = strokes[0];
+  for (const s of strokes) {
+    const t = s.time;
+    if (!t || !t.length) continue;
+    if (tMs >= t[0] && tMs <= t[t.length - 1]) return s;
+    if (t[0] <= tMs) fallback = s;
+  }
+  return fallback;
+}
+
+function phaseAt(stroke, tMs) {
+  const inR = arr => arr && arr.length && tMs >= arr[0] && tMs <= arr[arr.length - 1];
+  if (inR(stroke['catch.time'])) return 'catch';
+  if (inR(stroke['pull.time'])) return 'pull';
+  if (inR(stroke['recovery.time'])) return 'recovery';
+  return 'none';
+}
+
+function sampleIndexAt(stroke, tMs) {
+  const t = stroke.time;
+  if (!t || !t.length) return -1;
+  if (tMs <= t[0]) return 0;
+  if (tMs >= t[t.length - 1]) return t.length - 1;
+  let idx = Math.round((tMs - t[0]) / 10);
+  if (idx < 0) idx = 0;
+  if (idx >= t.length) idx = t.length - 1;
+  return idx;
+}
+
+// returns {cmX:[], cmY:[]} for a stroke, given which fields drive x and y.
+// xField/yField each: {file:'sweep'|'depth', key:'xAxis'|'sweep'|'depth'}
+function pathPoints(side, xSpec, ySpec) {
+  const xStroke = pickStrokeFor(xSpec.file, side);
+  const yStroke = pickStrokeFor(ySpec.file, side);
+  if (!xStroke || !yStroke) return null;
+  const xs = xStroke[xSpec.key], ys = yStroke[ySpec.key], ts = xStroke.time;
+  if (!xs || !ys || !ts) return null;
+  const n = Math.min(xs.length, ys.length, ts.length);
+  const cmX = [], cmY = [], time = [];
+  for (let i = 0; i < n; i++) { cmX.push(xs[i] * 100); cmY.push(ys[i] * 100); time.push(ts[i]); }
+  return { cmX, cmY, time, stroke: xStroke };
+}
+
+let _curT = 0;
+function pickStrokeFor(file, side) {
+  const f = file === 'sweep' ? pathSweep : pathDepth;
+  return pickStroke(strokesOf(f, side), _curT);
+}
+
+function drawPathSquare(ox, oy, S, title, viewSpec, dataT, inRange) {
+  const ctx = overlayCtx;
+  // panel bg
+  ctx.fillStyle = 'rgba(0, 53, 47, 0.72)';
+  roundedRect(ctx, ox, oy, S, S + 18, 8);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // title
+  ctx.fillStyle = '#cfe9ff';
+  ctx.font = 'bold ' + Math.max(9, Math.round(S * 0.09)) + 'px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(title, ox + S / 2, oy + 13);
+
+  const plotX = ox + 4, plotY = oy + 18, plotS = S - 8;
+  const mapX = cm => plotX + ((cm + 100) / 200) * plotS;
+  const mapY = cm => plotY + plotS - ((cm + 100) / 200) * plotS;
+
+  // axes (cross at 0)
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.beginPath();
+  ctx.moveTo(mapX(0), plotY); ctx.lineTo(mapX(0), plotY + plotS);
+  ctx.moveTo(plotX, mapY(0)); ctx.lineTo(plotX + plotS, mapY(0));
+  ctx.stroke();
+
+  const sides = [];
+  if (showLeftOn()) sides.push(['left', false]);
+  if (showRightOn()) sides.push(['right', true]);
+
+  for (const [side, dashed] of sides) {
+    const pts = pathPoints(side, viewSpec.x, viewSpec.y);
+    if (!pts) continue;
+    // draw path coloured by phase
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash(dashed ? [4, 3] : []);
+    for (let i = 1; i < pts.cmX.length; i++) {
+      ctx.strokeStyle = PHASE_COLOR[phaseAt(pts.stroke, pts.time[i - 1])];
+      ctx.beginPath();
+      ctx.moveTo(mapX(pts.cmX[i - 1]), mapY(pts.cmY[i - 1]));
+      ctx.lineTo(mapX(pts.cmX[i]), mapY(pts.cmY[i]));
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    // moving dot at current time
+    if (inRange) {
+      const idx = sampleIndexAt(pts.stroke, dataT);
+      if (idx >= 0 && idx < pts.cmX.length) {
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(mapX(pts.cmX[idx]), mapY(pts.cmY[idx]), Math.max(2.5, S * 0.03), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = side === 'left' ? '#ff8a3d' : '#4ea1ff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+function drawPathPanel(w, h, dataT, inRange) {
+  if (!$('showPath') || !$('showPath').checked) return;
+  _curT = dataT;
+
+  const views = [];
+  if ($('viewSide') && $('viewSide').checked && pathSweep && pathDepth)
+    views.push({ title: 'Side On', x: { file: 'sweep', key: 'sweep' }, y: { file: 'depth', key: 'depth' } });
+  if ($('viewOverhead') && $('viewOverhead').checked && pathSweep)
+    views.push({ title: 'Overhead', x: { file: 'sweep', key: 'xAxis' }, y: { file: 'sweep', key: 'sweep' } });
+  if ($('viewHeadon') && $('viewHeadon').checked && pathDepth)
+    views.push({ title: 'Head On', x: { file: 'depth', key: 'xAxis' }, y: { file: 'depth', key: 'depth' } });
+  if (!views.length) return;
+
+  const gap = 8;
+  let S = Math.min(w * 0.17, (h * 0.66 - gap * (views.length - 1)) / views.length);
+  S = Math.max(70, S);
+  const ox = w - S - 12;
+  let oy = 12;
+  for (const v of views) {
+    drawPathSquare(ox, oy, S, v.title, v, dataT, inRange);
+    oy += S + 18 + gap;
+  }
 }
 
 function drawSeries(ctx, times, values, tLeft, tRight, xOf, yOf, color, dashed) {
@@ -639,6 +814,50 @@ setupDrop('dropJson', 'jsonInput', (file, el) => {
     }
   };
   reader.readAsText(file);
+});
+
+function loadPathFile(file, el, assign, label) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      let parsed = JSON.parse(e.target.result);
+      if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+      if (!Array.isArray(parsed.strokesLeft) && !Array.isArray(parsed.strokesRight)) {
+        throw new Error('No strokesLeft/strokesRight in this file');
+      }
+      assign(parsed);
+      el.classList.add('loaded');
+      const nl = (parsed.strokesLeft || []).length, nr = (parsed.strokesRight || []).length;
+      el.querySelector('strong').textContent = '✓ ' + file.name;
+      el.querySelector('small').textContent = `${nl} left / ${nr} right strokes`;
+      refreshPathHint();
+    } catch (err) {
+      alert('Failed to parse ' + label + ': ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function refreshPathHint() {
+  const hint = $('pathHint');
+  if (!hint) return;
+  const have = [];
+  if (pathSweep) have.push('pathsweep');
+  if (pathDepth) have.push('pathdepth');
+  if (!have.length) { hint.style.display = ''; hint.textContent = 'Drop a pathsweep / pathdepth file to enable.'; return; }
+  hint.style.display = 'none';
+  // auto-enable sensible default views once data arrives
+  if (pathSweep && $('viewOverhead') && !$('viewOverhead').dataset.touched) $('viewOverhead').checked = true;
+  if (pathDepth && $('viewHeadon') && !$('viewHeadon').dataset.touched) $('viewHeadon').checked = true;
+  if (pathSweep && pathDepth && $('viewSide') && !$('viewSide').dataset.touched) $('viewSide').checked = true;
+}
+
+setupDrop('dropSweep', 'sweepInput', (file, el) => loadPathFile(file, el, p => pathSweep = p, 'pathsweep'));
+setupDrop('dropDepth', 'depthInput', (file, el) => loadPathFile(file, el, p => pathDepth = p, 'pathdepth'));
+
+['viewSide', 'viewOverhead', 'viewHeadon'].forEach(id => {
+  const el = $(id);
+  if (el) el.addEventListener('change', () => { el.dataset.touched = '1'; });
 });
 
 coarse.addEventListener('input', updateLabels);
