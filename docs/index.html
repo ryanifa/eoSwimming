@@ -651,15 +651,22 @@ function drawPathSquare(ox, oy, S, view, dataT) {
   for (const [side, dashed] of sides) {
     const pts = pathPoints(side, view.x, view.y);
     if (!pts) continue;
-    // path coloured per phase
-    ctx.lineWidth = 1.6;
-    ctx.setLineDash(dashed ? [4, 3] : []);
-    for (let i = 1; i < pts.cmX.length; i++) {
-      ctx.strokeStyle = PHASE_COLOR[phaseAt(pts.stroke, pts.time[i - 1])];
+    // path coloured per phase, drawn as one polyline per phase span so the
+    // dashed style (right side) is actually visible
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash(dashed ? [6, 4] : []);
+    let i = 0;
+    while (i < pts.cmX.length) {
+      const ph = phaseAt(pts.stroke, pts.time[i]);
+      ctx.strokeStyle = PHASE_COLOR[ph];
       ctx.beginPath();
-      ctx.moveTo(mapX(pts.cmX[i - 1]), mapY(pts.cmY[i - 1]));
-      ctx.lineTo(mapX(pts.cmX[i]), mapY(pts.cmY[i]));
+      ctx.moveTo(mapX(pts.cmX[i]), mapY(pts.cmY[i]));
+      let j = i + 1;
+      for (; j < pts.cmX.length && phaseAt(pts.stroke, pts.time[j]) === ph; j++) {
+        ctx.lineTo(mapX(pts.cmX[j]), mapY(pts.cmY[j]));
+      }
       ctx.stroke();
+      i = j;
     }
     ctx.setLineDash([]);
     // moving dot — only while the playhead is actually inside this stroke
@@ -667,12 +674,13 @@ function drawPathSquare(ox, oy, S, view, dataT) {
     if (t && t.length && dataT >= t[0] && dataT <= t[t.length - 1]) {
       const idx = sampleIndexAt(pts.stroke, dataT);
       if (idx >= 0 && idx < pts.cmX.length) {
-        ctx.fillStyle = '#fff';
+        const r = Math.max(3.5, S * 0.045);
+        ctx.fillStyle = side === 'left' ? '#ff8a3d' : '#19e0ff';
         ctx.beginPath();
-        ctx.arc(mapX(pts.cmX[idx]), mapY(pts.cmY[idx]), Math.max(3, S * 0.035), 0, Math.PI * 2);
+        ctx.arc(mapX(pts.cmX[idx]), mapY(pts.cmY[idx]), r, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = side === 'left' ? '#ff8a3d' : '#4ea1ff';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5;
         ctx.stroke();
       }
     }
