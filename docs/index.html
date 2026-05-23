@@ -614,13 +614,16 @@ function pickStrokeFor(file, side) {
 function drawSwimmerGlyph(ctx, cx, cy, s, kind) {
   const im = swimmerImg[kind];
   const box = s * 2.4;
+  const rot = kind === 'overhead' ? -Math.PI / 2 : 0;  // overhead is a top view
   if (im && im.complete && im.naturalWidth) {
     const ar = im.naturalWidth / im.naturalHeight;
     let dw = box, dh = box;
     if (ar >= 1) dh = box / ar; else dw = box * ar;
     ctx.save();
     ctx.globalAlpha = 0.85;
-    ctx.drawImage(im, cx - dw / 2, cy - dh / 2, dw, dh);
+    ctx.translate(cx, cy);
+    if (rot) ctx.rotate(rot);
+    ctx.drawImage(im, -dw / 2, -dh / 2, dw, dh);
     ctx.restore();
     return;
   }
