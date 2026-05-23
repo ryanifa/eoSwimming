@@ -19,6 +19,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Show code version
+        run: |
+          echo "ref:     ${{ github.ref }}"
+          echo "sha:     ${{ github.sha }}"
+          echo "---- last commit ----"
+          git log -1 --format='%H%n%ci%n%s'
+          echo "---- list_swims.py fingerprint ----"
+          git log -1 --format='%h %ci %s' -- list_swims.py
+          md5sum list_swims.py
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
