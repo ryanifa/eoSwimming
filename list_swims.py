@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import requests
 from dotenv import load_dotenv
@@ -214,25 +216,60 @@ def render_summary(target_date: date, items: list[dict]) -> str:
     return "\n".join(out)
 
 
+def _today_in(timezone: str) -> date:
+    try:
+        return datetime.now(ZoneInfo(timezone)).date()
+    except Exception:
+        return date.today()
+
+
+def resolve_target_date(date_str: str, custom_str: str, timezone: str) -> date | None:
+    """Turn a workflow input (relative label or YYYY-MM-DD) into a date.
+
+    Returns None on an unparseable value.
+    """
+    token = (date_str or "").strip().lower()
+    today = _today_in(timezone)
+
+    if token in ("", "today"):
+        return today
+    if token == "yesterday":
+        return today - timedelta(days=1)
+
+    m = re.fullmatch(r"(\d+)\s+days?\s+ago", token)
+    if m:
+        return today - timedelta(days=int(m.group(1)))
+
+    if token in ("custom", "custom date below"):
+        token = (custom_str or "").strip()
+
+    try:
+        return datetime.strptime(token, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
 def main() -> int:
     load_dotenv()
     email = os.environ.get("EO_EMAIL")
     password = os.environ.get("EO_PASSWORD")
     timezone = os.environ.get("EO_TIMEZONE", "Europe/Amsterdam")
     date_str = os.environ.get("SWIM_DATE") or os.environ.get("DATE") or ""
+    custom_str = os.environ.get("SWIM_DATE_CUSTOM") or ""
 
     if not email or not password:
         print("Set EO_EMAIL and EO_PASSWORD.", file=sys.stderr)
         return 1
 
-    if not date_str:
-        target_date = date.today()
-    else:
-        try:
-            target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-        except ValueError:
-            print(f"Bad date: {date_str!r}. Use YYYY-MM-DD.", file=sys.stderr)
-            return 1
+    target_date = resolve_target_date(date_str, custom_str, timezone)
+    if target_date is None:
+        print(
+            f"Bad date: {date_str!r} / custom {custom_str!r}. "
+            f"Use a relative label (e.g. 'today', '3 days ago') or YYYY-MM-DD.",
+            file=sys.stderr,
+        )
+        return 1
+    _log(f"[date] resolved input date={date_str!r} custom={custom_str!r} -> {target_date.isoformat()}")
 
     session = requests.Session()
     access_token, user_id = signin(session, email, password)

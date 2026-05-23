@@ -4,7 +4,29 @@ on:
   workflow_dispatch:
     inputs:
       date:
-        description: "Date (YYYY-MM-DD). Defaults to today."
+        description: "Which day to list. Pick 'custom date below' to type an older date."
+        type: choice
+        required: true
+        default: "today"
+        options:
+          - today
+          - yesterday
+          - 2 days ago
+          - 3 days ago
+          - 4 days ago
+          - 5 days ago
+          - 6 days ago
+          - 7 days ago
+          - 8 days ago
+          - 9 days ago
+          - 10 days ago
+          - 11 days ago
+          - 12 days ago
+          - 13 days ago
+          - 14 days ago
+          - custom date below
+      custom_date:
+        description: "Only used when date = 'custom date below'. Format YYYY-MM-DD."
         required: false
         default: ""
       swim_id:
@@ -43,6 +65,7 @@ jobs:
           EO_PASSWORD: ${{ secrets.EO_PASSWORD }}
           EO_TIMEZONE: Europe/Amsterdam
           SWIM_DATE: ${{ inputs.date }}
+          SWIM_DATE_CUSTOM: ${{ inputs.custom_date }}
         run: python list_swims.py
 
       - name: Fetch selected swim
