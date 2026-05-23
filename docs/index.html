@@ -700,15 +700,15 @@ function drawPathPanel(w, h, dataT, inRange) {
   _curT = dataT;
 
   const views = [];
-  if ($('viewSide') && $('viewSide').checked && pathSweep && pathDepth)
-    views.push({ title: 'Side On', glyph: 'side', xLabel: 'fwd (cm)', yLabel: 'depth (cm)',
-                 x: { file: 'sweep', key: 'sweep' }, y: { file: 'depth', key: 'depth' } });
-  if ($('viewOverhead') && $('viewOverhead').checked && pathSweep)
-    views.push({ title: 'Overhead', glyph: 'overhead', xLabel: 'lat (cm)', yLabel: 'fwd (cm)',
-                 x: { file: 'sweep', key: 'xAxis' }, y: { file: 'sweep', key: 'sweep' } });
   if ($('viewHeadon') && $('viewHeadon').checked && pathDepth)
     views.push({ title: 'Head On', glyph: 'headon', xLabel: 'lat (cm)', yLabel: 'depth (cm)',
                  x: { file: 'depth', key: 'xAxis' }, y: { file: 'depth', key: 'depth' } });
+  if ($('viewOverhead') && $('viewOverhead').checked && pathSweep)
+    views.push({ title: 'Overhead', glyph: 'overhead', xLabel: 'lat (cm)', yLabel: 'fwd (cm)',
+                 x: { file: 'sweep', key: 'xAxis' }, y: { file: 'sweep', key: 'sweep' } });
+  if ($('viewSide') && $('viewSide').checked && pathSweep && pathDepth)
+    views.push({ title: 'Side On', glyph: 'side', xLabel: 'fwd (cm)', yLabel: 'depth (cm)',
+                 x: { file: 'sweep', key: 'sweep' }, y: { file: 'depth', key: 'depth' } });
   if (!views.length) return;
 
   const gap = 8, titleH = 18;
