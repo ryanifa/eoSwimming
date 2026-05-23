@@ -10,14 +10,38 @@ on:
         description: "Seconds into the video where the swim begins (overlay aligns here)"
         required: true
         default: "0"
-      overlay_scale:
-        description: "Scale factor for the overlay (1.0 = 1920x1080; use 2.0 for 4K video)"
-        required: false
-        default: "1.0"
-      fps:
-        description: "Overlay frame rate"
-        required: false
-        default: "60"
+      series_propulsive:
+        description: "Show Propulsive (forward) force"
+        type: boolean
+        default: true
+      series_total:
+        description: "Show Total force"
+        type: boolean
+        default: false
+      series_vertical:
+        description: "Show Vertical force"
+        type: boolean
+        default: false
+      series_lateral:
+        description: "Show Lateral force"
+        type: boolean
+        default: false
+      series_handvelocity:
+        description: "Show Hand velocity (m/s)"
+        type: boolean
+        default: false
+      show_left:
+        description: "Show left side (solid line)"
+        type: boolean
+        default: true
+      show_right:
+        description: "Show right side (dashed line)"
+        type: boolean
+        default: true
+      show_path:
+        description: "Show hand-path panels (Head On / Overhead / Side On)"
+        type: boolean
+        default: true
 
 jobs:
   composite:
@@ -51,7 +75,16 @@ jobs:
           ffprobe -v error -show_entries format=duration,size:stream=width,height -of default=noprint_wrappers=1 input/source.mp4
 
       - name: Render overlay
-        run: python render_overlay.py --fps ${{ inputs.fps }}
+        env:
+          SERIES_PROPULSIVE: ${{ inputs.series_propulsive }}
+          SERIES_TOTAL: ${{ inputs.series_total }}
+          SERIES_VERTICAL: ${{ inputs.series_vertical }}
+          SERIES_LATERAL: ${{ inputs.series_lateral }}
+          SERIES_HANDVELOCITY: ${{ inputs.series_handvelocity }}
+          SHOW_LEFT: ${{ inputs.show_left }}
+          SHOW_RIGHT: ${{ inputs.show_right }}
+          SHOW_PATH: ${{ inputs.show_path }}
+        run: python render_overlay.py --fps 60
 
       - name: Locate overlay file
         id: find_overlay
@@ -66,12 +99,15 @@ jobs:
 
       - name: Composite
         run: |
+          W=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 input/source.mp4)
+          SCALE=$(python3 -c "print(round(max(1.0, ${W:-1920}/1920.0), 4))")
+          echo "video width=$W -> overlay scale=$SCALE"
           python composite_video.py \
             --video input/source.mp4 \
             --overlay "${{ steps.find_overlay.outputs.overlay }}" \
             --out "${{ steps.find_overlay.outputs.swim_dir }}/composite.mp4" \
             --swim-start ${{ inputs.swim_start_seconds }} \
-            --overlay-scale ${{ inputs.overlay_scale }}
+            --overlay-scale $SCALE
 
       - uses: actions/upload-artifact@v4
         with:
@@ -80,6 +116,5 @@ jobs:
             data/**/composite.mp4
             data/**/overlay.mov
             data/**/swim.json
-            data/**/analysis.md
           if-no-files-found: error
           retention-days: 30
