@@ -573,41 +573,85 @@ function pickStrokeFor(file, side) {
   return pickStroke(strokesOf(f, side), _curT);
 }
 
-function drawPathSquare(ox, oy, S, title, viewSpec, dataT, inRange) {
+function drawSwimmerGlyph(ctx, cx, cy, s, kind) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.lineWidth = 1.2;
+  ctx.setLineDash([]);
+  if (kind === 'side') {            // prone swimmer seen from the side, head left
+    ctx.beginPath(); ctx.arc(cx - s, cy, s * 0.28, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx - s + s * 0.28, cy); ctx.lineTo(cx + s, cy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx - s * 0.2, cy); ctx.lineTo(cx - s * 0.55, cy + s * 0.6); ctx.stroke();
+  } else if (kind === 'overhead') { // seen from above, head top, arms out
+    ctx.beginPath(); ctx.arc(cx, cy - s, s * 0.26, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx, cy - s + s * 0.26); ctx.lineTo(cx, cy + s); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - s * 0.3); ctx.lineTo(cx - s * 0.6, cy - s * 0.75);
+    ctx.moveTo(cx, cy - s * 0.3); ctx.lineTo(cx + s * 0.6, cy - s * 0.75);
+    ctx.stroke();
+  } else {                          // head on, front view
+    ctx.beginPath(); ctx.arc(cx, cy - s * 0.5, s * 0.3, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx - s * 0.6, cy); ctx.lineTo(cx + s * 0.6, cy); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx - s * 0.5, cy); ctx.lineTo(cx - s * 0.5, cy + s * 0.75);
+    ctx.moveTo(cx + s * 0.5, cy); ctx.lineTo(cx + s * 0.5, cy + s * 0.75);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawPathSquare(ox, oy, S, view, dataT) {
   const ctx = overlayCtx;
-  // panel bg
+  const titleH = 18;
   ctx.fillStyle = 'rgba(0, 53, 47, 0.72)';
-  roundedRect(ctx, ox, oy, S, S + 18, 8);
+  roundedRect(ctx, ox, oy, S, S + titleH, 8);
   ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,0.35)';
   ctx.lineWidth = 1;
   ctx.stroke();
 
-  // title
+  // title (left) + orientation figure (right)
   ctx.fillStyle = '#cfe9ff';
-  ctx.font = 'bold ' + Math.max(9, Math.round(S * 0.09)) + 'px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(title, ox + S / 2, oy + 13);
+  ctx.font = 'bold ' + Math.max(9, Math.round(S * 0.085)) + 'px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(view.title, ox + 6, oy + 13);
+  drawSwimmerGlyph(ctx, ox + S - 15, oy + 11, 11, view.glyph);
 
-  const plotX = ox + 4, plotY = oy + 18, plotS = S - 8;
+  const pad = Math.max(16, S * 0.17);
+  const plotX = ox + pad, plotY = oy + titleH + 4, plotS = S - pad - 8;
   const mapX = cm => plotX + ((cm + 100) / 200) * plotS;
   const mapY = cm => plotY + plotS - ((cm + 100) / 200) * plotS;
 
-  // axes (cross at 0)
-  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-  ctx.beginPath();
-  ctx.moveTo(mapX(0), plotY); ctx.lineTo(mapX(0), plotY + plotS);
-  ctx.moveTo(plotX, mapY(0)); ctx.lineTo(plotX + plotS, mapY(0));
-  ctx.stroke();
+  // gridlines + cm scale labels (this is what shows the depths)
+  const ticks = [-100, -50, 0, 50, 100];
+  ctx.font = Math.max(7, Math.round(S * 0.058)) + 'px monospace';
+  for (const c of ticks) {
+    const y = mapY(c), x = mapX(c);
+    ctx.strokeStyle = c === 0 ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.1)';
+    ctx.beginPath(); ctx.moveTo(plotX, y); ctx.lineTo(plotX + plotS, y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, plotY); ctx.lineTo(x, plotY + plotS); ctx.stroke();
+    ctx.fillStyle = 'rgba(207,233,255,0.7)';
+    ctx.textAlign = 'right';
+    ctx.fillText(c, plotX - 2, y + 3);
+  }
+  // axis names
+  ctx.fillStyle = 'rgba(207,233,255,0.6)';
+  ctx.save();
+  ctx.translate(ox + 7, plotY + plotS / 2); ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center'; ctx.fillText(view.yLabel, 0, 0);
+  ctx.restore();
+  ctx.textAlign = 'center';
+  ctx.fillText(view.xLabel, plotX + plotS / 2, oy + S + titleH - 3);
 
   const sides = [];
   if (showLeftOn()) sides.push(['left', false]);
   if (showRightOn()) sides.push(['right', true]);
 
   for (const [side, dashed] of sides) {
-    const pts = pathPoints(side, viewSpec.x, viewSpec.y);
+    const pts = pathPoints(side, view.x, view.y);
     if (!pts) continue;
-    // draw path coloured by phase
+    // path coloured per phase
     ctx.lineWidth = 1.6;
     ctx.setLineDash(dashed ? [4, 3] : []);
     for (let i = 1; i < pts.cmX.length; i++) {
@@ -618,13 +662,14 @@ function drawPathSquare(ox, oy, S, title, viewSpec, dataT, inRange) {
       ctx.stroke();
     }
     ctx.setLineDash([]);
-    // moving dot at current time
-    if (inRange) {
+    // moving dot — only while the playhead is actually inside this stroke
+    const t = pts.stroke.time;
+    if (t && t.length && dataT >= t[0] && dataT <= t[t.length - 1]) {
       const idx = sampleIndexAt(pts.stroke, dataT);
       if (idx >= 0 && idx < pts.cmX.length) {
         ctx.fillStyle = '#fff';
         ctx.beginPath();
-        ctx.arc(mapX(pts.cmX[idx]), mapY(pts.cmY[idx]), Math.max(2.5, S * 0.03), 0, Math.PI * 2);
+        ctx.arc(mapX(pts.cmX[idx]), mapY(pts.cmY[idx]), Math.max(3, S * 0.035), 0, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = side === 'left' ? '#ff8a3d' : '#4ea1ff';
         ctx.lineWidth = 2;
@@ -640,21 +685,24 @@ function drawPathPanel(w, h, dataT, inRange) {
 
   const views = [];
   if ($('viewSide') && $('viewSide').checked && pathSweep && pathDepth)
-    views.push({ title: 'Side On', x: { file: 'sweep', key: 'sweep' }, y: { file: 'depth', key: 'depth' } });
+    views.push({ title: 'Side On', glyph: 'side', xLabel: 'fwd (cm)', yLabel: 'depth (cm)',
+                 x: { file: 'sweep', key: 'sweep' }, y: { file: 'depth', key: 'depth' } });
   if ($('viewOverhead') && $('viewOverhead').checked && pathSweep)
-    views.push({ title: 'Overhead', x: { file: 'sweep', key: 'xAxis' }, y: { file: 'sweep', key: 'sweep' } });
+    views.push({ title: 'Overhead', glyph: 'overhead', xLabel: 'lat (cm)', yLabel: 'fwd (cm)',
+                 x: { file: 'sweep', key: 'xAxis' }, y: { file: 'sweep', key: 'sweep' } });
   if ($('viewHeadon') && $('viewHeadon').checked && pathDepth)
-    views.push({ title: 'Head On', x: { file: 'depth', key: 'xAxis' }, y: { file: 'depth', key: 'depth' } });
+    views.push({ title: 'Head On', glyph: 'headon', xLabel: 'lat (cm)', yLabel: 'depth (cm)',
+                 x: { file: 'depth', key: 'xAxis' }, y: { file: 'depth', key: 'depth' } });
   if (!views.length) return;
 
-  const gap = 8;
-  let S = Math.min(w * 0.17, (h * 0.66 - gap * (views.length - 1)) / views.length);
-  S = Math.max(70, S);
+  const gap = 8, titleH = 18;
+  let S = Math.min(w * 0.19, (h - 24 - gap * (views.length - 1)) / views.length - titleH);
+  S = Math.max(78, S);
   const ox = w - S - 12;
   let oy = 12;
   for (const v of views) {
-    drawPathSquare(ox, oy, S, v.title, v, dataT, inRange);
-    oy += S + 18 + gap;
+    drawPathSquare(ox, oy, S, v, dataT);
+    oy += S + titleH + gap;
   }
 }
 
