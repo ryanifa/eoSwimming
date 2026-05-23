@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - claude/read-swim-data-api-hXtvA
+      - claude/dazzling-faraday-1zp2h
     paths:
       - 'docs/**'
       - '.github/workflows/pages.yml'
