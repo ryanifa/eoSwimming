@@ -64,11 +64,24 @@
   button:hover { background: #4286ff; }
   button.secondary { background: #2c4540; }
   button.secondary:hover { background: #3a5a54; }
-  .legend { display: flex; gap: 16px; margin: 4px 0 8px; font-size: 12px; color: #8aa0a0; }
+  .legend { display: flex; gap: 16px; margin: 4px 0 8px; font-size: 12px; color: #8aa0a0; flex-wrap: wrap; }
   .legend span::before { content: "■"; margin-right: 4px; vertical-align: middle; }
-  .legend .l::before { color: #4ea1ff; }
-  .legend .r::before { color: #ff8a3d; }
   .legend .m::before { color: #ff4040; }
+  .series {
+    display: flex; gap: 8px 14px; flex-wrap: wrap; margin: 0 0 12px;
+    padding: 10px 12px; background: #11231f; border: 1px solid #2c4540; border-radius: 8px;
+  }
+  .series .title { width: 100%; color: #8aa0a0; font-size: 12px; margin-bottom: 2px; }
+  .series label {
+    width: auto; display: inline-flex; align-items: center; gap: 6px;
+    color: #eaeaea; font-size: 13px; cursor: pointer;
+    padding: 3px 8px; border-radius: 5px; border: 1px solid transparent;
+  }
+  .series label:hover { background: #142826; }
+  .series label .swatch {
+    width: 22px; height: 4px; border-radius: 2px; display: inline-block;
+  }
+  .series .empty { color: #5a7670; font-size: 13px; }
   details { margin-top: 14px; color: #8aa0a0; font-size: 13px; }
   details summary { cursor: pointer; }
 </style>
@@ -100,9 +113,12 @@
   <canvas id="overlay"></canvas>
 </div>
 
-<div class="legend">
-  <span class="l">Left propulsion (N)</span>
-  <span class="r">Right propulsion (N)</span>
+<div class="series" id="seriesControls">
+  <div class="title">Charts to overlay (left = solid, right = dashed)</div>
+  <span class="empty">Drop <code>lapforcetime.json</code> to choose data series.</span>
+</div>
+
+<div class="legend" id="legend">
   <span class="m">Current data position</span>
   <span style="margin-left:auto">Use the slider below to scrub the video</span>
 </div>
@@ -170,6 +186,128 @@ const playBtn = $('playBtn');
 
 const WINDOW_MS = 4000;
 let data = null;
+let series = [];   // discovered series: {id, label, kind, color, data:{left,right,single}, enabled}
+
+const FRIENDLY = {
+  forward: 'Propulsive', propulsive: 'Propulsive', propulsion: 'Propulsive',
+  total: 'Total force', totalforce: 'Total force', totalForce: 'Total force',
+  vertical: 'Vertical', lateral: 'Lateral',
+  handvelocity: 'Hand velocity', velocity: 'Hand velocity', handVelocity: 'Hand velocity',
+  speed: 'Hand speed', handspeed: 'Hand speed',
+};
+const PALETTE = ['#ff8a3d', '#4ea1ff', '#b07cff', '#ffd24a', '#37d39b', '#ff5d8f', '#62d0ff', '#c0e35a'];
+
+function isNumArray(v) {
+  return Array.isArray(v) && v.length > 0 && typeof v[0] === 'number';
+}
+
+function labelOf(id) {
+  const base = id.split('.').pop();
+  return FRIENDLY[base] || FRIENDLY[base.toLowerCase()] || base;
+}
+
+function kindOf(id) {
+  return /velocit|speed/i.test(id) ? 'velocity' : 'force';
+}
+
+function unitOf(kind) { return kind === 'velocity' ? 'm/s' : 'N'; }
+
+function discoverSeries(d) {
+  const out = [];
+  const left = (d.left && typeof d.left === 'object') ? d.left : {};
+  const right = (d.right && typeof d.right === 'object') ? d.right : {};
+  const keys = [...new Set([...Object.keys(left), ...Object.keys(right)])];
+  let ci = 0;
+  for (const k of keys) {
+    const l = isNumArray(left[k]) ? left[k] : null;
+    const r = isNumArray(right[k]) ? right[k] : null;
+    if (!l && !r) continue;
+    out.push({ id: k, label: labelOf(k), kind: kindOf(k),
+               color: PALETTE[ci % PALETTE.length], data: { left: l, right: r }, enabled: false });
+    ci++;
+  }
+  // top-level (single-sided) arrays and nested objects, e.g. handVelocity
+  for (const k of Object.keys(d)) {
+    if (k === 'time' || k === 'left' || k === 'right') continue;
+    if (isNumArray(d[k])) {
+      out.push({ id: k, label: labelOf(k), kind: kindOf(k),
+                 color: PALETTE[ci % PALETTE.length], data: { single: d[k] }, enabled: false });
+      ci++;
+    } else if (d[k] && typeof d[k] === 'object') {
+      for (const sub of Object.keys(d[k])) {
+        if (!isNumArray(d[k][sub])) continue;
+        const id = k + '.' + sub;
+        out.push({ id, label: labelOf(id), kind: kindOf(id),
+                   color: PALETTE[ci % PALETTE.length], data: { single: d[k][sub] }, enabled: false });
+        ci++;
+      }
+    }
+  }
+  // default: enable propulsion-like force series, else the first one
+  const def = out.find(s => /forward|propuls/i.test(s.id)) || out[0];
+  if (def) def.enabled = true;
+  return out;
+}
+
+function enabledSeries() { return series.filter(s => s.enabled); }
+
+function rangeOf(list) {
+  let mn = Infinity, mx = -Infinity;
+  for (const s of list) {
+    for (const side of ['left', 'right', 'single']) {
+      const arr = s.data[side];
+      if (!arr) continue;
+      for (let i = 0; i < arr.length; i++) {
+        const v = arr[i];
+        if (v < mn) mn = v;
+        if (v > mx) mx = v;
+      }
+    }
+  }
+  if (mn === Infinity) return { mn: 0, mx: 1 };
+  if (mn > 0) mn = 0;            // keep zero baseline visible
+  if (mx < 0) mx = 0;
+  const pad = (mx - mn) * 0.1 || 1;
+  return { mn: mn - (mn < 0 ? pad : 0), mx: mx + pad };
+}
+
+function buildSeriesControls() {
+  const box = $('seriesControls');
+  box.innerHTML = '<div class="title">Charts to overlay (left = solid, right = dashed)</div>';
+  if (!series.length) {
+    box.insertAdjacentHTML('beforeend', '<span class="empty">No numeric data series found in this file.</span>');
+    return;
+  }
+  for (const s of series) {
+    const id = 'cb_' + s.id.replace(/[^a-z0-9]/gi, '_');
+    const label = document.createElement('label');
+    label.innerHTML =
+      `<input type="checkbox" id="${id}" ${s.enabled ? 'checked' : ''}>` +
+      `<span class="swatch" style="background:${s.color}"></span>` +
+      `${s.label} <small style="color:#5a7670">(${unitOf(s.kind)})</small>`;
+    label.querySelector('input').addEventListener('change', e => {
+      s.enabled = e.target.checked;
+      buildLegend();
+    });
+    box.appendChild(label);
+  }
+  buildLegend();
+}
+
+function buildLegend() {
+  const el = $('legend');
+  const parts = enabledSeries().map(s => {
+    const sides = [];
+    if (s.data.left) sides.push('L');
+    if (s.data.right) sides.push('R');
+    if (s.data.single) sides.push('•');
+    return `<span style="color:${s.color}">■ ${s.label}${sides.length ? ' (' + sides.join('/') + ')' : ''}</span>`;
+  });
+  el.innerHTML =
+    parts.join('') +
+    '<span class="m">Current data position</span>' +
+    '<span style="margin-left:auto">Slider below scrubs the video</span>';
+}
 
 function offset() { return parseFloat(coarse.value) + parseFloat(fine.value); }
 
@@ -218,10 +356,9 @@ function drawOverlay() {
   if (!data) return;
 
   const times = data.time;
-  const lf = data.left.forward;
-  const rf = data.right.forward;
   const tMin = times[0];
   const tMax = times[times.length - 1];
+  const active = enabledSeries();
 
   const o = offset();
   const dataT = (video.currentTime - o) * 1000;
@@ -236,37 +373,48 @@ function drawOverlay() {
   roundedRect(overlayCtx, chartX - 6, chartY - 30, chartW + 12, chartH + 50, 8);
   overlayCtx.fill();
 
-  // Determine y range from full data
-  let yMin = -50;
-  let yMax = 0;
-  for (let i = 0; i < lf.length; i++) {
-    if (lf[i] > yMax) yMax = lf[i];
-    if (rf[i] > yMax) yMax = rf[i];
-  }
-  yMax *= 1.1;
+  // axes box
+  overlayCtx.strokeStyle = 'rgba(255,255,255,0.25)';
+  overlayCtx.lineWidth = 1;
+  overlayCtx.strokeRect(chartX, chartY, chartW, chartH);
 
   const tLeft = dataT - WINDOW_MS / 2;
   const tRight = dataT + WINDOW_MS / 2;
   const xOf = t => chartX + ((t - tLeft) / (tRight - tLeft)) * chartW;
-  const yOf = v => chartY + chartH - ((v - yMin) / (yMax - yMin)) * chartH;
 
-  // axes
-  overlayCtx.strokeStyle = 'rgba(255,255,255,0.25)';
-  overlayCtx.lineWidth = 1;
-  overlayCtx.strokeRect(chartX, chartY, chartW, chartH);
-  const y0 = yOf(0);
-  overlayCtx.beginPath();
-  overlayCtx.moveTo(chartX, y0);
-  overlayCtx.lineTo(chartX + chartW, y0);
-  overlayCtx.stroke();
+  // group active series per axis kind, each axis gets its own range
+  const forceList = active.filter(s => s.kind === 'force');
+  const velList = active.filter(s => s.kind === 'velocity');
+  const fRange = rangeOf(forceList);
+  const vRange = rangeOf(velList);
+  const yForce = v => chartY + chartH - ((v - fRange.mn) / (fRange.mx - fRange.mn)) * chartH;
+  const yVel = v => chartY + chartH - ((v - vRange.mn) / (vRange.mx - vRange.mn)) * chartH;
+  const yFor = s => (s.kind === 'velocity' ? yVel : yForce);
 
-  // y-axis label
-  overlayCtx.fillStyle = '#fff';
+  // zero baseline (force axis)
+  if (forceList.length) {
+    const y0 = yForce(0);
+    overlayCtx.strokeStyle = 'rgba(255,255,255,0.25)';
+    overlayCtx.beginPath();
+    overlayCtx.moveTo(chartX, y0);
+    overlayCtx.lineTo(chartX + chartW, y0);
+    overlayCtx.stroke();
+  }
+
+  // axis labels
   overlayCtx.font = '11px sans-serif';
-  overlayCtx.textAlign = 'left';
-  overlayCtx.fillText('Propulsion (N)', chartX, chartY - 8);
+  if (forceList.length) {
+    overlayCtx.fillStyle = '#fff';
+    overlayCtx.textAlign = 'left';
+    overlayCtx.fillText('Force (N)', chartX, chartY - 8);
+  }
+  if (velList.length) {
+    overlayCtx.fillStyle = '#cfe9ff';
+    overlayCtx.textAlign = 'right';
+    overlayCtx.fillText('Hand speed (m/s)', chartX + chartW, chartY - 8);
+  }
 
-  // tick labels for time
+  // time tick labels
   overlayCtx.fillStyle = '#fff';
   overlayCtx.font = '10px monospace';
   overlayCtx.textAlign = 'center';
@@ -277,10 +425,13 @@ function drawOverlay() {
     }
   }
 
-  // plot L
-  drawSeries(overlayCtx, times, lf, tLeft, tRight, xOf, yOf, '#4ea1ff');
-  // plot R
-  drawSeries(overlayCtx, times, rf, tLeft, tRight, xOf, yOf, '#ff8a3d');
+  // plot each active series; left solid, right dashed, single solid
+  for (const s of active) {
+    const yFn = yFor(s);
+    if (s.data.left) drawSeries(overlayCtx, times, s.data.left, tLeft, tRight, xOf, yFn, s.color, false);
+    if (s.data.right) drawSeries(overlayCtx, times, s.data.right, tLeft, tRight, xOf, yFn, s.color, true);
+    if (s.data.single) drawSeries(overlayCtx, times, s.data.single, tLeft, tRight, xOf, yFn, s.color, false);
+  }
 
   // now line at center
   const xNow = chartX + chartW / 2;
@@ -291,53 +442,62 @@ function drawOverlay() {
   overlayCtx.lineTo(xNow, chartY + chartH);
   overlayCtx.stroke();
 
-  // legend
-  overlayCtx.font = '11px sans-serif';
-  overlayCtx.textAlign = 'right';
-  overlayCtx.fillStyle = '#4ea1ff';
-  overlayCtx.fillText('■ Left', chartX + chartW - 50, chartY + 14);
-  overlayCtx.fillStyle = '#ff8a3d';
-  overlayCtx.fillText('■ Right', chartX + chartW - 6, chartY + 14);
-
   // --- top-left: metrics panel ---
   const inRange = dataT >= tMin && dataT <= tMax;
-  const curL = inRange ? valueAt(times, lf, dataT) : 0;
-  const curR = inRange ? valueAt(times, rf, dataT) : 0;
+  const rows = [];
+  for (const s of active) {
+    const u = unitOf(s.kind);
+    const dec = s.kind === 'velocity' ? 2 : 1;
+    if (s.data.single) {
+      const v = inRange ? valueAt(times, s.data.single, dataT) : 0;
+      rows.push({ color: s.color, text: `${s.label}  ${v.toFixed(dec)} ${u}` });
+    } else {
+      const l = (inRange && s.data.left) ? valueAt(times, s.data.left, dataT) : null;
+      const r = (inRange && s.data.right) ? valueAt(times, s.data.right, dataT) : null;
+      const parts = [];
+      if (l !== null) parts.push('L ' + l.toFixed(dec));
+      if (r !== null) parts.push('R ' + r.toFixed(dec));
+      rows.push({ color: s.color, text: `${s.label}  ${parts.join('  ')} ${u}` });
+    }
+  }
 
-  const pw = Math.min(260, w * 0.22);
-  const ph = Math.min(120, h * 0.18);
   const px = 14, py = 14;
+  const lineH = Math.max(16, Math.min(22, h * 0.03));
+  const pw = Math.min(320, w * 0.30);
+  const ph = 14 + lineH * (rows.length + 1) + 8;
   overlayCtx.fillStyle = 'rgba(0, 53, 47, 0.7)';
   roundedRect(overlayCtx, px, py, pw, ph, 8);
   overlayCtx.fill();
   overlayCtx.strokeStyle = 'rgba(255,255,255,0.4)';
   overlayCtx.stroke();
 
-  overlayCtx.fillStyle = '#fff';
   overlayCtx.textAlign = 'left';
-  overlayCtx.font = 'bold ' + Math.round(ph * 0.22) + 'px sans-serif';
+  overlayCtx.fillStyle = '#fff';
+  overlayCtx.font = 'bold ' + Math.round(lineH * 0.8) + 'px sans-serif';
   const tDisp = inRange ? (dataT / 1000).toFixed(2) : '—';
-  overlayCtx.fillText('t = ' + tDisp + ' s', px + 12, py + ph * 0.32);
-  overlayCtx.font = Math.round(ph * 0.2) + 'px monospace';
-  overlayCtx.fillStyle = '#4ea1ff';
-  overlayCtx.fillText('L  ' + curL.toFixed(1).padStart(6) + ' N', px + 12, py + ph * 0.62);
-  overlayCtx.fillStyle = '#ff8a3d';
-  overlayCtx.fillText('R  ' + curR.toFixed(1).padStart(6) + ' N', px + 12, py + ph * 0.9);
+  overlayCtx.fillText('t = ' + tDisp + ' s', px + 12, py + lineH);
+  overlayCtx.font = Math.round(lineH * 0.72) + 'px monospace';
+  rows.forEach((row, i) => {
+    overlayCtx.fillStyle = row.color;
+    overlayCtx.fillText(row.text, px + 12, py + lineH * (i + 2));
+  });
 }
 
-function drawSeries(ctx, times, values, tLeft, tRight, xOf, yOf, color) {
+function drawSeries(ctx, times, values, tLeft, tRight, xOf, yOf, color, dashed) {
   let started = false;
   ctx.strokeStyle = color;
   ctx.lineWidth = 1.8;
+  ctx.setLineDash(dashed ? [5, 4] : []);
   ctx.beginPath();
   const iStart = Math.max(0, Math.floor(tLeft / 10));
-  const iEnd = Math.min(times.length, Math.ceil(tRight / 10) + 1);
+  const iEnd = Math.min(times.length, values.length, Math.ceil(tRight / 10) + 1);
   for (let i = iStart; i < iEnd; i++) {
     const x = xOf(times[i]);
     const y = yOf(values[i]);
     if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
   }
   ctx.stroke();
+  ctx.setLineDash([]);
 }
 
 function roundedRect(ctx, x, y, w, h, r) {
@@ -363,22 +523,12 @@ function drawTimeline() {
     return;
   }
   const times = data.time;
-  const lf = data.left.forward;
-  const rf = data.right.forward;
   const tMin = times[0];
   const tMax = times[times.length - 1];
   const padL = 36, padR = 8, padT = 10, padB = 18;
   const cw = w - padL - padR;
   const ch = h - padT - padB;
-  let yMin = 0, yMax = 0;
-  for (let i = 0; i < lf.length; i++) {
-    if (lf[i] < yMin) yMin = lf[i];
-    if (lf[i] > yMax) yMax = lf[i];
-    if (rf[i] < yMin) yMin = rf[i];
-    if (rf[i] > yMax) yMax = rf[i];
-  }
   const xOf = t => padL + ((t - tMin) / (tMax - tMin)) * cw;
-  const yOf = v => padT + ch - ((v - yMin) / (yMax - yMin)) * ch;
 
   tlCtx.strokeStyle = '#1d322d';
   tlCtx.lineWidth = 1;
@@ -394,23 +544,29 @@ function drawTimeline() {
     tlCtx.fillText(s + 's', x, h - 4);
   }
 
-  tlCtx.strokeStyle = '#4ea1ff';
-  tlCtx.lineWidth = 1;
-  tlCtx.beginPath();
-  for (let i = 0; i < times.length; i++) {
-    const x = xOf(times[i]);
-    const y = yOf(lf[i]);
-    if (i === 0) tlCtx.moveTo(x, y); else tlCtx.lineTo(x, y);
+  // overview of the enabled series across the whole swim, each with its own scale
+  for (const sObj of enabledSeries()) {
+    const rng = rangeOf([sObj]);
+    const yOf = v => padT + ch - ((v - rng.mn) / (rng.mx - rng.mn)) * ch;
+    const lines = [];
+    if (sObj.data.left) lines.push([sObj.data.left, false]);
+    if (sObj.data.right) lines.push([sObj.data.right, true]);
+    if (sObj.data.single) lines.push([sObj.data.single, false]);
+    tlCtx.strokeStyle = sObj.color;
+    tlCtx.lineWidth = 1;
+    for (const [arr, dashed] of lines) {
+      tlCtx.setLineDash(dashed ? [4, 3] : []);
+      tlCtx.beginPath();
+      const n = Math.min(times.length, arr.length);
+      for (let i = 0; i < n; i++) {
+        const x = xOf(times[i]);
+        const y = yOf(arr[i]);
+        if (i === 0) tlCtx.moveTo(x, y); else tlCtx.lineTo(x, y);
+      }
+      tlCtx.stroke();
+    }
+    tlCtx.setLineDash([]);
   }
-  tlCtx.stroke();
-  tlCtx.strokeStyle = '#ff8a3d';
-  tlCtx.beginPath();
-  for (let i = 0; i < times.length; i++) {
-    const x = xOf(times[i]);
-    const y = yOf(rf[i]);
-    if (i === 0) tlCtx.moveTo(x, y); else tlCtx.lineTo(x, y);
-  }
-  tlCtx.stroke();
 
   const dataT = (video.currentTime - offset()) * 1000;
   if (dataT >= tMin && dataT <= tMax) {
@@ -464,12 +620,20 @@ setupDrop('dropJson', 'jsonInput', (file, el) => {
     try {
       let parsed = JSON.parse(e.target.result);
       if (typeof parsed === 'string') parsed = JSON.parse(parsed);
-      if (!parsed.time || !parsed.left || !parsed.right) {
-        throw new Error('Missing required keys (time, left, right)');
+      if (!isNumArray(parsed.time)) {
+        throw new Error('Missing required "time" array');
       }
       data = parsed;
+      series = discoverSeries(parsed);
+      buildSeriesControls();
+      if (!series.length) {
+        throw new Error('No numeric data series found alongside "time"');
+      }
       el.classList.add('loaded');
-      el.querySelector('strong').textContent = '✓ ' + file.name + ' (' + parsed.time.length + ' samples)';
+      const names = series.map(s => s.label).join(', ');
+      el.querySelector('strong').textContent =
+        '✓ ' + file.name + ' (' + parsed.time.length + ' samples · ' + series.length + ' series)';
+      el.querySelector('small').textContent = names;
     } catch (err) {
       alert('Failed to parse JSON: ' + err.message);
     }
