@@ -652,10 +652,11 @@ function drawPathSquare(ox, oy, S, view, dataT) {
   ctx.textAlign = 'center';
   ctx.fillText(view.xLabel, plotX + plotS / 2, oy + S + titleH - 3);
 
-  // rotate only this graph's plotted data 90deg CCW: (x,y) -> (-y, x)
+  // rotate this graph's plotted data 90deg CCW: (x,y) -> (-y, x); optional horizontal mirror
   const rot = !!view.rotate;
-  const PX = (cx, cy) => rot ? mapX(-cy) : mapX(cx);
-  const PY = (cx, cy) => rot ? mapY(cx) : mapY(cy);
+  const mir = !!view.mirror;
+  const PX = (cx, cy) => { let x = rot ? -cy : cx; if (mir) x = -x; return mapX(x); };
+  const PY = (cx, cy) => mapY(rot ? cx : cy);
 
   const sides = [];
   if (showLeftOn()) sides.push(['left', false]);
@@ -709,7 +710,7 @@ function drawPathPanel(w, h, dataT, inRange) {
     views.push({ title: 'Head On', glyph: 'headon', xLabel: 'fwd (cm)', yLabel: 'depth (cm)',
                  x: { file: 'sweep', key: 'sweep' }, y: { file: 'depth', key: 'depth' } });
   if ($('viewOverhead') && $('viewOverhead').checked && pathSweep)
-    views.push({ title: 'Overhead', glyph: 'overhead', xLabel: 'lat (cm)', yLabel: 'fwd (cm)', rotate: true,
+    views.push({ title: 'Overhead', glyph: 'overhead', xLabel: 'lat (cm)', yLabel: 'fwd (cm)', rotate: true, mirror: true,
                  x: { file: 'sweep', key: 'xAxis' }, y: { file: 'sweep', key: 'sweep' } });
   if ($('viewHeadon') && $('viewHeadon').checked && pathDepth)
     views.push({ title: 'Side On', glyph: 'side', xLabel: 'lat (cm)', yLabel: 'depth (cm)',
