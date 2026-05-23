@@ -589,16 +589,13 @@ function pickStrokeFor(file, side) {
 function drawSwimmerGlyph(ctx, cx, cy, s, kind) {
   const im = swimmerImg[kind];
   const box = s * 2.4;
-  const rot = kind === 'overhead' ? -Math.PI / 2 : 0;  // overhead is a top view
   if (im && im.complete && im.naturalWidth) {
     const ar = im.naturalWidth / im.naturalHeight;
     let dw = box, dh = box;
     if (ar >= 1) dh = box / ar; else dw = box * ar;
     ctx.save();
     ctx.globalAlpha = 0.85;
-    ctx.translate(cx, cy);
-    if (rot) ctx.rotate(rot);
-    ctx.drawImage(im, -dw / 2, -dh / 2, dw, dh);
+    ctx.drawImage(im, cx - dw / 2, cy - dh / 2, dw, dh);
     ctx.restore();
     return;
   }
@@ -655,6 +652,11 @@ function drawPathSquare(ox, oy, S, view, dataT) {
   ctx.textAlign = 'center';
   ctx.fillText(view.xLabel, plotX + plotS / 2, oy + S + titleH - 3);
 
+  // optional 90deg CCW rotation of the plotted graph: (x,y) -> (-y, x)
+  const rot = !!view.rotate;
+  const PX = (cx, cy) => rot ? mapX(-cy) : mapX(cx);
+  const PY = (cx, cy) => rot ? mapY(cx) : mapY(cy);
+
   const sides = [];
   if (showLeftOn()) sides.push(['left', false]);
   if (showRightOn()) sides.push(['right', true]);
@@ -671,10 +673,10 @@ function drawPathSquare(ox, oy, S, view, dataT) {
       const ph = phaseAt(pts.stroke, pts.time[i]);
       ctx.strokeStyle = PHASE_COLOR[ph];
       ctx.beginPath();
-      ctx.moveTo(mapX(pts.cmX[i]), mapY(pts.cmY[i]));
+      ctx.moveTo(PX(pts.cmX[i], pts.cmY[i]), PY(pts.cmX[i], pts.cmY[i]));
       let j = i + 1;
       for (; j < pts.cmX.length && phaseAt(pts.stroke, pts.time[j]) === ph; j++) {
-        ctx.lineTo(mapX(pts.cmX[j]), mapY(pts.cmY[j]));
+        ctx.lineTo(PX(pts.cmX[j], pts.cmY[j]), PY(pts.cmX[j], pts.cmY[j]));
       }
       ctx.stroke();
       i = j;
@@ -688,7 +690,7 @@ function drawPathSquare(ox, oy, S, view, dataT) {
         const r = Math.max(3.5, S * 0.045);
         ctx.fillStyle = side === 'left' ? '#ff8a3d' : '#19e0ff';
         ctx.beginPath();
-        ctx.arc(mapX(pts.cmX[idx]), mapY(pts.cmY[idx]), r, 0, Math.PI * 2);
+        ctx.arc(PX(pts.cmX[idx], pts.cmY[idx]), PY(pts.cmX[idx], pts.cmY[idx]), r, 0, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 1.5;
@@ -703,15 +705,15 @@ function drawPathPanel(w, h, dataT, inRange) {
   _curT = dataT;
 
   const views = [];
-  if ($('viewSide') && $('viewSide').checked && pathSweep && pathDepth)
-    views.push({ title: 'Side On', glyph: 'side', xLabel: 'fwd (cm)', yLabel: 'depth (cm)',
-                 x: { file: 'sweep', key: 'sweep' }, y: { file: 'depth', key: 'depth' } });
+  if ($('viewHeadon') && $('viewHeadon').checked && pathDepth)
+    views.push({ title: 'Head On', glyph: 'headon', rotate: true, xLabel: 'depth (cm)', yLabel: 'lat (cm)',
+                 x: { file: 'depth', key: 'xAxis' }, y: { file: 'depth', key: 'depth' } });
   if ($('viewOverhead') && $('viewOverhead').checked && pathSweep)
     views.push({ title: 'Overhead', glyph: 'overhead', xLabel: 'lat (cm)', yLabel: 'fwd (cm)',
                  x: { file: 'sweep', key: 'xAxis' }, y: { file: 'sweep', key: 'sweep' } });
-  if ($('viewHeadon') && $('viewHeadon').checked && pathDepth)
-    views.push({ title: 'Head On', glyph: 'headon', xLabel: 'lat (cm)', yLabel: 'depth (cm)',
-                 x: { file: 'depth', key: 'xAxis' }, y: { file: 'depth', key: 'depth' } });
+  if ($('viewSide') && $('viewSide').checked && pathSweep && pathDepth)
+    views.push({ title: 'Side On', glyph: 'side', xLabel: 'fwd (cm)', yLabel: 'depth (cm)',
+                 x: { file: 'sweep', key: 'sweep' }, y: { file: 'depth', key: 'depth' } });
   if (!views.length) return;
 
   const gap = 8, titleH = 18;
