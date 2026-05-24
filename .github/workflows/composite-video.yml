@@ -53,6 +53,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Show code version
+        run: |
+          echo "ref:     ${{ github.ref }}"
+          echo "sha:     ${{ github.sha }}"
+          echo "---- last commit ----"
+          git log -1 --format='%H%n%ci%n%s'
+          echo "---- file fingerprints (latest version has the right-hand path panels) ----"
+          git log -1 --format='%h %ci %s' -- render_overlay.py
+          md5sum render_overlay.py composite_video.py .github/workflows/composite-video.yml
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
