@@ -640,6 +640,8 @@ def render_overlay(swim_dir: Path, fps: int = FRAME_RATE, keep_frames: bool = Fa
 
     sweep = load_paths(swim_dir, "pathsweep")
     depth = load_paths(swim_dir, "pathdepth")
+    n_sweep = len(list(swim_dir.glob("lap-*-pathsweep.json")))
+    n_depth = len(list(swim_dir.glob("lap-*-pathdepth.json")))
     show_path = env_bool("SHOW_PATH", True)
     views = []
     for v in build_views():
@@ -653,7 +655,12 @@ def render_overlay(swim_dir: Path, fps: int = FRAME_RATE, keep_frames: bool = Fa
     show_right = env_bool("SHOW_RIGHT", True)
 
     print(f"  series: {[s['label'] for s in active]}")
-    print(f"  path views: {[v['title'] for v in views] if show_path else 'off'}  L={show_left} R={show_right}")
+    print(f"  path files found: pathsweep={n_sweep} pathdepth={n_depth}")
+    print(f"  path views: {[v['title'] for v in views] if show_path else 'off (SHOW_PATH disabled)'}  L={show_left} R={show_right}")
+    if show_path and not views:
+        print("  WARNING: no hand-path panels will be drawn. "
+              "This swim has no pathsweep/pathdepth data in its folder "
+              f"({swim_dir}), so there is nothing to plot on the right.")
 
     start_ms = swim.get("t0_trim", 0) or 0
     end_ms = times[-1]

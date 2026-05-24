@@ -96,6 +96,11 @@ jobs:
           fi
           echo "SWIM_DIR=$SWIM_DIR" >> "$GITHUB_ENV"
           echo "Using $SWIM_DIR"
+          echo "---- files fetched for this swim ----"
+          ls -1 "$SWIM_DIR"
+          echo "---- path-panel data (need these for the right-hand panels) ----"
+          ls -1 "$SWIM_DIR"/lap-*-pathsweep.json "$SWIM_DIR"/lap-*-pathdepth.json 2>/dev/null \
+            || echo "NONE: this swim has no pathsweep/pathdepth data -> no right-hand panels."
 
       - name: Render overlay
         env:
