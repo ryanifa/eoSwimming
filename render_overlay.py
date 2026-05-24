@@ -390,6 +390,13 @@ def path_points(now_ms, side, xspec, yspec, sweep, depth):
 
 # ---------- views ----------
 
+def path_panel_geom(w, h, n):
+    gap, titleH = 8, 18
+    S = min(w * 0.19, (h - 24 - gap * (n - 1)) / n - titleH)
+    S = max(78, S)
+    return gap, titleH, S, w - S - 12
+
+
 def build_views():
     """Same three panels as the preview, in the same order, with the same
     Overhead rotation + mirror. Gated by env toggles and data availability."""
@@ -423,8 +430,13 @@ def draw_chart(cv, now_ms, w, h, active, show_left, show_right):
     times = G["times"]
     chartH = h * 0.28
     chartY = h - chartH - 10
-    chartW = w * 0.84
     chartX = w * 0.08
+    chartW = w * 0.84
+    # keep the chart clear of the hand-path panels on the right
+    pv = G["views"] if G["show_path"] else []
+    if pv:
+        _, _, _, ox = path_panel_geom(w, h, len(pv))
+        chartW = min(chartW, ox - 12 - chartX)
 
     cv.rrect(chartX - 6, chartY - 30, chartW + 12, chartH + 50, 8, fill=rgba("#00352f", 0.55))
     cv.rrect(chartX, chartY, chartW, chartH, 0, stroke=rgba("#ffffff", 0.25), stroke_w=1)
@@ -577,10 +589,7 @@ def draw_path_panel(cv, now_ms, w, h, show_left, show_right):
     views = G["views"]
     if not views:
         return
-    gap, titleH = 8, 18
-    S = min(w * 0.19, (h - 24 - gap * (len(views) - 1)) / len(views) - titleH)
-    S = max(78, S)
-    ox = w - S - 12
+    gap, titleH, S, ox = path_panel_geom(w, h, len(views))
     oy = 12
     for v in views:
         draw_path_square(cv, ox, oy, S, v, now_ms, show_left, show_right)

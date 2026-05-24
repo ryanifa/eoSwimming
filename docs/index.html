@@ -408,8 +408,14 @@ function drawOverlay() {
   // --- bottom: scrolling chart ---
   const chartH = h * 0.28;
   const chartY = h - chartH - 10;
-  const chartW = w * 0.84;
   const chartX = w * 0.08;
+  let chartW = w * 0.84;
+  // keep the chart clear of the hand-path panels on the right
+  const _pv = (($('showPath') && $('showPath').checked) ? activePathViews() : []);
+  if (_pv.length) {
+    const { ox } = pathPanelGeom(w, h, _pv.length);
+    chartW = Math.min(chartW, ox - 12 - chartX);
+  }
 
   overlayCtx.fillStyle = 'rgba(0, 53, 47, 0.55)';
   roundedRect(overlayCtx, chartX - 6, chartY - 30, chartW + 12, chartH + 50, 8);
@@ -701,10 +707,7 @@ function drawPathSquare(ox, oy, S, view, dataT) {
   }
 }
 
-function drawPathPanel(w, h, dataT, inRange) {
-  if (!$('showPath') || !$('showPath').checked) return;
-  _curT = dataT;
-
+function activePathViews() {
   const views = [];
   if ($('viewSide') && $('viewSide').checked && pathSweep && pathDepth)
     views.push({ title: 'Head On', glyph: 'headon', xLabel: 'fwd (cm)', yLabel: 'depth (cm)',
@@ -715,12 +718,24 @@ function drawPathPanel(w, h, dataT, inRange) {
   if ($('viewHeadon') && $('viewHeadon').checked && pathDepth)
     views.push({ title: 'Side On', glyph: 'side', xLabel: 'lat (cm)', yLabel: 'depth (cm)',
                  x: { file: 'depth', key: 'xAxis' }, y: { file: 'depth', key: 'depth' } });
+  return views;
+}
+
+function pathPanelGeom(w, h, n) {
+  const gap = 8, titleH = 18;
+  let S = Math.min(w * 0.19, (h - 24 - gap * (n - 1)) / n - titleH);
+  S = Math.max(78, S);
+  return { gap, titleH, S, ox: w - S - 12 };
+}
+
+function drawPathPanel(w, h, dataT, inRange) {
+  if (!$('showPath') || !$('showPath').checked) return;
+  _curT = dataT;
+
+  const views = activePathViews();
   if (!views.length) return;
 
-  const gap = 8, titleH = 18;
-  let S = Math.min(w * 0.19, (h - 24 - gap * (views.length - 1)) / views.length - titleH);
-  S = Math.max(78, S);
-  const ox = w - S - 12;
+  const { gap, titleH, S, ox } = pathPanelGeom(w, h, views.length);
   let oy = 12;
   for (const v of views) {
     drawPathSquare(ox, oy, S, v, dataT);
