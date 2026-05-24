@@ -1,4 +1,4 @@
-name: Composite video with overlay (latest swim)
+name: Composite video with overlay (by swim ID)
 
 on:
   workflow_dispatch:
