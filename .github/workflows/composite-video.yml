@@ -117,7 +117,9 @@ jobs:
       - name: Composite
         run: |
           W=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 input/source.mp4)
-          SCALE=$(python3 -c "print(round(max(1.0, ${W:-1920}/1920.0), 4))")
+          # overlay is rendered 1920px wide; scale it to the video width so the
+          # right-hand panels are never clipped (videos narrower than 1920 too)
+          SCALE=$(python3 -c "print(round(${W:-1920}/1920.0, 4))")
           echo "video width=$W -> overlay scale=$SCALE"
           python composite_video.py \
             --video input/source.mp4 \
