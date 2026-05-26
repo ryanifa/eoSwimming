@@ -1,0 +1,70 @@
+name: Rotate & trim video
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: "Direct download URL for the source video (transfer.sh, public Dropbox/Drive direct link, GitHub Release asset, etc.)"
+        required: true
+      rotate:
+        description: "Rotation to apply"
+        type: choice
+        default: "180"
+        options:
+          - "180"
+          - "90_cw"
+          - "90_ccw"
+          - "none"
+      start_seconds:
+        description: "Trim: seconds to cut from the start (0 = keep from the beginning)"
+        required: true
+        default: "0"
+      end_seconds:
+        description: "Trim: end time in seconds (0 = keep until the end)"
+        required: true
+        default: "0"
+
+jobs:
+  transform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show code version
+        run: |
+          echo "ref:     ${{ github.ref }}"
+          echo "sha:     ${{ github.sha }}"
+          git log -1 --format='%H%n%ci%n%s'
+          md5sum transform_video.py
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Download source video
+        run: |
+          mkdir -p input output
+          curl -L --fail --max-time 600 -o input/source.mp4 "${{ inputs.video_url }}"
+          ls -lh input/
+          ffprobe -v error -show_entries format=duration,size:stream=width,height -of default=noprint_wrappers=1 input/source.mp4
+
+      - name: Rotate & trim
+        run: |
+          python transform_video.py \
+            --video input/source.mp4 \
+            --out output/transformed.mp4 \
+            --rotate "${{ inputs.rotate }}" \
+            --start ${{ inputs.start_seconds }} \
+            --end ${{ inputs.end_seconds }}
+          ls -lh output/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: transformed-video
+          path: output/transformed.mp4
+          if-no-files-found: error
+          retention-days: 30
