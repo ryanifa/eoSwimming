@@ -152,8 +152,15 @@
 
 <div class="player">
   <button id="playBtn">▶ Play</button>
+  <button class="secondary" id="back10" title="Back 10 frames (Shift+←)">−10f</button>
+  <button class="secondary" id="back1" title="Back 1 frame (←)">−1f</button>
+  <button class="secondary" id="fwd1" title="Forward 1 frame (→)">+1f</button>
+  <button class="secondary" id="fwd10" title="Forward 10 frames (Shift+→)">+10f</button>
   <input type="range" id="seek" min="0" max="100" step="0.01" value="0">
   <span id="timeLabel" style="font-family:monospace;color:#8aa0a0;min-width:210px;text-align:right;white-space:nowrap;">0:00.00 / 0:00.00  ·  0.00s</span>
+  <label style="display:inline-flex;width:auto;align-items:center;gap:6px;color:#8aa0a0;white-space:nowrap;">fps
+    <input type="number" id="fps" min="1" max="240" step="0.001" value="30" style="width:74px;">
+  </label>
   <label style="display:inline-flex;width:auto;align-items:center;gap:6px;color:#8aa0a0;white-space:nowrap;">Speed
     <input type="range" id="speed" min="0.1" max="2" step="0.05" value="1" style="width:110px;">
   </label>
@@ -996,6 +1003,62 @@ stageEl.style.cursor = 'pointer';
 stageEl.addEventListener('click', togglePlay);
 video.addEventListener('play', () => playBtn.textContent = '⏸ Pause');
 video.addEventListener('pause', () => playBtn.textContent = '▶ Play');
+
+// ---- frame stepping (for fine sync once the video is paused) ----
+const fpsInput = $('fps');
+function currentFps() {
+  const f = parseFloat(fpsInput.value);
+  return f && f > 0 ? f : 30;
+}
+// Step by whole frames, snapping to the frame grid so repeated clicks don't drift.
+function frameStep(deltaFrames) {
+  if (!video.src || !isFinite(video.duration)) return;
+  if (!video.paused) video.pause();
+  const fps = currentFps();
+  const idx = Math.round(video.currentTime * fps) + deltaFrames;
+  const t = Math.max(0, Math.min(video.duration - 0.5 / fps, idx / fps));
+  video.currentTime = t;
+}
+$('back10').addEventListener('click', () => frameStep(-10));
+$('back1').addEventListener('click', () => frameStep(-1));
+$('fwd1').addEventListener('click', () => frameStep(1));
+$('fwd10').addEventListener('click', () => frameStep(10));
+
+// Best-effort fps auto-detect: sample frame timestamps while the video plays
+// (the user plays to check sync anyway), then snap to the nearest common rate.
+let fpsTouched = false;
+fpsInput.addEventListener('input', () => { fpsTouched = true; });
+if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+  let last = null, deltas = [];
+  const sample = (now, meta) => {
+    if (last != null) {
+      const dt = meta.mediaTime - last;
+      if (dt > 0.001 && dt < 0.2) deltas.push(dt);
+    }
+    last = meta.mediaTime;
+    if (!fpsTouched && deltas.length < 40 && !video.paused) {
+      video.requestVideoFrameCallback(sample);
+    } else if (!fpsTouched && deltas.length >= 12) {
+      deltas.sort((a, b) => a - b);
+      const med = deltas[Math.floor(deltas.length / 2)];
+      const raw = 1 / med;
+      const common = [23.976, 24, 25, 29.97, 30, 50, 59.94, 60, 120, 240];
+      const snap = common.reduce((p, c) => Math.abs(c - raw) < Math.abs(p - raw) ? c : p);
+      fpsInput.value = Math.abs(snap - raw) / raw < 0.05 ? snap : raw.toFixed(3);
+    }
+  };
+  video.addEventListener('play', () => { last = null; deltas = []; video.requestVideoFrameCallback(sample); });
+}
+
+// Keyboard: arrows step frames (Shift = 10), space toggles play. Ignore while
+// typing in a field so the offset/fps inputs keep their normal behaviour.
+window.addEventListener('keydown', e => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+  if (e.key === 'ArrowRight') { frameStep(e.shiftKey ? 10 : 1); e.preventDefault(); }
+  else if (e.key === 'ArrowLeft') { frameStep(e.shiftKey ? -10 : -1); e.preventDefault(); }
+  else if (e.key === ' ' || e.code === 'Space') { togglePlay(); e.preventDefault(); }
+});
 
 const speed = $('speed');
 function applySpeed() {
