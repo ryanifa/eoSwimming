@@ -135,7 +135,6 @@ jobs:
           name: swim-composite-video
           path: |
             data/**/composite.mp4
-            data/**/overlay.mov
             data/**/swim.json
           if-no-files-found: error
           retention-days: 30
