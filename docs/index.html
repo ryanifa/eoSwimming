@@ -143,7 +143,7 @@
 
 <div class="series" id="layoutControls">
   <div class="title">Layout (matches the composite workflow's "layout" option)</div>
-  <label><input type="checkbox" id="layoutMirror"> Mirror (mode 2): paths left, force chart top, time/legend bottom-left</label>
+  <label><input type="checkbox" id="layoutMirror"> Mirror (mode 2): paths left, force chart top, time/legend bottom-right</label>
 </div>
 
 <div class="legend" id="legend">
@@ -538,8 +538,8 @@ function drawOverlay() {
   const lineH = Math.max(16, Math.min(22, h * 0.03));
   const pw = Math.min(320, w * 0.30);
   const ph = 14 + lineH * (rows.length + 1) + 8;
-  const px = 14;
-  // mode 2 puts the readout bottom-left (below the left panels); mode 1 top-left
+  // mode 2 is a 180-degree mirror of mode 1: readout moves to the bottom-right
+  const px = lay === 2 ? (w - pw - 14) : 14;
   const py = lay === 2 ? (h - ph - 14) : 14;
   overlayCtx.fillStyle = 'rgba(0, 53, 47, 0.7)';
   roundedRect(overlayCtx, px, py, pw, ph, 8);
@@ -750,10 +750,7 @@ function activePathViews() {
 
 function pathPanelGeom(w, h, n, layout = 1) {
   const gap = 8, titleH = 18;
-  // mode 2 keeps the panels on the left with the readout below them, so reserve
-  // bottom space instead of filling the height.
-  const avail = (h - 24) - (layout === 2 ? 150 : 0);
-  let S = Math.min(w * 0.19, (avail - gap * (n - 1)) / n - titleH);
+  let S = Math.min(w * 0.19, (h - 24 - gap * (n - 1)) / n - titleH);
   S = Math.max(78, S);
   return { gap, titleH, S, ox: layout === 2 ? 12 : w - S - 12 };
 }

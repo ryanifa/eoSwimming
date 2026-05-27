@@ -411,12 +411,7 @@ def path_points(now_ms, side, xspec, yspec, sweep, depth):
 
 def path_panel_geom(w, h, n, layout=1):
     gap, titleH = 8, 18
-    avail = h - 24
-    # mode 2 keeps the panels on the left and the readout bottom-left, so leave
-    # room under the panel stack for that readout instead of filling the height.
-    if layout == 2:
-        avail -= 150
-    S = min(w * 0.19, (avail - gap * (n - 1)) / n - titleH)
+    S = min(w * 0.19, (h - 24 - gap * (n - 1)) / n - titleH)
     S = max(78, S)
     ox = 12 if layout == 2 else w - S - 12
     return gap, titleH, S, ox
@@ -544,9 +539,12 @@ def draw_metrics(cv, now_ms, w, h, active, in_range, show_left, show_right):
     lineH = max(16, min(22, h * 0.03))
     pw = min(320, w * 0.30)
     ph = 14 + lineH * (len(rows) + 1) + 8
-    px = 14
-    # mode 2 puts the readout bottom-left (below the left-hand panels); mode 1 top-left
-    py = (h - ph - 14) if G.get("layout", 1) == 2 else 14
+    # mode 2 is a 180-degree mirror of mode 1: readout moves to the bottom-right
+    # (panels are full-size on the left, chart top-right)
+    if G.get("layout", 1) == 2:
+        px, py = w - pw - 14, h - ph - 14
+    else:
+        px, py = 14, 14
     cv.rrect(px, py, pw, ph, 8, fill=rgba("#00352f", 0.7), stroke=rgba("#ffffff", 0.4), stroke_w=1)
 
     tdisp = f"{now_ms / 1000:.2f}" if in_range else "—"
@@ -738,8 +736,8 @@ def main() -> int:
     parser.add_argument("--fps", type=int, default=FRAME_RATE)
     parser.add_argument("--keep-frames", action="store_true")
     parser.add_argument("--layout", default="default",
-                        help="'default'/'1' = paths right + chart bottom; "
-                             "'mirrored'/'2' = paths left + chart top + readout bottom-left")
+                        help="'default'/'1' = paths right + chart bottom + readout top-left; "
+                             "'mirrored'/'2' = 180-deg flip: paths left + chart top + readout bottom-right")
     args = parser.parse_args()
     layout = 2 if str(args.layout).strip().lower() in ("2", "mirrored", "mirror") else 1
 

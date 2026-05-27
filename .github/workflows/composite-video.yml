@@ -18,7 +18,7 @@ on:
         required: true
         default: "propulsive=1;totalForce=0;vertical=0;lateral=0;handVelocity=0"
       layout:
-        description: "Overlay layout. default = paths right + chart bottom + readout top-left. mirrored = paths left + chart top + readout bottom-left."
+        description: "Overlay layout. default = paths right + chart bottom + readout top-left. mirrored = 180-degree flip: paths left + chart top + readout bottom-right."
         type: choice
         default: default
         options:
