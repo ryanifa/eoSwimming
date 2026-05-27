@@ -153,7 +153,7 @@
 <div class="player">
   <button id="playBtn">▶ Play</button>
   <input type="range" id="seek" min="0" max="100" step="0.01" value="0">
-  <span id="timeLabel" style="font-family:monospace;color:#8aa0a0;min-width:120px;text-align:right;">0:00 / 0:00</span>
+  <span id="timeLabel" style="font-family:monospace;color:#8aa0a0;min-width:210px;text-align:right;white-space:nowrap;">0:00.00 / 0:00.00  ·  0.00s</span>
   <label style="display:inline-flex;width:auto;align-items:center;gap:6px;color:#8aa0a0;white-space:nowrap;">Speed
     <input type="range" id="speed" min="0.1" max="2" step="0.05" value="1" style="width:110px;">
   </label>
@@ -374,10 +374,10 @@ function updateLabels() {
 }
 
 function fmtTime(s) {
-  if (!isFinite(s)) return '0:00';
+  if (!isFinite(s)) return '0:00.00';
   const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return m + ':' + (sec < 10 ? '0' : '') + sec;
+  const sec = s % 60;
+  return m + ':' + (sec < 10 ? '0' : '') + sec.toFixed(2);
 }
 
 function fitCanvas(canvas) {
@@ -851,7 +851,9 @@ function tick() {
   drawTimeline();
   if (video.duration) {
     seek.value = (video.currentTime / video.duration) * 100;
-    timeLabel.textContent = fmtTime(video.currentTime) + ' / ' + fmtTime(video.duration);
+    timeLabel.textContent =
+      fmtTime(video.currentTime) + ' / ' + fmtTime(video.duration) +
+      '  ·  ' + video.currentTime.toFixed(2) + 's';
   }
   requestAnimationFrame(tick);
 }
