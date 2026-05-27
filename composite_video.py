@@ -31,9 +31,14 @@ def composite(
     # slow (or speed up) the *composited* result so video + overlay stay in sync
     slowed = abs(speed - 1.0) > 1e-6
     if slowed:
-        graph += f"[cv];[cv]setpts=PTS/{speed}[v]"
+        # slowing doubles the duration *and* re-encodes; on 4K footage that
+        # bloats the file badly, so cap slow-motion output at 1080p (analysis
+        # detail survives) and use a lighter CRF.
+        graph += rf"[cv];[cv]scale=min(1920\,iw):-2,setpts=PTS/{speed}[v]"
     else:
         graph += "[v]"
+
+    crf = "24" if slowed else "20"
 
     cmd = [
         "ffmpeg", "-y",
@@ -49,7 +54,7 @@ def composite(
         "-c:v", "libx264",
         "-pix_fmt", "yuv420p",
         "-preset", "fast",
-        "-crf", "20",
+        "-crf", crf,
     ]
     # force the output framerate to the source's, so slow motion stays smooth
     # (setpts otherwise loses the framerate and ffmpeg falls back to 25 fps)
