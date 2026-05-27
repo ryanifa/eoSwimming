@@ -15,6 +15,8 @@ def composite(
     out: Path,
     swim_start_seconds: float,
     overlay_scale: float = 1.0,
+    speed: float = 1.0,
+    out_fps: str = "",
     audio: bool = True,
 ) -> None:
     if not shutil.which("ffmpeg"):
@@ -25,23 +27,35 @@ def composite(
         overlay_filter += f",scale=iw*{overlay_scale}:ih*{overlay_scale}"
     overlay_filter += "[ov]"
 
+    graph = f"{overlay_filter};[0:v][ov]overlay=0:0:format=auto:eof_action=pass"
+    # slow (or speed up) the *composited* result so video + overlay stay in sync
+    slowed = abs(speed - 1.0) > 1e-6
+    if slowed:
+        graph += f"[cv];[cv]setpts=PTS/{speed}[v]"
+    else:
+        graph += "[v]"
+
     cmd = [
         "ffmpeg", "-y",
         "-i", str(video),
         "-i", str(overlay),
-        "-filter_complex",
-        f"{overlay_filter};[0:v][ov]overlay=0:0:format=auto:eof_action=pass[v]",
+        "-filter_complex", graph,
         "-map", "[v]",
     ]
-    if audio:
+    # a changed playback speed makes the original audio useless, so drop it then
+    if audio and not slowed:
         cmd += ["-map", "0:a?", "-c:a", "copy"]
     cmd += [
         "-c:v", "libx264",
         "-pix_fmt", "yuv420p",
         "-preset", "fast",
         "-crf", "20",
-        str(out),
     ]
+    # force the output framerate to the source's, so slow motion stays smooth
+    # (setpts otherwise loses the framerate and ffmpeg falls back to 25 fps)
+    if out_fps and out_fps not in ("0/0", "N/A"):
+        cmd += ["-r", out_fps]
+    cmd += [str(out)]
     print("running:", " ".join(cmd))
     subprocess.run(cmd, check=True)
 
@@ -63,15 +77,29 @@ def main() -> int:
         default=1.0,
         help="Scale factor for the overlay (e.g. 2.0 for 4K video on 1080p overlay)",
     )
+    parser.add_argument(
+        "--speed",
+        type=float,
+        default=1.0,
+        help="Playback speed of the final result (0.5 = half speed / slow motion, 1.0 = normal)",
+    )
+    parser.add_argument(
+        "--fps",
+        default="",
+        help="Force output framerate (e.g. the source's r_frame_rate); keeps slow motion smooth",
+    )
     parser.add_argument("--no-audio", action="store_true")
     args = parser.parse_args()
 
+    speed = args.speed if args.speed and args.speed > 0 else 1.0
     composite(
         video=args.video,
         overlay=args.overlay,
         out=args.out,
         swim_start_seconds=args.swim_start,
         overlay_scale=args.overlay_scale,
+        speed=speed,
+        out_fps=args.fps,
         audio=not args.no_audio,
     )
     print(f"wrote {args.out}")

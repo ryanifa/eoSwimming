@@ -41,10 +41,10 @@ on:
           - both
           - left
           - right
-      show_path:
-        description: "Show hand-path panels (Head On / Overhead / Side On)"
-        type: boolean
-        default: true
+      playback_speed:
+        description: "Playback speed of the final video (0.5 = slow motion, 1 = normal). Hand-path panels are always shown when the swim has path data."
+        required: true
+        default: "1"
 
 jobs:
   composite:
@@ -111,22 +111,24 @@ jobs:
           SERIES_HANDVELOCITY: ${{ inputs.series_handvelocity }}
           SHOW_LEFT: ${{ inputs.sides != 'right' }}
           SHOW_RIGHT: ${{ inputs.sides != 'left' }}
-          SHOW_PATH: ${{ inputs.show_path }}
         run: python render_overlay.py "$SWIM_DIR" --fps 60
 
       - name: Composite
         run: |
           W=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 input/source.mp4)
+          FPS=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of csv=p=0 input/source.mp4)
           # overlay is rendered 1920px wide; scale it to the video width so the
           # right-hand panels are never clipped (videos narrower than 1920 too)
           SCALE=$(python3 -c "print(round(${W:-1920}/1920.0, 4))")
-          echo "video width=$W -> overlay scale=$SCALE"
+          echo "video width=$W fps=$FPS -> overlay scale=$SCALE"
           python composite_video.py \
             --video input/source.mp4 \
             --overlay "$SWIM_DIR/overlay.mov" \
             --out "$SWIM_DIR/composite.mp4" \
             --swim-start ${{ inputs.swim_start_seconds }} \
-            --overlay-scale $SCALE
+            --overlay-scale $SCALE \
+            --speed ${{ inputs.playback_speed }} \
+            --fps "$FPS"
 
       - uses: actions/upload-artifact@v4
         with:
