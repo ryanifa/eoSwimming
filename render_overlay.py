@@ -199,11 +199,6 @@ def _dash(pts, on, off):
 
 # ---------- data ----------
 
-def load_swim(swim_dir: Path) -> dict:
-    raw = json.loads((swim_dir / "swim.json").read_text())
-    return raw[0] if isinstance(raw, list) and raw else raw
-
-
 def _loads(text):
     d = json.loads(text)
     return json.loads(d) if isinstance(d, str) else d
@@ -627,7 +622,6 @@ def encode_prores(frames_dir: Path, out_path: Path, fps: int) -> None:
 
 
 def render_overlay(swim_dir: Path, fps: int = FRAME_RATE, keep_frames: bool = False) -> Path:
-    swim = load_swim(swim_dir)
     data = load_lapforcetime(swim_dir)
     times = data.get("time") or []
     if not times:
@@ -662,7 +656,11 @@ def render_overlay(swim_dir: Path, fps: int = FRAME_RATE, keep_frames: bool = Fa
               "This swim has no pathsweep/pathdepth data in its folder "
               f"({swim_dir}), so there is nothing to plot on the right.")
 
-    start_ms = swim.get("t0_trim", 0) or 0
+    # The overlay timeline must start at data t=0 so it matches the browser sync
+    # tool (docs/index.html), which maps video time to data via
+    # (video_time - swim_start). swim_start aligns data t=0 to the video, so the
+    # render must not apply t0_trim here or it shifts the graph out of sync.
+    start_ms = 0
     end_ms = times[-1]
     total_frames = int((end_ms - start_ms) * fps / 1000)
     print(f"  duration {(end_ms - start_ms) / 1000:.2f}s, {total_frames} frames @ {fps}fps")
