@@ -983,10 +983,15 @@ seek.addEventListener('input', e => {
   if (video.duration) video.currentTime = (e.target.value / 100) * video.duration;
 });
 
-playBtn.addEventListener('click', () => {
-  if (video.paused) { video.play(); playBtn.textContent = '⏸ Pause'; }
-  else { video.pause(); playBtn.textContent = '▶ Play'; }
-});
+function togglePlay() {
+  if (!video.src) return;
+  if (video.paused) video.play(); else video.pause();
+}
+playBtn.addEventListener('click', togglePlay);
+// click anywhere on the video/overlay to play or pause
+const stageEl = $('stage');
+stageEl.style.cursor = 'pointer';
+stageEl.addEventListener('click', togglePlay);
 video.addEventListener('play', () => playBtn.textContent = '⏸ Pause');
 video.addEventListener('pause', () => playBtn.textContent = '▶ Play');
 
