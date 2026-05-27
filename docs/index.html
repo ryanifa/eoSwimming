@@ -108,13 +108,13 @@
   </label>
   <label class="drop" id="dropSweep">
     <strong>Drop lap-NN-pathsweep.json</strong><br>
-    <small>optional — hand path (Overhead / Side On)</small>
-    <input type="file" id="sweepInput" accept=".json,application/json">
+    <small>optional — hand path (Overhead / Side On) · drop all laps at once</small>
+    <input type="file" id="sweepInput" accept=".json,application/json" multiple>
   </label>
   <label class="drop" id="dropDepth">
     <strong>Drop lap-NN-pathdepth.json</strong><br>
-    <small>optional — hand path (Head On / Side On)</small>
-    <input type="file" id="depthInput" accept=".json,application/json">
+    <small>optional — hand path (Head On / Side On) · drop all laps at once</small>
+    <input type="file" id="depthInput" accept=".json,application/json" multiple>
   </label>
 </div>
 
@@ -154,6 +154,10 @@
   <button id="playBtn">▶ Play</button>
   <input type="range" id="seek" min="0" max="100" step="0.01" value="0">
   <span id="timeLabel" style="font-family:monospace;color:#8aa0a0;min-width:120px;text-align:right;">0:00 / 0:00</span>
+  <label style="display:inline-flex;width:auto;align-items:center;gap:6px;color:#8aa0a0;white-space:nowrap;">Speed
+    <input type="range" id="speed" min="0.1" max="2" step="0.05" value="1" style="width:110px;">
+  </label>
+  <span id="speedVal" style="font-family:monospace;color:#cfe9ff;min-width:46px;text-align:right;">1.0×</span>
 </div>
 
 <div class="controls">
@@ -852,19 +856,18 @@ function tick() {
   requestAnimationFrame(tick);
 }
 
-function setupDrop(elId, inputId, onFile) {
+function setupDrop(elId, inputId, onFile, multi = false) {
   const el = $(elId);
   const input = $(inputId);
+  const hand = files => { if (files && files.length) onFile(multi ? files : files[0], el); };
   el.addEventListener('click', () => input.click());
-  input.addEventListener('change', e => {
-    if (e.target.files[0]) onFile(e.target.files[0], el);
-  });
+  input.addEventListener('change', e => hand(e.target.files));
   el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag'); });
   el.addEventListener('dragleave', () => el.classList.remove('drag'));
   el.addEventListener('drop', e => {
     e.preventDefault();
     el.classList.remove('drag');
-    if (e.dataTransfer.files[0]) onFile(e.dataTransfer.files[0], el);
+    hand(e.dataTransfer.files);
   });
 }
 
@@ -901,26 +904,53 @@ setupDrop('dropJson', 'jsonInput', (file, el) => {
   reader.readAsText(file);
 });
 
-function loadPathFile(file, el, assign, label) {
-  const reader = new FileReader();
-  reader.onload = e => {
-    try {
-      let parsed = JSON.parse(e.target.result);
+function readText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = () => reject(new Error('Could not read ' + file.name));
+    reader.readAsText(file);
+  });
+}
+
+// Merge one or more lap files into a single {strokesLeft, strokesRight}.
+// Stroke times are absolute across laps, so concatenating + sorting by start
+// time lets the sweep keep playing into the 2nd lap and beyond.
+function mergePathFiles(parsedList) {
+  const merged = { strokesLeft: [], strokesRight: [] };
+  for (const p of parsedList) {
+    if (Array.isArray(p.strokesLeft)) merged.strokesLeft.push(...p.strokesLeft);
+    if (Array.isArray(p.strokesRight)) merged.strokesRight.push(...p.strokesRight);
+  }
+  const byStart = (a, b) => ((a.time && a.time[0]) || 0) - ((b.time && b.time[0]) || 0);
+  merged.strokesLeft.sort(byStart);
+  merged.strokesRight.sort(byStart);
+  return merged;
+}
+
+async function loadPathFiles(files, el, assign, label) {
+  try {
+    const list = Array.from(files);
+    const parsedList = [];
+    for (const file of list) {
+      let parsed = JSON.parse(await readText(file));
       if (typeof parsed === 'string') parsed = JSON.parse(parsed);
       if (!Array.isArray(parsed.strokesLeft) && !Array.isArray(parsed.strokesRight)) {
-        throw new Error('No strokesLeft/strokesRight in this file');
+        throw new Error('No strokesLeft/strokesRight in ' + file.name);
       }
-      assign(parsed);
-      el.classList.add('loaded');
-      const nl = (parsed.strokesLeft || []).length, nr = (parsed.strokesRight || []).length;
-      el.querySelector('strong').textContent = '✓ ' + file.name;
-      el.querySelector('small').textContent = `${nl} left / ${nr} right strokes`;
-      refreshPathHint();
-    } catch (err) {
-      alert('Failed to parse ' + label + ': ' + err.message);
+      parsedList.push(parsed);
     }
-  };
-  reader.readAsText(file);
+    const merged = mergePathFiles(parsedList);
+    assign(merged);
+    el.classList.add('loaded');
+    const nl = merged.strokesLeft.length, nr = merged.strokesRight.length;
+    el.querySelector('strong').textContent = '✓ ' + list.length + ' file' + (list.length > 1 ? 's' : '');
+    el.querySelector('small').textContent =
+      `${nl} left / ${nr} right strokes · ${list.length} lap${list.length > 1 ? 's' : ''}`;
+    refreshPathHint();
+  } catch (err) {
+    alert('Failed to parse ' + label + ': ' + err.message);
+  }
 }
 
 function refreshPathHint() {
@@ -937,8 +967,8 @@ function refreshPathHint() {
   if (pathSweep && pathDepth && $('viewSide') && !$('viewSide').dataset.touched) $('viewSide').checked = true;
 }
 
-setupDrop('dropSweep', 'sweepInput', (file, el) => loadPathFile(file, el, p => pathSweep = p, 'pathsweep'));
-setupDrop('dropDepth', 'depthInput', (file, el) => loadPathFile(file, el, p => pathDepth = p, 'pathdepth'));
+setupDrop('dropSweep', 'sweepInput', (files, el) => loadPathFiles(files, el, p => pathSweep = p, 'pathsweep'), true);
+setupDrop('dropDepth', 'depthInput', (files, el) => loadPathFiles(files, el, p => pathDepth = p, 'pathdepth'), true);
 
 ['viewSide', 'viewOverhead', 'viewHeadon'].forEach(id => {
   const el = $(id);
@@ -959,6 +989,17 @@ playBtn.addEventListener('click', () => {
 });
 video.addEventListener('play', () => playBtn.textContent = '⏸ Pause');
 video.addEventListener('pause', () => playBtn.textContent = '▶ Play');
+
+const speed = $('speed');
+function applySpeed() {
+  const r = parseFloat(speed.value) || 1;
+  video.playbackRate = r;
+  $('speedVal').textContent = (Number.isInteger(r) ? r.toFixed(1) : String(r)) + '×';
+}
+speed.addEventListener('input', applySpeed);
+// playbackRate resets to 1 whenever a new video is loaded, so re-apply it
+video.addEventListener('loadedmetadata', applySpeed);
+applySpeed();
 
 $('copyBtn').addEventListener('click', async () => {
   try {
