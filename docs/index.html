@@ -141,6 +141,11 @@
   <span class="empty" id="pathHint">Drop a pathsweep / pathdepth file to enable.</span>
 </div>
 
+<div class="series" id="layoutControls">
+  <div class="title">Layout (matches the composite workflow's "layout" option)</div>
+  <label><input type="checkbox" id="layoutMirror"> Mirror (mode 2): paths left, force chart top, time/legend bottom-left</label>
+</div>
+
 <div class="legend" id="legend">
   <span class="m">Current data position</span>
   <span style="margin-left:auto">Use the slider below to scrub the video</span>
@@ -240,6 +245,7 @@ for (const k in SWIMMER_SRC) {
 }
 function showLeftOn() { const el = $('showLeft'); return !el || el.checked; }
 function showRightOn() { const el = $('showRight'); return !el || el.checked; }
+function layoutMode() { const el = $('layoutMirror'); return el && el.checked ? 2 : 1; }
 
 const FRIENDLY = {
   forward: 'Propulsive', propulsive: 'Propulsive', propulsion: 'Propulsive',
@@ -416,15 +422,23 @@ function drawOverlay() {
   const o = offset();
   const dataT = (video.currentTime - o) * 1000;
 
-  // --- bottom: scrolling chart ---
+  // --- scrolling chart (mode 1: bottom; mode 2: top, beside the left panels) ---
+  const lay = layoutMode();
   const chartH = h * 0.28;
-  const chartY = h - chartH - 10;
-  const chartX = w * 0.08;
+  let chartY = h - chartH - 10;
+  let chartX = w * 0.08;
   let chartW = w * 0.84;
-  // keep the chart clear of the hand-path panels on the right
   const _pv = (($('showPath') && $('showPath').checked) ? activePathViews() : []);
-  if (_pv.length) {
-    const { ox } = pathPanelGeom(w, h, _pv.length);
+  if (lay === 2) {
+    chartY = 40;
+    if (_pv.length) {
+      const { S, ox } = pathPanelGeom(w, h, _pv.length, lay);
+      chartX = ox + S + 18;
+      chartW = w * 0.92 - chartX;
+    }
+  } else if (_pv.length) {
+    // keep the chart clear of the hand-path panels on the right
+    const { ox } = pathPanelGeom(w, h, _pv.length, lay);
     chartW = Math.min(chartW, ox - 12 - chartX);
   }
 
@@ -521,10 +535,12 @@ function drawOverlay() {
     }
   }
 
-  const px = 14, py = 14;
   const lineH = Math.max(16, Math.min(22, h * 0.03));
   const pw = Math.min(320, w * 0.30);
   const ph = 14 + lineH * (rows.length + 1) + 8;
+  const px = 14;
+  // mode 2 puts the readout bottom-left (below the left panels); mode 1 top-left
+  const py = lay === 2 ? (h - ph - 14) : 14;
   overlayCtx.fillStyle = 'rgba(0, 53, 47, 0.7)';
   roundedRect(overlayCtx, px, py, pw, ph, 8);
   overlayCtx.fill();
@@ -732,11 +748,14 @@ function activePathViews() {
   return views;
 }
 
-function pathPanelGeom(w, h, n) {
+function pathPanelGeom(w, h, n, layout = 1) {
   const gap = 8, titleH = 18;
-  let S = Math.min(w * 0.19, (h - 24 - gap * (n - 1)) / n - titleH);
+  // mode 2 keeps the panels on the left with the readout below them, so reserve
+  // bottom space instead of filling the height.
+  const avail = (h - 24) - (layout === 2 ? 150 : 0);
+  let S = Math.min(w * 0.19, (avail - gap * (n - 1)) / n - titleH);
   S = Math.max(78, S);
-  return { gap, titleH, S, ox: w - S - 12 };
+  return { gap, titleH, S, ox: layout === 2 ? 12 : w - S - 12 };
 }
 
 function drawPathPanel(w, h, dataT, inRange) {
@@ -746,7 +765,7 @@ function drawPathPanel(w, h, dataT, inRange) {
   const views = activePathViews();
   if (!views.length) return;
 
-  const { gap, titleH, S, ox } = pathPanelGeom(w, h, views.length);
+  const { gap, titleH, S, ox } = pathPanelGeom(w, h, views.length, layoutMode());
   let oy = 12;
   for (const v of views) {
     drawPathSquare(ox, oy, S, v, dataT);
