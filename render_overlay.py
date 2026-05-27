@@ -274,14 +274,38 @@ def env_bool(name: str, default: bool) -> bool:
     return str(v).strip().lower() in ("1", "true", "yes", "on")
 
 
+def _truthy(v) -> bool:
+    return str(v).strip().lower() in ("1", "true", "yes", "on")
+
+
+# Maps the keys a user may type in the SHOW_FORCES field to internal series groups.
+FORCE_KEYS = {
+    "propulsive": "propulsive", "propulsion": "propulsive", "forward": "propulsive",
+    "totalforce": "total", "total": "total",
+    "vertical": "vertical",
+    "lateral": "lateral",
+    "handvelocity": "handvelocity", "velocity": "handvelocity",
+    "handspeed": "handvelocity", "speed": "handvelocity",
+}
+
+
+def parse_show_forces(spec: str) -> dict:
+    """Parse 'propulsive=1;totalForce=0;...' into a {group: bool} selection.
+    Unlisted groups keep their default (propulsive on, the rest off)."""
+    want = {"propulsive": True, "total": False, "vertical": False,
+            "lateral": False, "handvelocity": False}
+    for part in re.split(r"[;,]", spec or ""):
+        if "=" not in part:
+            continue
+        k, v = part.split("=", 1)
+        key = FORCE_KEYS.get(k.strip().lower())
+        if key:
+            want[key] = _truthy(v)
+    return want
+
+
 def select_enabled(series: list[dict]) -> list[dict]:
-    want = {
-        "propulsive": env_bool("SERIES_PROPULSIVE", True),
-        "total": env_bool("SERIES_TOTAL", False),
-        "vertical": env_bool("SERIES_VERTICAL", False),
-        "lateral": env_bool("SERIES_LATERAL", False),
-        "handvelocity": env_bool("SERIES_HANDVELOCITY", False),
-    }
+    want = parse_show_forces(os.environ.get("SHOW_FORCES", ""))
     enabled = []
     for s in series:
         i = s["id"].lower()
@@ -385,11 +409,17 @@ def path_points(now_ms, side, xspec, yspec, sweep, depth):
 
 # ---------- views ----------
 
-def path_panel_geom(w, h, n):
+def path_panel_geom(w, h, n, layout=1):
     gap, titleH = 8, 18
-    S = min(w * 0.19, (h - 24 - gap * (n - 1)) / n - titleH)
+    avail = h - 24
+    # mode 2 keeps the panels on the left and the readout bottom-left, so leave
+    # room under the panel stack for that readout instead of filling the height.
+    if layout == 2:
+        avail -= 150
+    S = min(w * 0.19, (avail - gap * (n - 1)) / n - titleH)
     S = max(78, S)
-    return gap, titleH, S, w - S - 12
+    ox = 12 if layout == 2 else w - S - 12
+    return gap, titleH, S, ox
 
 
 def build_views():
@@ -423,15 +453,24 @@ def init_worker(payload):
 
 def draw_chart(cv, now_ms, w, h, active, show_left, show_right):
     times = G["times"]
+    layout = G.get("layout", 1)
     chartH = h * 0.28
-    chartY = h - chartH - 10
     chartX = w * 0.08
     chartW = w * 0.84
-    # keep the chart clear of the hand-path panels on the right
     pv = G["views"] if G["show_path"] else []
-    if pv:
-        _, _, _, ox = path_panel_geom(w, h, len(pv))
-        chartW = min(chartW, ox - 12 - chartX)
+    if layout == 2:
+        # mode 2: chart along the top, to the right of the left-hand panels
+        chartY = 40
+        if pv:
+            _, _, S, ox = path_panel_geom(w, h, len(pv), layout)
+            chartX = ox + S + 18
+            chartW = w * 0.92 - chartX
+    else:
+        # mode 1: chart along the bottom, clear of the right-hand panels
+        chartY = h - chartH - 10
+        if pv:
+            _, _, _, ox = path_panel_geom(w, h, len(pv), layout)
+            chartW = min(chartW, ox - 12 - chartX)
 
     cv.rrect(chartX - 6, chartY - 30, chartW + 12, chartH + 50, 8, fill=rgba("#00352f", 0.55))
     cv.rrect(chartX, chartY, chartW, chartH, 0, stroke=rgba("#ffffff", 0.25), stroke_w=1)
@@ -502,10 +541,12 @@ def draw_metrics(cv, now_ms, w, h, active, in_range, show_left, show_right):
                 parts.append(f"R {value_at(s['data']['right'], now_ms):.{dec}f}")
             rows.append((s["color"], f"{s['label']}  {'  '.join(parts)} {unit}"))
 
-    px, py = 14, 14
     lineH = max(16, min(22, h * 0.03))
     pw = min(320, w * 0.30)
     ph = 14 + lineH * (len(rows) + 1) + 8
+    px = 14
+    # mode 2 puts the readout bottom-left (below the left-hand panels); mode 1 top-left
+    py = (h - ph - 14) if G.get("layout", 1) == 2 else 14
     cv.rrect(px, py, pw, ph, 8, fill=rgba("#00352f", 0.7), stroke=rgba("#ffffff", 0.4), stroke_w=1)
 
     tdisp = f"{now_ms / 1000:.2f}" if in_range else "—"
@@ -584,7 +625,7 @@ def draw_path_panel(cv, now_ms, w, h, show_left, show_right):
     views = G["views"]
     if not views:
         return
-    gap, titleH, S, ox = path_panel_geom(w, h, len(views))
+    gap, titleH, S, ox = path_panel_geom(w, h, len(views), G.get("layout", 1))
     oy = 12
     for v in views:
         draw_path_square(cv, ox, oy, S, v, now_ms, show_left, show_right)
@@ -621,7 +662,8 @@ def encode_prores(frames_dir: Path, out_path: Path, fps: int) -> None:
     subprocess.run(cmd, check=True, capture_output=True)
 
 
-def render_overlay(swim_dir: Path, fps: int = FRAME_RATE, keep_frames: bool = False) -> Path:
+def render_overlay(swim_dir: Path, fps: int = FRAME_RATE, keep_frames: bool = False,
+                   layout: int = 1) -> Path:
     data = load_lapforcetime(swim_dir)
     times = data.get("time") or []
     if not times:
@@ -671,7 +713,8 @@ def render_overlay(swim_dir: Path, fps: int = FRAME_RATE, keep_frames: bool = Fa
     frames_dir.mkdir()
 
     payload = {"times": times, "active": active, "sweep": sweep, "depth": depth,
-               "views": views, "show_path": show_path, "show_left": show_left, "show_right": show_right}
+               "views": views, "show_path": show_path, "show_left": show_left,
+               "show_right": show_right, "layout": layout}
     work = [(i, start_ms + i * 1000 / fps, frames_dir) for i in range(total_frames)]
 
     workers = max(1, cpu_count())
@@ -694,7 +737,11 @@ def main() -> int:
     parser.add_argument("swim_dir", nargs="?")
     parser.add_argument("--fps", type=int, default=FRAME_RATE)
     parser.add_argument("--keep-frames", action="store_true")
+    parser.add_argument("--layout", default="default",
+                        help="'default'/'1' = paths right + chart bottom; "
+                             "'mirrored'/'2' = paths left + chart top + readout bottom-left")
     args = parser.parse_args()
+    layout = 2 if str(args.layout).strip().lower() in ("2", "mirrored", "mirror") else 1
 
     if not shutil.which("ffmpeg"):
         print("ffmpeg not found in PATH", file=sys.stderr)
@@ -716,7 +763,7 @@ def main() -> int:
     for swim_dir in targets:
         print(f"==> {swim_dir.name}")
         try:
-            render_overlay(swim_dir, fps=args.fps, keep_frames=args.keep_frames)
+            render_overlay(swim_dir, fps=args.fps, keep_frames=args.keep_frames, layout=layout)
         except Exception as exc:
             print(f"  failed: {exc}")
     return 0

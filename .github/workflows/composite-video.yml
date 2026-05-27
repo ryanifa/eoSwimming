@@ -13,26 +13,17 @@ on:
         description: "Seconds into the video where the swim begins (overlay aligns here)"
         required: true
         default: "0"
-      series_propulsive:
-        description: "Show Propulsive (forward) force"
-        type: boolean
-        default: true
-      series_total:
-        description: "Show Total force"
-        type: boolean
-        default: false
-      series_vertical:
-        description: "Show Vertical force"
-        type: boolean
-        default: false
-      series_lateral:
-        description: "Show Lateral force"
-        type: boolean
-        default: false
-      series_handvelocity:
-        description: "Show Hand velocity (m/s)"
-        type: boolean
-        default: false
+      show_forces:
+        description: "Which force/velocity lines to draw, as a key=0/1 list. Keys: propulsive, totalForce, vertical, lateral, handVelocity. 1 = on, 0 = off."
+        required: true
+        default: "propulsive=1;totalForce=0;vertical=0;lateral=0;handVelocity=0"
+      layout:
+        description: "Overlay layout. default = paths right + chart bottom + readout top-left. mirrored = paths left + chart top + readout bottom-left."
+        type: choice
+        default: default
+        options:
+          - default
+          - mirrored
       sides:
         description: "Which side(s) to draw (left = solid, right = dashed)"
         type: choice
@@ -104,14 +95,10 @@ jobs:
 
       - name: Render overlay
         env:
-          SERIES_PROPULSIVE: ${{ inputs.series_propulsive }}
-          SERIES_TOTAL: ${{ inputs.series_total }}
-          SERIES_VERTICAL: ${{ inputs.series_vertical }}
-          SERIES_LATERAL: ${{ inputs.series_lateral }}
-          SERIES_HANDVELOCITY: ${{ inputs.series_handvelocity }}
+          SHOW_FORCES: ${{ inputs.show_forces }}
           SHOW_LEFT: ${{ inputs.sides != 'right' }}
           SHOW_RIGHT: ${{ inputs.sides != 'left' }}
-        run: python render_overlay.py "$SWIM_DIR" --fps 60
+        run: python render_overlay.py "$SWIM_DIR" --fps 60 --layout "${{ inputs.layout }}"
 
       - name: Composite
         run: |
