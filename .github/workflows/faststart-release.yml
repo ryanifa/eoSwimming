@@ -44,13 +44,31 @@ jobs:
           echo "---- sizes (should be ~identical) ----"
           ls -lh original.mp4 "out/${{ inputs.asset }}"
 
-      - name: Upload the fixed asset back to the release
+      - name: Upload the fixed asset back to the release (as video/mp4)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${{ inputs.tag }}" "out/${{ inputs.asset }}" \
-            --repo "${{ github.repository }}" \
-            --clobber
+          REPO="${{ github.repository }}"
+          TAG="${{ inputs.tag }}"
+          NAME="${{ inputs.asset }}"
+          # iOS Safari refuses to play a release asset stored as
+          # application/octet-stream inline (it just shows black), so we
+          # re-upload through the uploads API with an explicit video/mp4
+          # content type. gh release upload can't set the content type.
+          RELID=$(gh api "repos/$REPO/releases/tags/$TAG" --jq .id)
+          OLD=$(gh api "repos/$REPO/releases/$RELID/assets" \
+                  --jq ".[] | select(.name==\"$NAME\") | .id")
+          if [ -n "$OLD" ]; then
+            echo "deleting existing asset id $OLD"
+            gh api -X DELETE "repos/$REPO/releases/assets/$OLD"
+          fi
+          curl -sS --fail-with-body -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: video/mp4" \
+            --data-binary @"out/$NAME" \
+            "https://uploads.github.com/repos/$REPO/releases/$RELID/assets?name=$NAME" \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print('uploaded:', d.get('name'), d.get('content_type'))"
           ASSET="https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag }}/${{ inputs.asset }}"
           {
             echo "### Fixed for mobile ✓"

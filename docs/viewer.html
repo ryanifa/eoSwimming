@@ -36,6 +36,13 @@
     aspect-ratio: 16 / 9; cursor: pointer;
   }
   .stage video { width: 100%; height: 100%; display: block; }
+  #vmsg {
+    position: absolute; inset: 0; display: none; align-items: center;
+    justify-content: center; text-align: center; padding: 24px;
+    color: #ffb4b4; font-size: 14px; line-height: 1.5; background: rgba(0,0,0,.6);
+  }
+  #vmsg.show { display: flex; }
+  #vmsg code { color: #ffd9a0; }
 
   .player { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
   input[type=range] { flex: 1; min-width: 200px; }
@@ -108,7 +115,8 @@
 </div>
 
 <div class="stage" id="stage">
-  <video id="video" muted playsinline></video>
+  <video id="video" muted playsinline webkit-playsinline preload="auto"></video>
+  <div id="vmsg"></div>
 </div>
 
 <div class="player">
@@ -155,13 +163,38 @@ function fmtTime(s) {
 }
 
 // ---------- loading ----------
+const vmsg = $('vmsg');
+function showMsg(html) {
+  if (!html) { vmsg.classList.remove('show'); vmsg.innerHTML = ''; return; }
+  vmsg.innerHTML = html; vmsg.classList.add('show');
+}
+
 function loadSrc(src, name) {
+  showMsg('');
   video.src = src;
+  video.load();              // iOS needs an explicit load to start fetching
   playBtn.disabled = false;
   const el = $('dropVideo');
   el.classList.add('loaded');
   el.querySelector('strong').textContent = '✓ ' + (name || src);
 }
+
+// iOS often paints a black <video> until a frame is decoded — nudge it.
+video.addEventListener('loadeddata', () => {
+  showMsg('');
+  if (video.currentTime < 0.001) { try { video.currentTime = 0.001; } catch (_) {} }
+});
+
+// Surface load failures instead of a silent black screen.
+video.addEventListener('error', () => {
+  const codes = { 1: 'aborted', 2: 'network', 3: 'decode', 4: 'format not supported' };
+  const c = video.error && video.error.code;
+  showMsg(
+    'Could not play this video' + (c ? ' — <code>' + (codes[c] || c) + '</code>' : '') + '.<br>' +
+    'On iPhone the file must be served as <code>video/mp4</code>; a GitHub release ' +
+    'asset stored as <code>application/octet-stream</code> will not play inline.'
+  );
+});
 
 function setupDrop(elId, inputId, onFile) {
   const el = $(elId), input = $(inputId);
@@ -205,7 +238,8 @@ if (qv) { $('urlInput').value = qv; loadSrc(qv, qv.split('/').pop() || qv); }
 // ---------- playback ----------
 function togglePlay() {
   if (!video.src) return;
-  if (video.paused) video.play(); else video.pause();
+  if (video.paused) { const p = video.play(); if (p && p.catch) p.catch(() => {}); }
+  else video.pause();
 }
 playBtn.addEventListener('click', togglePlay);
 const stageEl = $('stage');
