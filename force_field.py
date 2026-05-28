@@ -82,8 +82,16 @@ def make_mask(d: dict, window: tuple[float, float] | None) -> np.ndarray | None:
     return (t >= lo) & (t <= hi)
 
 
-def distribution(d: dict, mask: np.ndarray | None = None, weight: str = "force") -> dict:
-    """Six-direction power split over both hands, normalised to 100%."""
+def distribution(d: dict, mask: np.ndarray | None = None, weight: str = "magnitude") -> dict:
+    """Approximate six-direction power split over both hands, normalised to 100%.
+
+    This is a reconstruction, not the app's exact figure: the app computes its
+    'Distribution of Power' elsewhere and no simple formula on lapforcetime
+    reproduces it exactly. Weighting each instant by the total force magnitude
+    ('magnitude') tracks the app best (powerful moments count more), so it is
+    the default; 'force' (unweighted) and 'power' (x hand speed) are also
+    available.
+    """
     b = dict.fromkeys(
         ("propulsive", "hand_drag", "upward", "downward", "left", "right"), 0.0)
     for name in ("left", "right"):
@@ -91,7 +99,12 @@ def distribution(d: dict, mask: np.ndarray | None = None, weight: str = "force")
         f = comp(side, "forward", mask)
         v = comp(side, "vertical", mask)
         lat = lateral(side, name, mask)
-        w = comp(side, "handVelocity", mask) if weight == "power" else np.ones_like(f)
+        if weight == "power":
+            w = comp(side, "handVelocity", mask)
+        elif weight == "magnitude":
+            w = comp(side, "total", mask)
+        else:
+            w = np.ones_like(f)
         b["propulsive"] += float((np.clip(f, 0, None) * w).sum())
         b["hand_drag"] += float((np.clip(-f, 0, None) * w).sum())
         b["upward"] += float((np.clip(v, 0, None) * w).sum())
@@ -169,7 +182,7 @@ def build_figure(swim_dir: Path, lap: int | None, weight: str) -> plt.Figure:
         ("Left", dist["left"], "Propulsive", dist["propulsive"], "Right", dist["right"]),
         ("Upward", dist["upward"], "Hand Drag", dist["hand_drag"], "Downward", dist["downward"]),
     ]
-    head = "Distribution of Power" + (f" — Lap {lap}" if lap is not None else " — whole swim")
+    head = "Distribution of Power (approx.)" + (f" — Lap {lap}" if lap is not None else " — whole swim")
     txt = head + "\n"
     for a, av, b, bv, c, cv in rows:
         txt += f"\n{a} {av:.2f}%    {b} {bv:.2f}%    {c} {cv:.2f}%"
@@ -214,8 +227,9 @@ def main() -> int:
     ap.add_argument("swim_dir")
     ap.add_argument("--lap", type=int, default=None,
                     help="restrict to one lap (uses that lap's strokephase time window)")
-    ap.add_argument("--weight", choices=("force", "power"), default="force",
-                    help="'force' = sum of force components; 'power' = force x hand speed")
+    ap.add_argument("--weight", choices=("magnitude", "force", "power"), default="magnitude",
+                    help="'magnitude' = weight each instant by total force (closest to the app); "
+                         "'force' = unweighted component sum; 'power' = x hand speed")
     ap.add_argument("--bundle", action="store_true",
                     help="write a single forcefield-bundle.json (for the HTML page / a gist) instead of a plot")
     ap.add_argument("--out", default=None)

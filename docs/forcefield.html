@@ -71,7 +71,7 @@
 
   <div id="report" style="display:none">
     <div class="laps" id="laps"></div>
-    <div class="title-pow">Distribution of Power</div>
+    <div class="title-pow">Distribution of Power <span style="font-size:12px;color:#aaa">(approx.)</span></div>
     <div class="card">
       <div class="grid">
         <div><div class="k">Left</div><div class="v" id="pLeft">–</div></div>
@@ -94,9 +94,10 @@
       <span><i class="dot" style="background:var(--right)"></i> Right</span>
     </div>
     <div class="note">
-      Reconstructed from <code>lapforcetime.json</code>. Six-direction split of the force components
-      (propulsive points down, left hand on the left). L/R watts are the mean power-per-stroke for the
-      lap and are an approximation of the app's circles.
+      Reconstructed from <code>lapforcetime.json</code> (propulsive points down, left hand on the left).
+      The percentages are an approximation — weighted by total force magnitude — and can differ from the
+      app's "Distribution of Power" by a few points; the app computes those separately. L/R watts are the
+      mean power-per-stroke for the lap and match the app.
     </div>
   </div>
 </div>
@@ -128,22 +129,27 @@ function eachSample(win, cb) {
   const t = lapforce.time || [];
   for (const name of ["left", "right"]) {
     const s = lapforce[name] || {};
-    const f = s.forward || [], v = s.vertical || [], lat = s.lateral || [];
+    const f = s.forward || [], v = s.vertical || [], lat = s.lateral || [], tot = s.total || [];
     const n = Math.min(f.length, v.length, lat.length, t.length);
     for (let i = 0; i < n; i++) {
       if (win && (t[i] < win[0] || t[i] > win[1])) continue;
-      cb(name, f[i], v[i], lat[i]);
+      cb(name, f[i], v[i], lat[i], tot[i] || 0);
     }
   }
 }
 
+// Approximation of the app's "Distribution of Power": each instant's
+// directional split is weighted by the total force magnitude (powerful moments
+// count more), which tracks the app most closely. It is not the app's exact
+// figure — that is computed elsewhere and differs by a few points.
 function distribution(win) {
   const b = { propulsive:0, hand_drag:0, upward:0, downward:0, left:0, right:0 };
-  eachSample(win, (name, f, v, lat) => {
+  eachSample(win, (name, f, v, lat, tot) => {
+    const w = tot;
     const L = lateralOf(name, lat);
-    if (f > 0) b.propulsive += f; else b.hand_drag += -f;
-    if (v > 0) b.upward += v; else b.downward += -v;
-    if (L > 0) b.left += L; else b.right += -L;
+    if (f > 0) b.propulsive += f * w; else b.hand_drag += -f * w;
+    if (v > 0) b.upward += v * w; else b.downward += -v * w;
+    if (L > 0) b.left += L * w; else b.right += -L * w;
   });
   const tot = Object.values(b).reduce((a, c) => a + c, 0) || 1;
   const out = {}; for (const k in b) out[k] = 100 * b[k] / tot; return out;
