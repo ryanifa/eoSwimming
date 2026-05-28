@@ -28,82 +28,111 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-# --- calibration knobs (tune against a real swim) ---------------------------
-PROJ_Y = "forward"   # component drawn along the fan's vertical (up) axis
-PROJ_X = "lateral"   # component drawn along the fan's horizontal axis
-FLIP_Y = False       # set True if propulsive should point down
-FLIP_X = False       # set True to mirror left/right
+# --- convention (calibrated against a real swim; see notes below) -----------
+# forward > 0  -> Propulsive,  < 0 -> Hand Drag
+# vertical > 0 -> Upward,      < 0 -> Downward
+# lateral      -> Left / Right, but the right hand's lateral sign is mirrored
+#                 (without this the two hands' percentages don't match the app).
+# The fan plots forward up and lateral sideways (right hand mirrored), which
+# reproduces the app's crossed orange/blue fan.
+RIGHT_LATERAL_FLIP = True
+PROJ_Y = "forward"   # fan vertical axis (up = propulsive)
+PROJ_X = "lateral"   # fan horizontal axis
 # ----------------------------------------------------------------------------
 
 LEFT_COLOR = "#f5a04b"
 RIGHT_COLOR = "#3aa0f5"
 
-# (key in JSON, positive-direction label, negative-direction label)
-AXES = [
-    ("forward", "propulsive", "hand_drag"),
-    ("vertical", "upward", "downward"),
-    ("lateral", "left", "right"),
-]
+
+def comp(side: dict, key: str, mask: np.ndarray | None = None) -> np.ndarray:
+    a = np.asarray(side.get(key) or [], dtype=float)
+    if mask is not None and len(mask) >= len(a):
+        a = a[mask[:len(a)]]
+    return a
 
 
-def comp(side: dict, key: str) -> np.ndarray:
-    return np.asarray(side.get(key) or [], dtype=float)
+def lateral(side: dict, name: str, mask: np.ndarray | None = None) -> np.ndarray:
+    a = comp(side, "lateral", mask)
+    if RIGHT_LATERAL_FLIP and name == "right":
+        a = -a
+    return a
 
 
-def load_sides(swim_dir: Path) -> tuple[dict, dict]:
+def load_swim(swim_dir: Path) -> dict:
     d = json.loads((swim_dir / "lapforcetime.json").read_text())
-    if isinstance(d, list) and d:
-        d = d[0]
-    left = d.get("left") if isinstance(d.get("left"), dict) else {}
-    right = d.get("right") if isinstance(d.get("right"), dict) else {}
-    return left, right
+    return d[0] if isinstance(d, list) and d else d
 
 
-def distribution(*sides: dict) -> dict:
-    """Six-direction power split, summed over the given hands, normalised to 100%."""
-    b = {}
-    for side in sides:
-        for key, pos, neg in AXES:
-            c = comp(side, key)
-            b[pos] = b.get(pos, 0.0) + float(np.clip(c, 0, None).sum())
-            b[neg] = b.get(neg, 0.0) + float(np.clip(-c, 0, None).sum())
+def lap_window(swim_dir: Path, lap: int) -> tuple[float, float] | None:
+    """Time window (ms) of a lap, from its strokephase chartScale."""
+    f = swim_dir / f"lap-{lap:02d}-strokephase.json"
+    if not f.exists():
+        return None
+    cs = (json.loads(f.read_text()) or {}).get("chartScale") or {}
+    lo, hi = cs.get("minTime"), cs.get("maxTime")
+    return (float(lo), float(hi)) if lo is not None and hi is not None else None
+
+
+def make_mask(d: dict, window: tuple[float, float] | None) -> np.ndarray | None:
+    if window is None:
+        return None
+    t = np.asarray(d.get("time") or [], dtype=float)
+    lo, hi = window
+    return (t >= lo) & (t <= hi)
+
+
+def distribution(d: dict, mask: np.ndarray | None = None, weight: str = "force") -> dict:
+    """Six-direction power split over both hands, normalised to 100%."""
+    b = dict.fromkeys(
+        ("propulsive", "hand_drag", "upward", "downward", "left", "right"), 0.0)
+    for name in ("left", "right"):
+        side = d.get(name) or {}
+        f = comp(side, "forward", mask)
+        v = comp(side, "vertical", mask)
+        lat = lateral(side, name, mask)
+        w = comp(side, "handVelocity", mask) if weight == "power" else np.ones_like(f)
+        b["propulsive"] += float((np.clip(f, 0, None) * w).sum())
+        b["hand_drag"] += float((np.clip(-f, 0, None) * w).sum())
+        b["upward"] += float((np.clip(v, 0, None) * w).sum())
+        b["downward"] += float((np.clip(-v, 0, None) * w).sum())
+        b["left"] += float((np.clip(lat, 0, None) * w).sum())
+        b["right"] += float((np.clip(-lat, 0, None) * w).sum())
     total = sum(b.values()) or 1.0
     return {k: 100.0 * v / total for k, v in b.items()}
 
 
-def mean_power(swim_dir: Path, side: str) -> float | None:
-    """Average power per stroke for a side, from strokephase files if present."""
-    vals: list[float] = []
+def mean_power(swim_dir: Path, side: str, lap: int | None) -> float | None:
+    """Average power per stroke for a side, from strokephase PPS arrays."""
     key = "PPSLeft" if side == "left" else "PPSRight"
-    for f in sorted(swim_dir.glob("lap-*-strokephase.json")):
-        try:
-            ind = (json.loads(f.read_text()) or {}).get("indicator", {})
-        except Exception:
+    if lap is not None:
+        files = [swim_dir / f"lap-{lap:02d}-strokephase.json"]
+    else:
+        files = sorted(swim_dir.glob("lap-*-strokephase.json"))
+    vals: list[float] = []
+    for f in files:
+        if not f.exists():
             continue
+        ind = (json.loads(f.read_text()) or {}).get("indicator", {})
         vals.extend(v for v in (ind.get(key) or []) if v is not None)
     return sum(vals) / len(vals) if vals else None
 
 
-def draw_fan(ax, side: dict, color: str) -> None:
-    x = comp(side, PROJ_X)
-    y = comp(side, PROJ_Y)
+def draw_fan(ax, side: dict, name: str, color: str, mask) -> None:
+    x = lateral(side, name, mask) if PROJ_X == "lateral" else comp(side, PROJ_X, mask)
+    y = comp(side, PROJ_Y, mask)
     n = min(len(x), len(y))
-    if not n:
-        return
-    x, y = x[:n], y[:n]
-    if FLIP_X:
-        x = -x
-    if FLIP_Y:
-        y = -y
-    for xi, yi in zip(x, y):
+    for xi, yi in zip(x[:n], y[:n]):
         ax.plot([0, xi], [0, yi], color=color, alpha=0.12, linewidth=0.8,
                 solid_capstyle="round")
 
 
-def build_figure(swim_dir: Path) -> plt.Figure:
-    left, right = load_sides(swim_dir)
-    dist = distribution(left, right)
-    pl, pr = mean_power(swim_dir, "left"), mean_power(swim_dir, "right")
+def build_figure(swim_dir: Path, lap: int | None, weight: str) -> plt.Figure:
+    d = load_swim(swim_dir)
+    window = lap_window(swim_dir, lap) if lap is not None else None
+    mask = make_mask(d, window)
+    left, right = d.get("left") or {}, d.get("right") or {}
+    dist = distribution(d, mask, weight)
+    pl, pr = mean_power(swim_dir, "left", lap), mean_power(swim_dir, "right", lap)
 
     fig, ax = plt.subplots(figsize=(7, 7))
     fig.patch.set_facecolor("#f4f4f4")
@@ -113,7 +142,7 @@ def build_figure(swim_dir: Path) -> plt.Figure:
     span = 0.0
     for side in (left, right):
         for k in (PROJ_X, PROJ_Y):
-            c = comp(side, k)
+            c = comp(side, k, mask)
             if c.size:
                 span = max(span, float(np.abs(c).max()))
     span = span or 1.0
@@ -122,8 +151,8 @@ def build_figure(swim_dir: Path) -> plt.Figure:
     ax.axhline(0, color="#d0d0d0", lw=1)
     ax.axvline(0, color="#d0d0d0", lw=1)
 
-    draw_fan(ax, left, LEFT_COLOR)
-    draw_fan(ax, right, RIGHT_COLOR)
+    draw_fan(ax, left, "left", LEFT_COLOR, mask)
+    draw_fan(ax, right, "right", RIGHT_COLOR, mask)
 
     ax.set_aspect("equal")
     ax.set_xlim(-span * 1.15, span * 1.15)
@@ -137,7 +166,8 @@ def build_figure(swim_dir: Path) -> plt.Figure:
         ("Left", dist["left"], "Propulsive", dist["propulsive"], "Right", dist["right"]),
         ("Upward", dist["upward"], "Hand Drag", dist["hand_drag"], "Downward", dist["downward"]),
     ]
-    txt = "Distribution of Power\n"
+    head = "Distribution of Power" + (f" — Lap {lap}" if lap is not None else " — whole swim")
+    txt = head + "\n"
     for a, av, b, bv, c, cv in rows:
         txt += f"\n{a} {av:.2f}%    {b} {bv:.2f}%    {c} {cv:.2f}%"
     ax.set_title(txt, fontsize=11, color="#444", loc="center")
@@ -158,6 +188,10 @@ def build_figure(swim_dir: Path) -> plt.Figure:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("swim_dir")
+    ap.add_argument("--lap", type=int, default=None,
+                    help="restrict to one lap (uses that lap's strokephase time window)")
+    ap.add_argument("--weight", choices=("force", "power"), default="force",
+                    help="'force' = sum of force components; 'power' = force x hand speed")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
@@ -166,13 +200,15 @@ def main() -> int:
         print(f"No lapforcetime.json in {swim_dir}", file=sys.stderr)
         return 1
 
-    out = Path(args.out) if args.out else swim_dir / "force_field.png"
-    fig = build_figure(swim_dir)
+    suffix = f"-lap{args.lap:02d}" if args.lap is not None else ""
+    out = Path(args.out) if args.out else swim_dir / f"force_field{suffix}.png"
+    fig = build_figure(swim_dir, args.lap, args.weight)
     fig.savefig(out, dpi=130, facecolor=fig.get_facecolor())
     plt.close(fig)
 
-    left, right = load_sides(swim_dir)
-    dist = distribution(left, right)
+    d = load_swim(swim_dir)
+    mask = make_mask(d, lap_window(swim_dir, args.lap) if args.lap is not None else None)
+    dist = distribution(d, mask, args.weight)
     print(f"wrote {out}")
     print("  " + "  ".join(f"{k}={v:.2f}%" for k, v in dist.items()))
     return 0
