@@ -436,14 +436,16 @@ function drawOverlay() {
   if (lay === 2) {
     chartY = 40;
     if (_pv.length) {
-      const { S, ox } = pathPanelGeom(w, h, _pv.length, lay);
-      chartX = ox + S + 18;
+      const { gap, S, ox } = pathPanelGeom(w, h, _pv.length, lay);
+      const cs = Math.round(S * 0.62);             // panel + force-compass column
+      chartX = ox + S + gap + cs + 18;
       chartW = w * 0.92 - chartX;
     }
   } else if (_pv.length) {
-    // keep the chart clear of the hand-path panels on the right
-    const { ox } = pathPanelGeom(w, h, _pv.length, lay);
-    chartW = Math.min(chartW, ox - 12 - chartX);
+    // keep the chart clear of the hand-path panels and their force compasses on the right
+    const { gap, S, ox } = pathPanelGeom(w, h, _pv.length, lay);
+    const cs = Math.round(S * 0.62);
+    chartW = Math.min(chartW, ox - cs - gap - 12 - chartX);
   }
 
   overlayCtx.fillStyle = 'rgba(0, 53, 47, 0.55)';
@@ -542,8 +544,7 @@ function drawOverlay() {
   const lineH = Math.max(16, Math.min(22, h * 0.03));
   const tw = Math.min(320, w * 0.30);          // text column width
   const ph = 14 + lineH * (rows.length + 1) + 8;
-  const aw = ph;                                // square force-compass box to the right of the legend
-  const pw = tw + aw;
+  const pw = tw;
   // mode 2 is a 180-degree mirror of mode 1: readout moves to the bottom-right
   const px = lay === 2 ? (w - pw - 14) : 14;
   const py = lay === 2 ? (h - ph - 14) : 14;
@@ -564,7 +565,6 @@ function drawOverlay() {
     overlayCtx.fillText(row.text, px + 12, py + lineH * (i + 2));
   });
 
-  drawForceArrow(px + tw, py, aw, ph, dataT, inRange);
   drawPathPanel(w, h, dataT, inRange);
 }
 
@@ -776,13 +776,35 @@ function maxTotalForce() {
   return data._maxTotal;
 }
 
-// Compass beside the legend showing the instantaneous force direction, synced
-// to the video. Convention: x = lateral (right hand mirrored), y = forward with
-// propulsive pointing down; arrow length scales with force. Per-hand magnitude
-// is printed in the top-left (left) / top-right (right) quadrants.
-function drawForceArrow(bx, by, bw, bh, dataT, inRange) {
+// Instantaneous force-direction compass for one path-view plane, synced to the
+// video. Convention: the two in-plane components (view.force.x / .y) map to
+// screen x (right) and y (down); lateral has the right hand mirrored so both
+// hands read intuitively. Arrow length scales with force (shared N scale) and
+// per-hand in-plane magnitude is printed in the top-left / top-right quadrants.
+function forceVal(side, comp, idx) {
+  let v = ((data[side] || {})[comp] || [])[idx];
+  if (v == null) return null;
+  if (comp === 'lateral' && side === 'right') v = -v;   // mirror right hand
+  return v;
+}
+
+function drawForceCompass(bx, by, bs, dataT, inRange, view) {
   const ctx = overlayCtx;
-  const cx = bx + bw / 2, cy = by + bh / 2, r = Math.min(bw, bh) * 0.36;
+  const titleH = 16;
+  ctx.fillStyle = 'rgba(0, 53, 47, 0.72)';
+  roundedRect(ctx, bx, by, bs, bs + titleH, 8);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1; ctx.stroke();
+
+  ctx.fillStyle = '#cfe9ff';
+  ctx.font = 'bold ' + Math.max(8, Math.round(bs * 0.1)) + 'px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('Force', bx + 6, by + 12);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(207,233,255,0.7)';
+  ctx.fillText(view.fLabel, bx + bs - 6, by + 12);
+
+  const cx = bx + bs / 2, cy = by + titleH + bs / 2, r = bs * 0.36;
   ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2 * Math.PI); ctx.stroke();
   ctx.beginPath();
@@ -790,15 +812,14 @@ function drawForceArrow(bx, by, bw, bh, dataT, inRange) {
   ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r); ctx.stroke();
   if (!inRange) return;
 
+  const fx = view.force.x, fy = view.force.y;
   const idx = Math.floor(dataT / 10);
   const scale = r / maxTotalForce();
-  const arrow = (name, color, on) => {
+  const arrow = (side, color, on) => {
     if (!on) return;
-    const s = data[name] || {};
-    const f = (s.forward || [])[idx], lat = (s.lateral || [])[idx];
-    if (f == null || lat == null) return;
-    const x = (name === 'right' ? -lat : lat) * scale;
-    const y = f * scale;                       // propulsive down
+    const vx = forceVal(side, fx, idx), vy = forceVal(side, fy, idx);
+    if (vx == null || vy == null) return;
+    const x = vx * scale, y = vy * scale;
     const len = Math.hypot(x, y);
     if (len < 1) return;
     const ux = x / len, uy = y / len, hx = cx + x, hy = cy + y, hs = Math.min(9, r * 0.38);
@@ -813,18 +834,17 @@ function drawForceArrow(bx, by, bw, bh, dataT, inRange) {
   arrow('left', '#f5a04b', showLeftOn());
   arrow('right', '#3aa0f5', showRightOn());
 
-  // per-hand force magnitude in the (mostly empty) top quadrants
+  // in-plane force magnitude in the (mostly empty) top quadrants
   ctx.font = 'bold ' + Math.max(9, Math.round(r * 0.34)) + 'px monospace';
   ctx.textBaseline = 'middle';
-  const label = (name, color, on, align) => {
+  const label = (side, color, on, align) => {
     if (!on) return;
-    const s = data[name] || {};
-    const f = (s.forward || [])[idx], lat = (s.lateral || [])[idx];
-    if (f == null || lat == null) return;
+    const vx = forceVal(side, fx, idx), vy = forceVal(side, fy, idx);
+    if (vx == null || vy == null) return;
     ctx.fillStyle = color;
     ctx.textAlign = align;
     const tx = align === 'left' ? cx - r * 0.96 : cx + r * 0.96;
-    ctx.fillText(Math.round(Math.hypot(f, lat)) + ' N', tx, cy - r * 0.55);
+    ctx.fillText(Math.round(Math.hypot(vx, vy)) + ' N', tx, cy - r * 0.55);
   };
   label('left', '#f5a04b', showLeftOn(), 'left');
   label('right', '#3aa0f5', showRightOn(), 'right');
@@ -838,10 +858,15 @@ function drawPathPanel(w, h, dataT, inRange) {
   const views = activePathViews();
   if (!views.length) return;
 
-  const { gap, titleH, S, ox } = pathPanelGeom(w, h, views.length, layoutMode());
+  const lay = layoutMode();
+  const { gap, titleH, S, ox } = pathPanelGeom(w, h, views.length, lay);
+  const cs = Math.round(S * 0.62);             // force-compass beside each panel
+  // layout 1: panels are flush right, compass sits to their left; layout 2 mirrors it
+  const cx0 = lay === 2 ? ox + S + gap : ox - cs - gap;
   let oy = 12;
   for (const v of views) {
     drawPathSquare(ox, oy, S, v, dataT);
+    if (v.force) drawForceCompass(cx0, oy + Math.round((S - cs) / 2), cs, dataT, inRange, v);
     oy += S + titleH + gap;
   }
 }
