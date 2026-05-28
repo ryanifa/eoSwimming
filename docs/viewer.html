@@ -73,6 +73,9 @@
   workflow, frame by frame. Drop the file below or paste a release / direct video link.
   Step with the <strong>−1 / +1 frame</strong> buttons or the <strong>←</strong> / <strong>→</strong>
   keys (hold <strong>Shift</strong> for ±10), and <strong>Space</strong> to play/pause.
+  <br><strong>Share a release:</strong> just append <code>?r=&lt;release-tag&gt;</code> to this page's URL
+  (e.g. <code>?r=eindresultaat</code>) and it opens that release's video automatically —
+  the person you send it to needs no GitHub account.
 </div>
 
 <label class="drop" id="dropVideo">
@@ -159,9 +162,25 @@ $('loadUrlBtn').addEventListener('click', () => {
 });
 $('urlInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('loadUrlBtn').click(); });
 
-// ?v=<url> (or ?video=) auto-loads a release / direct link on open.
+// Auto-load on open via the query string:
+//   ?v=<full-url>       any direct video / release download link
+//   ?r=<tag>            a release tag in THIS repo (asset defaults to composite.mp4)
+//   ?r=<tag>&f=<file>   pick a different asset name from that release
+// The ?r= form is the easy share link: send someone
+//   <this-page>?r=<tag>  and it opens that release's video — no GitHub account needed.
 const qp = new URLSearchParams(location.search);
-const qv = qp.get('v') || qp.get('video');
+let qv = qp.get('v') || qp.get('video');
+const rtag = qp.get('r') || qp.get('release');
+if (!qv && rtag) {
+  // Derive owner/repo from the GitHub Pages URL, e.g. ryanifa.github.io/eoSwimming/…
+  const owner = location.hostname.split('.')[0];
+  const repo = location.pathname.split('/').filter(Boolean)[0] || '';
+  const file = qp.get('f') || qp.get('file') || 'composite.mp4';
+  if (owner && repo) {
+    qv = 'https://github.com/' + owner + '/' + repo +
+         '/releases/download/' + encodeURIComponent(rtag) + '/' + encodeURIComponent(file);
+  }
+}
 if (qv) { $('urlInput').value = qv; loadSrc(qv, qv.split('/').pop() || qv); }
 
 // ---------- playback ----------
