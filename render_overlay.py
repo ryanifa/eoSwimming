@@ -598,15 +598,36 @@ def draw_force_arrow(cv, bx, by, bw, bh, now_ms, in_range, show_left, show_right
             return
         ux, uy = x / length, y / length
         hx, hy = cx + x, cy + y
-        hs = min(7, r * 0.3)
+        hs = min(9, r * 0.38)
         col = rgba(color, 1.0)
-        cv.line((cx, cy), (hx, hy), col, 2.5)
+        cv.line((cx, cy), (hx, hy), col, 4)
         cv.polygon([(hx, hy),
                     (hx - hs * ux - hs * 0.6 * uy, hy - hs * uy + hs * 0.6 * ux),
                     (hx - hs * ux + hs * 0.6 * uy, hy - hs * uy - hs * 0.6 * ux)], col)
 
     arrow("left", "#f5a04b", show_left)
     arrow("right", "#3aa0f5", show_right)
+
+    # force magnitude readouts in the (mostly empty) top quadrants:
+    # left side top-left, right side top-right
+    flbl = font(FONT_MONO, max(9, round(r * 0.34)))
+
+    def label(name, color, on, anchor):
+        if not on:
+            return
+        s = forces.get(name) or {}
+        tot = s.get("total") or []
+        v = tot[idx] if idx < len(tot) and tot[idx] is not None else None
+        if v is None:
+            fwd, lat_a = s.get("forward") or [], s.get("lateral") or []
+            if idx >= len(fwd) or idx >= len(lat_a) or fwd[idx] is None or lat_a[idx] is None:
+                return
+            v = math.hypot(fwd[idx], lat_a[idx])
+        tx = cx - r * 0.96 if anchor[0] == "l" else cx + r * 0.96
+        cv.text(tx, cy - r * 0.55, f"{round(v)} N", flbl, rgba(color, 1.0), anchor=anchor)
+
+    label("left", "#f5a04b", show_left, "lm")
+    label("right", "#3aa0f5", show_right, "rm")
 
 
 def draw_path_square(cv, ox, oy, S, view, now_ms, show_left, show_right):
@@ -767,8 +788,8 @@ def render_overlay(swim_dir: Path, fps: int = FRAME_RATE, keep_frames: bool = Fa
     _l = data.get("left") or {}
     _r = data.get("right") or {}
     forces = {
-        "left": {"forward": _l.get("forward") or [], "lateral": _l.get("lateral") or []},
-        "right": {"forward": _r.get("forward") or [], "lateral": _r.get("lateral") or []},
+        "left": {"forward": _l.get("forward") or [], "lateral": _l.get("lateral") or [], "total": _l.get("total") or []},
+        "right": {"forward": _r.get("forward") or [], "lateral": _r.get("lateral") or [], "total": _r.get("total") or []},
     }
     max_total = max([1.0] + (_l.get("total") or []) + (_r.get("total") or []))
 
