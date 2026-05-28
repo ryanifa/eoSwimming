@@ -796,8 +796,8 @@ function drawForceArrow(bx, by, bw, bh, dataT, inRange) {
     const y = f * scale;                       // propulsive down
     const len = Math.hypot(x, y);
     if (len < 1) return;
-    const ux = x / len, uy = y / len, hx = cx + x, hy = cy + y, hs = Math.min(7, r * 0.3);
-    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2.5;
+    const ux = x / len, uy = y / len, hx = cx + x, hy = cy + y, hs = Math.min(9, r * 0.38);
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(hx, hy); ctx.stroke();
     ctx.beginPath();
     ctx.moveTo(hx, hy);
