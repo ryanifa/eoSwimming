@@ -44,12 +44,19 @@
   #vmsg.show { display: flex; }
   #vmsg code { color: #ffd9a0; }
 
-  .player { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
-  input[type=range] { flex: 1; min-width: 200px; }
-  #timeLabel {
-    font-family: monospace; color: #8aa0a0; min-width: 240px;
-    text-align: right; white-space: nowrap; font-size: 13px;
+  /* compact time/frame readout, overlaid on the video so the control bar
+     stays on a single line and the video keeps the space */
+  #readout {
+    position: absolute; left: 8px; bottom: 8px; pointer-events: none;
+    font-family: monospace; font-size: 12px; color: #cfe9ff;
+    background: rgba(0,0,0,.5); padding: 3px 7px; border-radius: 4px;
+    white-space: nowrap;
   }
+
+  .player { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; flex-wrap: nowrap; }
+  .player button { padding: 8px 9px; font-size: 13px; white-space: nowrap; }
+  .player button.step { min-width: 40px; }
+  input[type=range] { flex: 1 1 40px; min-width: 40px; }
   button {
     padding: 8px 16px; background: #1f6bff; color: white; border: 0;
     border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 600;
@@ -96,8 +103,9 @@
 <div class="hint">
   Play the finished <code>composite.mp4</code> from the <strong>Composite video with overlay</strong>
   workflow, frame by frame. Drop the file below or paste a release / direct video link.
-  Step with the <strong>−1 / +1 frame</strong> buttons or the <strong>←</strong> / <strong>→</strong>
+  Step with the <strong>−10 / −1 / +1 / +10 frame</strong> buttons or the <strong>←</strong> / <strong>→</strong>
   keys (hold <strong>Shift</strong> for ±10), and <strong>Space</strong> to play/pause.
+  Tap <strong>⛶</strong> to toggle the maximized (full-screen) view.
   <br><strong>Share a release:</strong> just append <code>?r=&lt;release-tag&gt;</code> to this page's URL
   (e.g. <code>?r=eindresultaat</code>) and it opens that release's video automatically —
   the person you send it to needs no GitHub account.
@@ -116,15 +124,17 @@
 
 <div class="stage" id="stage">
   <video id="video" muted playsinline webkit-playsinline preload="auto"></video>
+  <div id="readout">0:00.00 / 0:00.00 · frame 0 / 0</div>
   <div id="vmsg"></div>
 </div>
 
 <div class="player">
-  <button class="secondary" id="back1" title="Back 1 frame (←, Shift+← = 10)">−1 frame</button>
-  <button id="playBtn" disabled>▶ Play</button>
-  <button class="secondary" id="fwd1" title="Forward 1 frame (→, Shift+→ = 10)">+1 frame</button>
+  <button class="secondary step" id="back10" title="Back 10 frames (Shift+←)">−10</button>
+  <button class="secondary step" id="back1" title="Back 1 frame (←)">−1</button>
+  <button id="playBtn" disabled title="Play / pause (Space)">▶</button>
+  <button class="secondary step" id="fwd1" title="Forward 1 frame (→)">+1</button>
+  <button class="secondary step" id="fwd10" title="Forward 10 frames (Shift+→)">+10</button>
   <input type="range" id="seek" min="0" max="100" step="0.01" value="0">
-  <span id="timeLabel">0:00.00 / 0:00.00 · frame 0 / 0</span>
   <button class="secondary" id="focusBtn" title="Fullscreen video (toggle · f)">⛶</button>
 </div>
 
@@ -151,7 +161,7 @@ const $ = id => document.getElementById(id);
 const video = $('video');
 const seek = $('seek');
 const playBtn = $('playBtn');
-const timeLabel = $('timeLabel');
+const readout = $('readout');
 const fpsInput = $('fps');
 const fpsNote = $('fpsNote');
 
@@ -264,8 +274,8 @@ function togglePlay() {
 playBtn.addEventListener('click', togglePlay);
 const stageEl = $('stage');
 stageEl.addEventListener('click', togglePlay);
-video.addEventListener('play', () => playBtn.textContent = '⏸ Pause');
-video.addEventListener('pause', () => playBtn.textContent = '▶ Play');
+video.addEventListener('play', () => playBtn.textContent = '⏸');
+video.addEventListener('pause', () => playBtn.textContent = '▶');
 
 seek.addEventListener('input', e => {
   if (video.duration) video.currentTime = (e.target.value / 100) * video.duration;
@@ -284,8 +294,10 @@ function frameStep(deltaFrames) {
   const t = Math.max(0, Math.min(video.duration - 0.5 / fps, idx / fps));
   video.currentTime = t;
 }
+$('back10').addEventListener('click', () => frameStep(-10));
 $('back1').addEventListener('click', () => frameStep(-1));
 $('fwd1').addEventListener('click', () => frameStep(1));
+$('fwd10').addEventListener('click', () => frameStep(10));
 
 // ---------- focus (phone) mode: video + transport controls only ----------
 const focusBtn = $('focusBtn');
@@ -295,6 +307,9 @@ function setFocus(on) {
   focusBtn.title = on ? 'Exit fullscreen (Esc)' : 'Fullscreen video (toggle · f)';
 }
 focusBtn.addEventListener('click', () => setFocus(!document.body.classList.contains('focus')));
+
+// Open maximized when a video was provided via the share link.
+if (qv || rtag) setFocus(true);
 
 window.addEventListener('keydown', e => {
   if (e.key === 'Escape') { if (document.body.classList.contains('focus')) setFocus(false); return; }
@@ -339,7 +354,7 @@ function tick() {
     const frame = Math.round(video.currentTime * fps);
     const total = Math.round(video.duration * fps);
     seek.value = (video.currentTime / video.duration) * 100;
-    timeLabel.textContent =
+    readout.textContent =
       fmtTime(video.currentTime) + ' / ' + fmtTime(video.duration) +
       ' · frame ' + frame + ' / ' + total;
   }
