@@ -127,6 +127,11 @@ class Canvas:
             d.ellipse(box, fill=fill, outline=stroke, width=max(1, int(round(stroke_w * SC))) if stroke else 1)
         self._composite((cx - r, cy - r, cx + r, cy + r), fn)
 
+    def polygon(self, pts, fill):
+        xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
+        self._composite((min(xs), min(ys), max(xs), max(ys)),
+                        lambda d, ox, oy: d.polygon([(p[0] * SC - ox, p[1] * SC - oy) for p in pts], fill=fill))
+
     def text(self, x, y, s, fnt, color, anchor="ls"):
         if not s:
             return
@@ -537,8 +542,10 @@ def draw_metrics(cv, now_ms, w, h, active, in_range, show_left, show_right):
             rows.append((s["color"], f"{s['label']}  {'  '.join(parts)} {unit}"))
 
     lineH = max(16, min(22, h * 0.03))
-    pw = min(320, w * 0.30)
+    tw = min(320, w * 0.30)              # text column width
     ph = 14 + lineH * (len(rows) + 1) + 8
+    aw = ph                              # square force-arrow box to the right of the legend
+    pw = tw + aw
     # mode 2 is a 180-degree mirror of mode 1: readout moves to the bottom-right
     # (panels are full-size on the left, chart top-right)
     if G.get("layout", 1) == 2:
@@ -553,6 +560,53 @@ def draw_metrics(cv, now_ms, w, h, active, in_range, show_left, show_right):
     fmono = font(FONT_MONO, round(lineH * 0.72))
     for i, (color, text) in enumerate(rows):
         cv.text(px + 12, py + lineH * (i + 2), text, fmono, rgba(color, 1.0), anchor="ls")
+
+    draw_force_arrow(cv, px + tw, py, aw, ph, now_ms, in_range, show_left, show_right)
+
+
+# Small compass showing the instantaneous force direction, synced to the video.
+# Same convention as the Force Field page: x = lateral (right hand mirrored),
+# y = forward with propulsive pointing down; arrow length scales with force.
+def draw_force_arrow(cv, bx, by, bw, bh, now_ms, in_range, show_left, show_right):
+    cx, cy = bx + bw / 2, by + bh / 2
+    r = min(bw, bh) * 0.36
+    grid = rgba("#ffffff", 0.18)
+    cv.disc(cx, cy, r, fill=None, stroke=grid, stroke_w=1)
+    cv.line((cx - r, cy), (cx + r, cy), grid, 1)
+    cv.line((cx, cy - r), (cx, cy + r), grid, 1)
+    if not in_range:
+        return
+
+    forces = G.get("forces") or {}
+    idx = int(now_ms // 10)
+    scale = r / (G.get("max_total") or 1.0)
+
+    def arrow(name, color, on):
+        if not on:
+            return
+        s = forces.get(name) or {}
+        fwd, lat_a = s.get("forward") or [], s.get("lateral") or []
+        if idx >= len(fwd) or idx >= len(lat_a):
+            return
+        f, lat = fwd[idx], lat_a[idx]
+        if f is None or lat is None:
+            return
+        x = (-lat if name == "right" else lat) * scale
+        y = f * scale                    # propulsive down
+        length = math.hypot(x, y)
+        if length < 1:
+            return
+        ux, uy = x / length, y / length
+        hx, hy = cx + x, cy + y
+        hs = min(7, r * 0.3)
+        col = rgba(color, 1.0)
+        cv.line((cx, cy), (hx, hy), col, 2.5)
+        cv.polygon([(hx, hy),
+                    (hx - hs * ux - hs * 0.6 * uy, hy - hs * uy + hs * 0.6 * ux),
+                    (hx - hs * ux + hs * 0.6 * uy, hy - hs * uy - hs * 0.6 * ux)], col)
+
+    arrow("left", "#f5a04b", show_left)
+    arrow("right", "#3aa0f5", show_right)
 
 
 def draw_path_square(cv, ox, oy, S, view, now_ms, show_left, show_right):
