@@ -55,6 +55,9 @@ def composite(
         "-pix_fmt", "yuv420p",
         "-preset", "fast",
         "-crf", crf,
+        # put the moov index at the front so the file streams on mobile
+        # (iOS Safari won't start a network MP4 with the index at the end)
+        "-movflags", "+faststart",
     ]
     # force the output framerate to the source's, so slow motion stays smooth
     # (setpts otherwise loses the framerate and ffmpeg falls back to 25 fps)

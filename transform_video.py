@@ -59,6 +59,8 @@ def transform(
     cmd += [
         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "fast", "-crf", "20",
         "-c:a", "aac", "-b:a", "192k",
+        # moov index at the front so the result streams on mobile browsers
+        "-movflags", "+faststart",
         str(out),
     ]
     print("running:", " ".join(cmd))
