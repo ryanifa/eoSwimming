@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>eo Swim frame viewer</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    margin: 0; padding: 20px; background: #0e1a17; color: #eaeaea;
+    max-width: 1200px; margin-left: auto; margin-right: auto;
+  }
+  h1 { margin: 0 0 6px; font-size: 22px; font-weight: 600; }
+  .hint { color: #8aa0a0; font-size: 13px; margin-bottom: 16px; }
+  .hint code { color: #cfe9ff; }
+
+  .drop {
+    border: 2px dashed #2c4540; border-radius: 8px; padding: 18px;
+    text-align: center; color: #8aa0a0; cursor: pointer;
+    transition: border-color .15s, background .15s; margin-bottom: 12px;
+  }
+  .drop:hover, .drop.drag { border-color: #4ea1ff; background: #142826; color: #fff; }
+  .drop.loaded { border-color: #2ca27a; color: #b6f0d2; background: #11231d; }
+  .drop input { display: none; }
+
+  .urlrow { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .urlrow input[type=text] {
+    flex: 1; min-width: 240px; padding: 8px 10px; background: #0a1513;
+    border: 1px solid #2c4540; color: #fff; border-radius: 4px; font-size: 14px;
+  }
+
+  .stage {
+    position: relative; background: #000; border-radius: 8px;
+    border: 1px solid #2c4540; overflow: hidden; margin-bottom: 12px;
+    aspect-ratio: 16 / 9; cursor: pointer;
+  }
+  .stage video { width: 100%; height: 100%; display: block; }
+
+  .player { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+  input[type=range] { flex: 1; min-width: 200px; }
+  #timeLabel {
+    font-family: monospace; color: #8aa0a0; min-width: 240px;
+    text-align: right; white-space: nowrap; font-size: 13px;
+  }
+  button {
+    padding: 8px 16px; background: #1f6bff; color: white; border: 0;
+    border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 600;
+  }
+  button:hover { background: #4286ff; }
+  button.secondary { background: #2c4540; }
+  button.secondary:hover { background: #3a5a54; }
+  button:disabled { opacity: .5; cursor: default; }
+
+  details { margin-top: 14px; color: #8aa0a0; font-size: 13px; }
+  details summary { cursor: pointer; }
+  .advanced { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .advanced input[type=number] {
+    width: 86px; padding: 6px 8px; background: #0a1513; border: 1px solid #2c4540;
+    color: #fff; border-radius: 4px; font-family: monospace; font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+  <h1>eo SwimBETTER — frame viewer</h1>
+  <span style="margin-left:auto; font-size:12px; color:#6f8a86; white-space:nowrap;" id="buildVersion" title="Build deployed to GitHub Pages">build __BUILD_VERSION__</span>
+  <a href="index.html" style="color:#4ea1ff; font-size:14px; text-decoration:none; white-space:nowrap;">← Sync tool</a>
+</div>
+<div class="hint">
+  Play the finished <code>composite.mp4</code> from the <strong>Composite video with overlay</strong>
+  workflow, frame by frame. Drop the file below or paste a release / direct video link.
+  Step with the <strong>−1 / +1 frame</strong> buttons or the <strong>←</strong> / <strong>→</strong>
+  keys (hold <strong>Shift</strong> for ±10), and <strong>Space</strong> to play/pause.
+</div>
+
+<label class="drop" id="dropVideo">
+  <strong>Drop the composite video (.mp4)</strong><br>
+  <small>or click to choose — this is the workflow's <code>composite.mp4</code> output</small>
+  <input type="file" id="videoInput" accept="video/*,.mp4,.mov,.webm">
+</label>
+
+<div class="urlrow">
+  <input type="text" id="urlInput" placeholder="https://github.com/.../releases/download/<tag>/composite.mp4  — or any direct video URL">
+  <button class="secondary" id="loadUrlBtn">Load URL</button>
+</div>
+
+<div class="stage" id="stage">
+  <video id="video" muted playsinline></video>
+</div>
+
+<div class="player">
+  <button class="secondary" id="back1" title="Back 1 frame (←, Shift+← = 10)">−1 frame</button>
+  <button id="playBtn" disabled>▶ Play</button>
+  <button class="secondary" id="fwd1" title="Forward 1 frame (→, Shift+→ = 10)">+1 frame</button>
+  <input type="range" id="seek" min="0" max="100" step="0.01" value="0">
+  <span id="timeLabel">0:00.00 / 0:00.00 · frame 0 / 0</span>
+</div>
+
+<details>
+  <summary>Frame rate &amp; tips</summary>
+  <p>
+    The frame rate is detected automatically from the video while it plays, so the step
+    buttons land exactly on frame boundaries. If the frame counter looks off, set it by hand:
+  </p>
+  <div class="advanced">
+    <label for="fps">fps</label>
+    <input type="number" id="fps" min="1" max="240" step="0.001" value="30">
+    <span id="fpsNote" style="color:#6f8a86;">auto</span>
+  </div>
+  <p style="margin-top:10px;">
+    Tip: pause first, then tap <strong>→</strong> / <strong>←</strong> to walk through the
+    stroke frame by frame. The overlay (force chart, hand-path panels and the force compasses)
+    is already burned into this video by the workflow.
+  </p>
+</details>
+
+<script>
+const $ = id => document.getElementById(id);
+const video = $('video');
+const seek = $('seek');
+const playBtn = $('playBtn');
+const timeLabel = $('timeLabel');
+const fpsInput = $('fps');
+const fpsNote = $('fpsNote');
+
+function fmtTime(s) {
+  if (!isFinite(s)) s = 0;
+  const m = Math.floor(s / 60);
+  const r = (s - m * 60);
+  return m + ':' + (r < 10 ? '0' : '') + r.toFixed(2);
+}
+
+// ---------- loading ----------
+function loadSrc(src, name) {
+  video.src = src;
+  playBtn.disabled = false;
+  const el = $('dropVideo');
+  el.classList.add('loaded');
+  el.querySelector('strong').textContent = '✓ ' + (name || src);
+}
+
+function setupDrop(elId, inputId, onFile) {
+  const el = $(elId), input = $(inputId);
+  const hand = files => { if (files && files.length) onFile(files[0], el); };
+  el.addEventListener('click', () => input.click());
+  input.addEventListener('change', e => hand(e.target.files));
+  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag'); });
+  el.addEventListener('dragleave', () => el.classList.remove('drag'));
+  el.addEventListener('drop', e => { e.preventDefault(); el.classList.remove('drag'); hand(e.dataTransfer.files); });
+}
+
+setupDrop('dropVideo', 'videoInput', file => loadSrc(URL.createObjectURL(file), file.name));
+
+$('loadUrlBtn').addEventListener('click', () => {
+  const u = $('urlInput').value.trim();
+  if (u) loadSrc(u, u.split('/').pop() || u);
+});
+$('urlInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('loadUrlBtn').click(); });
+
+// ?v=<url> (or ?video=) auto-loads a release / direct link on open.
+const qp = new URLSearchParams(location.search);
+const qv = qp.get('v') || qp.get('video');
+if (qv) { $('urlInput').value = qv; loadSrc(qv, qv.split('/').pop() || qv); }
+
+// ---------- playback ----------
+function togglePlay() {
+  if (!video.src) return;
+  if (video.paused) video.play(); else video.pause();
+}
+playBtn.addEventListener('click', togglePlay);
+const stageEl = $('stage');
+stageEl.addEventListener('click', togglePlay);
+video.addEventListener('play', () => playBtn.textContent = '⏸ Pause');
+video.addEventListener('pause', () => playBtn.textContent = '▶ Play');
+
+seek.addEventListener('input', e => {
+  if (video.duration) video.currentTime = (e.target.value / 100) * video.duration;
+});
+
+// ---------- frame stepping ----------
+function currentFps() {
+  const f = parseFloat(fpsInput.value);
+  return f && f > 0 ? f : 30;
+}
+function frameStep(deltaFrames) {
+  if (!video.src || !isFinite(video.duration)) return;
+  if (!video.paused) video.pause();
+  const fps = currentFps();
+  const idx = Math.round(video.currentTime * fps) + deltaFrames;
+  const t = Math.max(0, Math.min(video.duration - 0.5 / fps, idx / fps));
+  video.currentTime = t;
+}
+$('back1').addEventListener('click', () => frameStep(-1));
+$('fwd1').addEventListener('click', () => frameStep(1));
+
+window.addEventListener('keydown', e => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+  if (e.key === 'ArrowRight') { frameStep(e.shiftKey ? 10 : 1); e.preventDefault(); }
+  else if (e.key === 'ArrowLeft') { frameStep(e.shiftKey ? -10 : -1); e.preventDefault(); }
+  else if (e.key === ' ' || e.code === 'Space') { togglePlay(); e.preventDefault(); }
+});
+
+// ---------- fps auto-detect (sample frame timestamps while playing) ----------
+let fpsTouched = false;
+fpsInput.addEventListener('input', () => { fpsTouched = true; fpsNote.textContent = 'manual'; });
+if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+  let last = null, deltas = [];
+  const sample = (now, meta) => {
+    if (last != null) {
+      const dt = meta.mediaTime - last;
+      if (dt > 0.001 && dt < 0.2) deltas.push(dt);
+    }
+    last = meta.mediaTime;
+    if (!fpsTouched && deltas.length < 40 && !video.paused) {
+      video.requestVideoFrameCallback(sample);
+    } else if (!fpsTouched && deltas.length >= 12) {
+      deltas.sort((a, b) => a - b);
+      const med = deltas[Math.floor(deltas.length / 2)];
+      const raw = 1 / med;
+      const common = [23.976, 24, 25, 29.97, 30, 50, 59.94, 60, 120, 240];
+      const snap = common.reduce((p, c) => Math.abs(c - raw) < Math.abs(p - raw) ? c : p);
+      fpsInput.value = Math.abs(snap - raw) / raw < 0.05 ? snap : raw.toFixed(3);
+      fpsNote.textContent = 'auto (' + fpsInput.value + ')';
+    }
+  };
+  video.addEventListener('play', () => { last = null; deltas = []; video.requestVideoFrameCallback(sample); });
+}
+
+// ---------- readout ----------
+function tick() {
+  if (video.duration) {
+    const fps = currentFps();
+    const frame = Math.round(video.currentTime * fps);
+    const total = Math.round(video.duration * fps);
+    seek.value = (video.currentTime / video.duration) * 100;
+    timeLabel.textContent =
+      fmtTime(video.currentTime) + ' / ' + fmtTime(video.duration) +
+      ' · frame ' + frame + ' / ' + total;
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

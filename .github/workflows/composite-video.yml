@@ -41,6 +41,8 @@ jobs:
   composite:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    permissions:
+      contents: write          # needed to publish the composite as a Release asset
     steps:
       - uses: actions/checkout@v4
 
@@ -125,3 +127,29 @@ jobs:
             data/**/swim.json
           if-no-files-found: error
           retention-days: 30
+
+      # Publish the finished video as a Release asset so it has a stable, public
+      # URL the frame viewer can load directly (the artifact above is zipped and
+      # needs a login, so it can't be streamed into the browser).
+      - name: Publish composite to a Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="composite-${{ inputs.swim_id }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$SWIM_DIR/composite.mp4" --clobber
+          else
+            gh release create "$TAG" "$SWIM_DIR/composite.mp4" \
+              --title "Composite — swim ${{ inputs.swim_id }}" \
+              --notes "Open frame by frame: https://ryanifa.github.io/eoSwimming/viewer.html"
+          fi
+          ASSET="https://github.com/${{ github.repository }}/releases/download/$TAG/composite.mp4"
+          echo "Composite asset: $ASSET"
+          echo "Frame viewer:    https://ryanifa.github.io/eoSwimming/viewer.html?v=$ASSET"
+          {
+            echo "### Frame-by-frame viewer"
+            echo ""
+            echo "[Open this swim in the frame viewer](https://ryanifa.github.io/eoSwimming/viewer.html?v=$ASSET)"
+            echo ""
+            echo "Direct video: <$ASSET>"
+          } >> "$GITHUB_STEP_SUMMARY"
