@@ -541,7 +541,8 @@ function drawOverlay() {
   const lineH = Math.max(16, Math.min(22, h * 0.03));
   const tw = Math.min(320, w * 0.30);          // text column width
   const ph = 14 + lineH * (rows.length + 1) + 8;
-  const pw = tw;
+  const aw = ph;                                // square force-compass box to the right of the legend
+  const pw = tw + aw;
   // mode 2 is a 180-degree mirror of mode 1: readout moves to the bottom-right
   const px = lay === 2 ? (w - pw - 14) : 14;
   const py = lay === 2 ? (h - ph - 14) : 14;
@@ -562,6 +563,7 @@ function drawOverlay() {
     overlayCtx.fillText(row.text, px + 12, py + lineH * (i + 2));
   });
 
+  drawForceArrow(px + tw, py, aw, ph, dataT, inRange);
   drawPathPanel(w, h, dataT, inRange);
 }
 
@@ -773,34 +775,13 @@ function maxTotalForce() {
   return data._maxTotal;
 }
 
-// Instantaneous force-direction compass for one path-view plane, synced to the
-// video. Convention: lateral has the right hand mirrored; the value of each
-// force component maps straight to screen (x right, y down), so propulsive and
-// downward both point down. Arrow length scales with force (shared N scale).
-function forceVal(side, comp, idx) {
-  let v = ((data[side] || {})[comp] || [])[idx];
-  if (v == null) return null;
-  if (comp === 'lateral' && side === 'right') v = -v;   // mirror right hand
-  return v;
-}
-
-function drawForceCompass(bx, by, bs, dataT, inRange, view) {
+// Compass beside the legend showing the instantaneous force direction, synced
+// to the video. Convention: x = lateral (right hand mirrored), y = forward with
+// propulsive pointing down; arrow length scales with force. Per-hand magnitude
+// is printed in the top-left (left) / top-right (right) quadrants.
+function drawForceArrow(bx, by, bw, bh, dataT, inRange) {
   const ctx = overlayCtx;
-  const titleH = 16;
-  ctx.fillStyle = 'rgba(0, 53, 47, 0.72)';
-  roundedRect(ctx, bx, by, bs, bs + titleH, 8);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1; ctx.stroke();
-
-  ctx.fillStyle = '#cfe9ff';
-  ctx.font = 'bold ' + Math.max(8, Math.round(bs * 0.1)) + 'px sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText('Force', bx + 6, by + 12);
-  ctx.textAlign = 'right';
-  ctx.fillStyle = 'rgba(207,233,255,0.7)';
-  ctx.fillText(view.fLabel, bx + bs - 6, by + 12);
-
-  const cx = bx + bs / 2, cy = by + titleH + bs / 2, r = bs * 0.36;
+  const cx = bx + bw / 2, cy = by + bh / 2, r = Math.min(bw, bh) * 0.36;
   ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2 * Math.PI); ctx.stroke();
   ctx.beginPath();
@@ -808,14 +789,15 @@ function drawForceCompass(bx, by, bs, dataT, inRange, view) {
   ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r); ctx.stroke();
   if (!inRange) return;
 
-  const fx = view.force.x, fy = view.force.y;
   const idx = Math.floor(dataT / 10);
   const scale = r / maxTotalForce();
-  const arrow = (side, color, on) => {
+  const arrow = (name, color, on) => {
     if (!on) return;
-    const vx = forceVal(side, fx, idx), vy = forceVal(side, fy, idx);
-    if (vx == null || vy == null) return;
-    const x = vx * scale, y = vy * scale;
+    const s = data[name] || {};
+    const f = (s.forward || [])[idx], lat = (s.lateral || [])[idx];
+    if (f == null || lat == null) return;
+    const x = (name === 'right' ? -lat : lat) * scale;
+    const y = f * scale;                       // propulsive down
     const len = Math.hypot(x, y);
     if (len < 1) return;
     const ux = x / len, uy = y / len, hx = cx + x, hy = cy + y, hs = Math.min(9, r * 0.38);
@@ -830,17 +812,18 @@ function drawForceCompass(bx, by, bs, dataT, inRange, view) {
   arrow('left', '#f5a04b', showLeftOn());
   arrow('right', '#3aa0f5', showRightOn());
 
-  // in-plane force magnitude in the (mostly empty) top quadrants
+  // per-hand force magnitude in the (mostly empty) top quadrants
   ctx.font = 'bold ' + Math.max(9, Math.round(r * 0.34)) + 'px monospace';
   ctx.textBaseline = 'middle';
-  const label = (side, color, on, align) => {
+  const label = (name, color, on, align) => {
     if (!on) return;
-    const vx = forceVal(side, fx, idx), vy = forceVal(side, fy, idx);
-    if (vx == null || vy == null) return;
+    const s = data[name] || {};
+    const f = (s.forward || [])[idx], lat = (s.lateral || [])[idx];
+    if (f == null || lat == null) return;
     ctx.fillStyle = color;
     ctx.textAlign = align;
     const tx = align === 'left' ? cx - r * 0.96 : cx + r * 0.96;
-    ctx.fillText(Math.round(Math.hypot(vx, vy)) + ' N', tx, cy - r * 0.55);
+    ctx.fillText(Math.round(Math.hypot(f, lat)) + ' N', tx, cy - r * 0.55);
   };
   label('left', '#f5a04b', showLeftOn(), 'left');
   label('right', '#3aa0f5', showRightOn(), 'right');
