@@ -59,6 +59,24 @@
     width: 86px; padding: 6px 8px; background: #0a1513; border: 1px solid #2c4540;
     color: #fff; border-radius: 4px; font-family: monospace; font-size: 14px;
   }
+
+  /* Focus mode: only the video + transport controls, filling the screen.
+     Handy on a phone. Toggled by the ⛶ button (or the "f" key / Esc to exit). */
+  body.focus {
+    padding: 0; margin: 0; max-width: none; background: #000;
+    height: 100vh; height: 100dvh; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  body.focus > * { display: none !important; }
+  body.focus .stage {
+    display: block !important; flex: 1 1 auto; min-height: 0;
+    width: 100%; aspect-ratio: auto; border: 0; border-radius: 0; margin: 0;
+  }
+  body.focus .stage video { object-fit: contain; }
+  body.focus .player {
+    display: flex !important; flex: 0 0 auto; margin: 0;
+    padding: 10px 12px; background: #0a1513; border-top: 1px solid #2c4540;
+  }
 </style>
 </head>
 <body>
@@ -99,6 +117,7 @@
   <button class="secondary" id="fwd1" title="Forward 1 frame (→, Shift+→ = 10)">+1 frame</button>
   <input type="range" id="seek" min="0" max="100" step="0.01" value="0">
   <span id="timeLabel">0:00.00 / 0:00.00 · frame 0 / 0</span>
+  <button class="secondary" id="focusBtn" title="Fullscreen video (toggle · f)">⛶</button>
 </div>
 
 <details>
@@ -214,12 +233,23 @@ function frameStep(deltaFrames) {
 $('back1').addEventListener('click', () => frameStep(-1));
 $('fwd1').addEventListener('click', () => frameStep(1));
 
+// ---------- focus (phone) mode: video + transport controls only ----------
+const focusBtn = $('focusBtn');
+function setFocus(on) {
+  document.body.classList.toggle('focus', on);
+  focusBtn.textContent = on ? '✕' : '⛶';
+  focusBtn.title = on ? 'Exit fullscreen (Esc)' : 'Fullscreen video (toggle · f)';
+}
+focusBtn.addEventListener('click', () => setFocus(!document.body.classList.contains('focus')));
+
 window.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { if (document.body.classList.contains('focus')) setFocus(false); return; }
   const tag = (e.target.tagName || '').toLowerCase();
   if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
   if (e.key === 'ArrowRight') { frameStep(e.shiftKey ? 10 : 1); e.preventDefault(); }
   else if (e.key === 'ArrowLeft') { frameStep(e.shiftKey ? -10 : -1); e.preventDefault(); }
   else if (e.key === ' ' || e.code === 'Space') { togglePlay(); e.preventDefault(); }
+  else if (e.key === 'f' || e.key === 'F') { setFocus(!document.body.classList.contains('focus')); e.preventDefault(); }
 });
 
 // ---------- fps auto-detect (sample frame timestamps while playing) ----------
