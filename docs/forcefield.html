@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Force Field — Distribution of Power</title>
+<style>
+  :root { --accent:#ff5a1f; --left:#f5a04b; --right:#3aa0f5; --bg:#f4f4f4; --ink:#444; --muted:#888; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:16px 20px 0; }
+  h1 { font-size:20px; margin:0 0 2px; }
+  .sub { color:var(--muted); font-size:13px; }
+  .wrap { max-width:760px; margin:0 auto; padding:0 16px 40px; }
+
+  .drop { margin:16px 0; border:2px dashed #ccc; border-radius:12px; padding:18px; text-align:center; color:var(--muted); font-size:14px; background:#fff; }
+  .drop.over { border-color:var(--accent); color:var(--accent); }
+  .drop input { display:none; }
+  .drop label { color:var(--accent); cursor:pointer; text-decoration:underline; }
+  .files { font-size:12px; margin-top:8px; color:#666; }
+
+  .laps { display:flex; gap:8px; justify-content:center; align-items:center; margin:14px 0 4px; flex-wrap:wrap; }
+  .laps .title { width:100%; text-align:center; font-size:12px; color:var(--muted); margin-bottom:2px; }
+  .lapbtn { width:40px; height:40px; border-radius:50%; border:none; cursor:pointer; font-weight:700;
+            background:#d8d8d8; color:#fff; font-size:15px; }
+  .lapbtn.active { background:var(--accent); }
+  .lapbtn.wide { width:auto; padding:0 14px; border-radius:20px; }
+
+  .title-pow { text-align:center; color:var(--muted); margin:10px 0 6px; font-size:16px; }
+  .card { background:#fff; border-radius:14px; box-shadow:0 1px 4px rgba(0,0,0,0.08);
+          max-width:420px; margin:0 auto; padding:14px 10px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px 4px; text-align:center; }
+  .grid .k { font-size:13px; color:var(--muted); }
+  .grid .v { font-size:18px; font-weight:700; color:var(--accent); }
+  .grid .v.big { font-size:22px; }
+
+  .stage { position:relative; max-width:560px; margin:6px auto 0; }
+  canvas { width:100%; display:block; }
+  .pw { position:absolute; top:8%; width:78px; height:78px; border-radius:50%; background:#fff;
+        border:2px solid; display:flex; flex-direction:column; align-items:center; justify-content:center;
+        box-shadow:0 1px 4px rgba(0,0,0,0.1); }
+  .pw .lab { font-size:12px; color:var(--muted); }
+  .pw .val { font-weight:800; font-size:15px; }
+  .pw.l { left:0; border-color:var(--left); } .pw.l .val { color:var(--left); }
+  .pw.r { right:0; border-color:var(--right); } .pw.r .val { color:var(--right); }
+
+  .legend { display:flex; gap:24px; justify-content:center; margin:10px 0; font-size:15px; }
+  .legend span { display:inline-flex; align-items:center; gap:7px; }
+  .dot { width:14px; height:14px; border-radius:50%; display:inline-block; }
+  .note { color:var(--muted); font-size:12px; text-align:center; margin-top:14px; line-height:1.5; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap" style="padding-bottom:0">
+    <h1>Force Field</h1>
+    <div class="sub" id="sub">Distribution of Power — load a swim to begin</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="drop" id="drop">
+    Drop <code>lapforcetime.json</code> and the per-lap <code>lap-NN-strokephase.json</code> files here,
+    or <label for="file">choose files</label>.
+    <input type="file" id="file" multiple accept=".json,application/json">
+    <div class="files" id="files"></div>
+  </div>
+
+  <div id="report" style="display:none">
+    <div class="laps" id="laps"></div>
+    <div class="title-pow">Distribution of Power</div>
+    <div class="card">
+      <div class="grid">
+        <div><div class="k">Left</div><div class="v" id="pLeft">–</div></div>
+        <div><div class="k">Propulsive</div><div class="v big" id="pProp">–</div></div>
+        <div><div class="k">Right</div><div class="v" id="pRight">–</div></div>
+        <div><div class="k">Upward</div><div class="v" id="pUp">–</div></div>
+        <div><div class="k">Hand Drag</div><div class="v" id="pDrag">–</div></div>
+        <div><div class="k">Downward</div><div class="v" id="pDown">–</div></div>
+      </div>
+    </div>
+
+    <div class="stage">
+      <canvas id="fan"></canvas>
+      <div class="pw l"><div class="lab">L</div><div class="val" id="wLeft">–</div></div>
+      <div class="pw r"><div class="lab">R</div><div class="val" id="wRight">–</div></div>
+    </div>
+
+    <div class="legend">
+      <span><i class="dot" style="background:var(--left)"></i> Left</span>
+      <span><i class="dot" style="background:var(--right)"></i> Right</span>
+    </div>
+    <div class="note">
+      Reconstructed from <code>lapforcetime.json</code>. Six-direction split of the force components
+      (propulsive points down, left hand on the left). L/R watts are the mean power-per-stroke for the
+      lap and are an approximation of the app's circles.
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const LEFT = "#f5a04b", RIGHT = "#3aa0f5";
+
+// data state
+let lapforce = null;          // { time, left:{...}, right:{...} }
+let strokephase = {};         // { lapNum: phaseObj }
+let swim = null;
+let currentLap = "all";
+
+// ---- calibrated convention (mirrors force_field.py) ----
+// forward>0 propulsive / <0 hand drag; vertical>0 upward / <0 downward;
+// lateral -> left/right with the right hand's sign mirrored. Fan: propulsive
+// down, left hand on the left.
+function lateralOf(name, raw) { return name === "right" ? -raw : raw; }
+
+function lapWindow(lap) {
+  if (lap === "all") return null;
+  const cs = (strokephase[lap] || {}).chartScale || {};
+  if (cs.minTime == null || cs.maxTime == null) return null;
+  return [cs.minTime, cs.maxTime];
+}
+
+function eachSample(win, cb) {
+  const t = lapforce.time || [];
+  for (const name of ["left", "right"]) {
+    const s = lapforce[name] || {};
+    const f = s.forward || [], v = s.vertical || [], lat = s.lateral || [];
+    const n = Math.min(f.length, v.length, lat.length, t.length);
+    for (let i = 0; i < n; i++) {
+      if (win && (t[i] < win[0] || t[i] > win[1])) continue;
+      cb(name, f[i], v[i], lat[i]);
+    }
+  }
+}
+
+function distribution(win) {
+  const b = { propulsive:0, hand_drag:0, upward:0, downward:0, left:0, right:0 };
+  eachSample(win, (name, f, v, lat) => {
+    const L = lateralOf(name, lat);
+    if (f > 0) b.propulsive += f; else b.hand_drag += -f;
+    if (v > 0) b.upward += v; else b.downward += -v;
+    if (L > 0) b.left += L; else b.right += -L;
+  });
+  const tot = Object.values(b).reduce((a, c) => a + c, 0) || 1;
+  const out = {}; for (const k in b) out[k] = 100 * b[k] / tot; return out;
+}
+
+function meanPower(lap, side) {
+  const key = side === "left" ? "PPSLeft" : "PPSRight";
+  let vals = [];
+  const laps = lap === "all" ? Object.keys(strokephase) : [lap];
+  for (const L of laps) {
+    const arr = ((strokephase[L] || {}).indicator || {})[key] || [];
+    vals = vals.concat(arr.filter(x => x != null));
+  }
+  return vals.length ? vals.reduce((a, c) => a + c, 0) / vals.length : null;
+}
+
+function drawFan() {
+  const cv = $("fan"), dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth || 520, H = W;       // square
+  cv.width = W * dpr; cv.height = H * dpr;
+  cv.style.height = H + "px";
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  const cx = W / 2, cy = H / 2, maxR = W * 0.42;
+  const win = lapWindow(currentLap);
+
+  // span over the projected axes
+  let span = 0;
+  eachSample(win, (name, f, v, lat) => {
+    span = Math.max(span, Math.abs(f), Math.abs(lateralOf(name, lat)));
+  });
+  span = span || 1;
+  const scale = maxR / span;
+
+  // rings + axes
+  ctx.strokeStyle = "#dadada"; ctx.lineWidth = 1;
+  for (let r = 1; r <= 4; r++) { ctx.beginPath(); ctx.arc(cx, cy, maxR * r / 4, 0, 2 * Math.PI); ctx.stroke(); }
+  ctx.beginPath(); ctx.moveTo(cx - maxR, cy); ctx.lineTo(cx + maxR, cy);
+  ctx.moveTo(cx, cy - maxR); ctx.lineTo(cx, cy + maxR); ctx.stroke();
+
+  // fan rays (propulsive down => +forward maps to +y/down in canvas)
+  for (const [name, color] of [["left", LEFT], ["right", RIGHT]]) {
+    ctx.strokeStyle = color; ctx.globalAlpha = 0.10; ctx.lineWidth = 1;
+    const s = lapforce[name] || {};
+    const f = s.forward || [], lat = s.lateral || [], t = lapforce.time || [];
+    const n = Math.min(f.length, lat.length, t.length);
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      if (win && (t[i] < win[0] || t[i] > win[1])) continue;
+      const x = lateralOf(name, lat[i]) * scale;
+      const y = f[i] * scale;
+      ctx.moveTo(cx, cy); ctx.lineTo(cx + x, cy + y);
+    }
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "#bbb"; ctx.beginPath(); ctx.arc(cx, cy, 3, 0, 2 * Math.PI); ctx.fill();
+}
+
+function render() {
+  if (!lapforce) return;
+  const d = distribution(lapWindow(currentLap));
+  const pct = x => x.toFixed(2) + "%";
+  $("pLeft").textContent = pct(d.left);
+  $("pProp").textContent = pct(d.propulsive);
+  $("pRight").textContent = pct(d.right);
+  $("pUp").textContent = pct(d.upward);
+  $("pDrag").textContent = pct(d.hand_drag);
+  $("pDown").textContent = pct(d.downward);
+
+  const wl = meanPower(currentLap, "left"), wr = meanPower(currentLap, "right");
+  $("wLeft").textContent = wl == null ? "–" : wl.toFixed(0) + " W";
+  $("wRight").textContent = wr == null ? "–" : wr.toFixed(0) + " W";
+
+  drawFan();
+}
+
+function buildLapButtons() {
+  const host = $("laps"); host.innerHTML = '<div class="title">Lap</div>';
+  const laps = Object.keys(strokephase).map(Number).sort((a, b) => a - b);
+  const mk = (label, val, wide) => {
+    const b = document.createElement("button");
+    b.className = "lapbtn" + (wide ? " wide" : "") + (String(val) === String(currentLap) ? " active" : "");
+    b.textContent = label;
+    b.onclick = () => { currentLap = val; buildLapButtons(); render(); };
+    host.appendChild(b);
+  };
+  mk("All", "all", true);
+  for (const l of laps) mk(String(l), l, false);
+  host.style.display = laps.length ? "flex" : "none";
+}
+
+function setSub() {
+  if (swim) {
+    const dt = (swim.date || "").replace("T", " ").slice(0, 16);
+    $("sub").textContent = `${dt} · ${swim.stroke || ""} · ${swim.distance || ""}${swim.unitDistance ? " " + swim.unitDistance : ""} · ${swim.poolName || ""}`;
+  } else {
+    $("sub").textContent = "Distribution of Power";
+  }
+}
+
+function showReport() {
+  if (!lapforce) return;
+  $("report").style.display = "block";
+  // default to lap 1 if laps exist, else whole swim
+  const laps = Object.keys(strokephase).map(Number).sort((a, b) => a - b);
+  currentLap = laps.length ? laps[0] : "all";
+  setSub(); buildLapButtons(); render();
+}
+
+// ---- data loading ----
+function ingest(name, obj) {
+  if (Array.isArray(obj) && obj.length && obj[0] && obj[0].swimId) { swim = obj[0]; return "swim"; }
+  if (obj && obj.swimId) { swim = obj; return "swim"; }
+  if (obj && obj.left && obj.right && obj.time) { lapforce = obj; return "lapforcetime"; }
+  if (obj && (obj.indicator || obj.chartScale)) {
+    const m = name.match(/lap[-_]?0*(\d+)/i);
+    const lap = m ? Number(m[1]) : (Object.keys(strokephase).length + 1);
+    strokephase[lap] = obj; return "strokephase lap " + lap;
+  }
+  // bundle: { swim, lapforcetime, strokephase:{1:..} }
+  if (obj && (obj.lapforcetime || obj.strokephase)) {
+    if (obj.swim) swim = Array.isArray(obj.swim) ? obj.swim[0] : obj.swim;
+    if (obj.lapforcetime) lapforce = obj.lapforcetime;
+    if (obj.strokephase) for (const k in obj.strokephase) strokephase[k] = obj.strokephase[k];
+    return "bundle";
+  }
+  return "unrecognised";
+}
+
+function logFile(msg) {
+  const el = $("files");
+  el.innerHTML += (el.innerHTML ? "<br>" : "") + msg;
+}
+
+async function handleFiles(fileList) {
+  for (const f of fileList) {
+    try {
+      const obj = JSON.parse(await f.text());
+      logFile(`${f.name} → ${ingest(f.name, obj)}`);
+    } catch (e) {
+      logFile(`${f.name} → error: ${e.message}`);
+    }
+  }
+  showReport();
+}
+
+// drag & drop
+const drop = $("drop");
+["dragover", "dragenter"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => handleFiles(e.dataTransfer.files));
+$("file").addEventListener("change", e => handleFiles(e.target.files));
+window.addEventListener("resize", () => { if (lapforce) drawFan(); });
+
+// optional: load a bundle from a URL (e.g. a raw gist), ?data=<url>
+(async function () {
+  const url = new URLSearchParams(location.search).get("data");
+  if (!url) return;
+  try {
+    const obj = await (await fetch(url)).json();
+    logFile(`${url} → ${ingest(url, obj)}`);
+    showReport();
+  } catch (e) { logFile(`${url} → error: ${e.message}`); }
+})();
+</script>
+</body>
+</html>

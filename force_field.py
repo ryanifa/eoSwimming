@@ -36,8 +36,9 @@ import numpy as np
 # The fan plots forward up and lateral sideways (right hand mirrored), which
 # reproduces the app's crossed orange/blue fan.
 RIGHT_LATERAL_FLIP = True
-PROJ_Y = "forward"   # fan vertical axis (up = propulsive)
+PROJ_Y = "forward"   # fan vertical axis
 PROJ_X = "lateral"   # fan horizontal axis
+PROPULSIVE_DOWN = True  # draw propulsive pointing down (matches the app); left hand stays on the left
 # ----------------------------------------------------------------------------
 
 LEFT_COLOR = "#f5a04b"
@@ -120,6 +121,8 @@ def mean_power(swim_dir: Path, side: str, lap: int | None) -> float | None:
 def draw_fan(ax, side: dict, name: str, color: str, mask) -> None:
     x = lateral(side, name, mask) if PROJ_X == "lateral" else comp(side, PROJ_X, mask)
     y = comp(side, PROJ_Y, mask)
+    if PROPULSIVE_DOWN:
+        y = -y
     n = min(len(x), len(y))
     for xi, yi in zip(x[:n], y[:n]):
         ax.plot([0, xi], [0, yi], color=color, alpha=0.12, linewidth=0.8,
@@ -185,6 +188,27 @@ def build_figure(swim_dir: Path, lap: int | None, weight: str) -> plt.Figure:
     return fig
 
 
+def write_bundle(swim_dir: Path, out: Path) -> None:
+    """Combine swim + lapforcetime + per-lap strokephase into one JSON the
+    forcefield.html page can load from a gist via ?data=<raw-url>."""
+    bundle: dict = {"lapforcetime": load_swim(swim_dir)}
+    swim_file = swim_dir / "swim.json"
+    if swim_file.exists():
+        s = json.loads(swim_file.read_text())
+        bundle["swim"] = s[0] if isinstance(s, list) and s else s
+    phases: dict[str, dict] = {}
+    for f in sorted(swim_dir.glob("lap-*-strokephase.json")):
+        try:
+            lap = int(f.name.split("-")[1])
+        except (IndexError, ValueError):
+            continue
+        phases[str(lap)] = json.loads(f.read_text())
+    if phases:
+        bundle["strokephase"] = phases
+    out.write_text(json.dumps(bundle, separators=(",", ":")))
+    print(f"wrote {out} ({len(phases)} laps)")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("swim_dir")
@@ -192,6 +216,8 @@ def main() -> int:
                     help="restrict to one lap (uses that lap's strokephase time window)")
     ap.add_argument("--weight", choices=("force", "power"), default="force",
                     help="'force' = sum of force components; 'power' = force x hand speed")
+    ap.add_argument("--bundle", action="store_true",
+                    help="write a single forcefield-bundle.json (for the HTML page / a gist) instead of a plot")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
@@ -199,6 +225,11 @@ def main() -> int:
     if not (swim_dir / "lapforcetime.json").exists():
         print(f"No lapforcetime.json in {swim_dir}", file=sys.stderr)
         return 1
+
+    if args.bundle:
+        out = Path(args.out) if args.out else swim_dir / "forcefield-bundle.json"
+        write_bundle(swim_dir, out)
+        return 0
 
     suffix = f"-lap{args.lap:02d}" if args.lap is not None else ""
     out = Path(args.out) if args.out else swim_dir / f"force_field{suffix}.png"
