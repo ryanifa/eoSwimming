@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+# release videos mirrored into the site at deploy time (built in CI, never committed)
+docs/videos/

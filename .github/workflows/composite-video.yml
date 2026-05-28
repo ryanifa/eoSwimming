@@ -135,34 +135,26 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          REPO="${{ github.repository }}"
           TAG="composite-${{ inputs.swim_id }}"
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" \
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$SWIM_DIR/composite.mp4" --clobber
+          else
+            gh release create "$TAG" "$SWIM_DIR/composite.mp4" \
               --title "Composite — swim ${{ inputs.swim_id }}" \
-              --notes "Open frame by frame: https://ryanifa.github.io/eoSwimming/viewer.html"
+              --notes "Open frame by frame: https://ryanifa.github.io/eoSwimming/viewer.html?r=$TAG"
           fi
-          # Upload via the uploads API with an explicit video/mp4 content type;
-          # gh release upload can leave it as application/octet-stream, which
-          # iOS Safari refuses to play inline (shows black).
-          RELID=$(gh api "repos/$REPO/releases/tags/$TAG" --jq .id)
-          OLD=$(gh api "repos/$REPO/releases/$RELID/assets" \
-                  --jq '.[] | select(.name=="composite.mp4") | .id')
-          if [ -n "$OLD" ]; then gh api -X DELETE "repos/$REPO/releases/assets/$OLD"; fi
-          curl -sS --fail-with-body -X POST \
-            -H "Authorization: Bearer ${{ github.token }}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "Content-Type: video/mp4" \
-            --data-binary @"$SWIM_DIR/composite.mp4" \
-            "https://uploads.github.com/repos/$REPO/releases/$RELID/assets?name=composite.mp4" \
-            | python3 -c "import sys,json; d=json.load(sys.stdin); print('uploaded:', d.get('name'), d.get('content_type'))"
+          # The GitHub Pages deploy mirrors this release's composite.mp4 into the
+          # site as video/mp4 (so it plays inline on iPhone) — see pages.yml.
           ASSET="https://github.com/${{ github.repository }}/releases/download/$TAG/composite.mp4"
+          VIEWER="https://ryanifa.github.io/eoSwimming/viewer.html?r=$TAG"
           echo "Composite asset: $ASSET"
-          echo "Frame viewer:    https://ryanifa.github.io/eoSwimming/viewer.html?v=$ASSET"
+          echo "Frame viewer:    $VIEWER"
           {
             echo "### Frame-by-frame viewer"
             echo ""
-            echo "[Open this swim in the frame viewer](https://ryanifa.github.io/eoSwimming/viewer.html?v=$ASSET)"
+            echo "[Open this swim in the frame viewer]($VIEWER)"
+            echo ""
+            echo "(Plays inline on iPhone once the Pages deploy has mirrored this release.)"
             echo ""
             echo "Direct video: <$ASSET>"
           } >> "$GITHUB_STEP_SUMMARY"

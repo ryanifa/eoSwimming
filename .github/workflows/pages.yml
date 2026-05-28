@@ -6,6 +6,9 @@ on:
     paths:
       - "docs/**"
       - ".github/workflows/pages.yml"
+  release:
+    # re-publish whenever a release video is added/changed/removed
+    types: [published, edited, deleted]
   workflow_dispatch:
 
 permissions:
@@ -34,6 +37,38 @@ jobs:
           grep -rl '__BUILD_VERSION__' docs | while read -r f; do
             sed -i "s|__BUILD_VERSION__|${STAMP}|g" "$f"
           done
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      # Mirror each release's composite.mp4 into the site as docs/videos/<tag>.mp4.
+      # GitHub serves release downloads as application/octet-stream + attachment,
+      # which iOS Safari will not play inline; a same-origin file served by Pages
+      # as video/mp4 (with range support) plays everywhere. We also +faststart it
+      # so it streams from the first byte. These files are built here, never
+      # committed (see .gitignore).
+      - name: Mirror release videos into the site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p docs/videos
+          TAGS=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[].tag_name')
+          for TAG in $TAGS; do
+            URL=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
+                    --jq '.assets[] | select(.name=="composite.mp4") | .url')
+            if [ -z "$URL" ]; then
+              echo "skip $TAG (no composite.mp4)"; continue
+            fi
+            echo "::group::mirror $TAG"
+            curl -sL --fail \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/octet-stream" \
+              "$URL" -o /tmp/in.mp4
+            ffmpeg -y -loglevel error -i /tmp/in.mp4 -c copy -movflags +faststart "docs/videos/$TAG.mp4"
+            echo "::endgroup::"
+          done
+          echo "---- published videos ----"
+          ls -lh docs/videos/ || echo "(none)"
 
       - uses: actions/configure-pages@v5
 

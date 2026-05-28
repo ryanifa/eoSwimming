@@ -169,8 +169,10 @@ function showMsg(html) {
   vmsg.innerHTML = html; vmsg.classList.add('show');
 }
 
-function loadSrc(src, name) {
+let pendingFallback = null;
+function loadSrc(src, name, fallback) {
   showMsg('');
+  pendingFallback = fallback || null;
   video.src = src;
   video.load();              // iOS needs an explicit load to start fetching
   playBtn.disabled = false;
@@ -187,6 +189,12 @@ video.addEventListener('loadeddata', () => {
 
 // Surface load failures instead of a silent black screen.
 video.addEventListener('error', () => {
+  // If the same-origin Pages copy isn't there yet, try the release asset.
+  if (pendingFallback) {
+    const fb = pendingFallback; pendingFallback = null;
+    loadSrc(fb, fb.split('/').pop() || fb);
+    return;
+  }
   const codes = { 1: 'aborted', 2: 'network', 3: 'decode', 4: 'format not supported' };
   const c = video.error && video.error.code;
   showMsg(
@@ -221,19 +229,31 @@ $('urlInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('loadU
 // The ?r= form is the easy share link: send someone
 //   <this-page>?r=<tag>  and it opens that release's video — no GitHub account needed.
 const qp = new URLSearchParams(location.search);
-let qv = qp.get('v') || qp.get('video');
+const qv = qp.get('v') || qp.get('video');
 const rtag = qp.get('r') || qp.get('release');
-if (!qv && rtag) {
-  // Derive owner/repo from the GitHub Pages URL, e.g. ryanifa.github.io/eoSwimming/…
+if (qv) {
+  $('urlInput').value = qv;
+  loadSrc(qv, qv.split('/').pop() || qv);
+} else if (rtag) {
   const owner = location.hostname.split('.')[0];
   const repo = location.pathname.split('/').filter(Boolean)[0] || '';
   const file = qp.get('f') || qp.get('file') || 'composite.mp4';
-  if (owner && repo) {
-    qv = 'https://github.com/' + owner + '/' + repo +
-         '/releases/download/' + encodeURIComponent(rtag) + '/' + encodeURIComponent(file);
+  const release = (owner && repo)
+    ? 'https://github.com/' + owner + '/' + repo +
+      '/releases/download/' + encodeURIComponent(rtag) + '/' + encodeURIComponent(file)
+    : '';
+  if (file === 'composite.mp4') {
+    // Prefer the same-origin Pages copy (served as video/mp4, so it plays
+    // inline on iPhone); fall back to the release asset if it isn't mirrored
+    // yet (that still works on desktop).
+    const local = 'videos/' + encodeURIComponent(rtag) + '.mp4';
+    $('urlInput').value = release || local;
+    loadSrc(local, rtag + '.mp4', release || null);
+  } else if (release) {
+    $('urlInput').value = release;
+    loadSrc(release, file);
   }
 }
-if (qv) { $('urlInput').value = qv; loadSrc(qv, qv.split('/').pop() || qv); }
 
 // ---------- playback ----------
 function togglePlay() {
