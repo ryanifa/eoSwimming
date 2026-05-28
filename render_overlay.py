@@ -3,7 +3,8 @@
 This mirrors the live canvas preview in docs/index.html as closely as possible:
 a scrolling force/velocity chart (force on the left axis, hand speed on the
 right), a metrics panel, and the Head On / Overhead / Side On hand-path panels
-with phase colours, the moving marker and the swimmer figures.
+with phase colours, the moving marker, the swimmer figures and a per-plane
+force-direction compass beside each panel.
 
 Which series and panels are drawn is controlled by environment variables that
 the workflow fills from its checkbox inputs (propulsion is on by default).
@@ -428,12 +429,15 @@ def build_views():
     return [
         {"title": "Head On", "glyph": "headon", "xLabel": "fwd (cm)", "yLabel": "depth (cm)",
          "x": ("sweep", "sweep"), "y": ("depth", "depth"), "rotate": False, "mirror": False,
+         "force": {"x": "forward", "y": "vertical"}, "fLabel": "fwd·vert",
          "needs": ("sweep", "depth"), "env": "VIEW_HEADON"},
         {"title": "Overhead", "glyph": "overhead", "xLabel": "lat (cm)", "yLabel": "fwd (cm)",
          "x": ("sweep", "xAxis"), "y": ("sweep", "sweep"), "rotate": True, "mirror": True,
+         "force": {"x": "lateral", "y": "forward"}, "fLabel": "lat·fwd",
          "needs": ("sweep",), "env": "VIEW_OVERHEAD"},
         {"title": "Side On", "glyph": "side", "xLabel": "lat (cm)", "yLabel": "depth (cm)",
          "x": ("depth", "xAxis"), "y": ("depth", "depth"), "rotate": False, "mirror": False,
+         "force": {"x": "lateral", "y": "vertical"}, "fLabel": "lat·vert",
          "needs": ("depth",), "env": "VIEW_SIDEON"},
     ]
 
@@ -460,17 +464,21 @@ def draw_chart(cv, now_ms, w, h, active, show_left, show_right):
     pv = G["views"] if G["show_path"] else []
     if layout == 2:
         # mode 2: chart along the top, to the right of the left-hand panels
+        # and their force compasses
         chartY = 40
         if pv:
-            _, _, S, ox = path_panel_geom(w, h, len(pv), layout)
-            chartX = ox + S + 18
+            gap, _, S, ox = path_panel_geom(w, h, len(pv), layout)
+            cs = round(S * 0.62)             # panel + force-compass column
+            chartX = ox + S + gap + cs + 18
             chartW = w * 0.92 - chartX
     else:
         # mode 1: chart along the bottom, clear of the right-hand panels
+        # and their force compasses
         chartY = h - chartH - 10
         if pv:
-            _, _, _, ox = path_panel_geom(w, h, len(pv), layout)
-            chartW = min(chartW, ox - 12 - chartX)
+            gap, _, S, ox = path_panel_geom(w, h, len(pv), layout)
+            cs = round(S * 0.62)
+            chartW = min(chartW, ox - cs - gap - 12 - chartX)
 
     cv.rrect(chartX - 6, chartY - 30, chartW + 12, chartH + 50, 8, fill=rgba("#00352f", 0.55))
     cv.rrect(chartX, chartY, chartW, chartH, 0, stroke=rgba("#ffffff", 0.25), stroke_w=1)
@@ -544,8 +552,7 @@ def draw_metrics(cv, now_ms, w, h, active, in_range, show_left, show_right):
     lineH = max(16, min(22, h * 0.03))
     tw = min(320, w * 0.30)              # text column width
     ph = 14 + lineH * (len(rows) + 1) + 8
-    aw = ph                              # square force-arrow box to the right of the legend
-    pw = tw + aw
+    pw = tw
     # mode 2 is a 180-degree mirror of mode 1: readout moves to the bottom-right
     # (panels are full-size on the left, chart top-right)
     if G.get("layout", 1) == 2:
@@ -561,15 +568,31 @@ def draw_metrics(cv, now_ms, w, h, active, in_range, show_left, show_right):
     for i, (color, text) in enumerate(rows):
         cv.text(px + 12, py + lineH * (i + 2), text, fmono, rgba(color, 1.0), anchor="ls")
 
-    draw_force_arrow(cv, px + tw, py, aw, ph, now_ms, in_range, show_left, show_right)
+
+# Instantaneous force-direction compass for one path-view plane, synced to the
+# video. Same convention as the sync tool (docs/index.html): the view's two
+# in-plane force components map to screen x (right) and y (down); the right hand
+# has lateral mirrored so both hands read intuitively. Arrow length scales with
+# force (shared N scale); per-hand in-plane magnitude prints in the top quadrants.
+def force_val(side, comp, idx):
+    arr = ((G.get("forces") or {}).get(side) or {}).get(comp) or []
+    if idx >= len(arr) or arr[idx] is None:
+        return None
+    v = arr[idx]
+    if comp == "lateral" and side == "right":
+        v = -v                           # mirror right hand
+    return v
 
 
-# Small compass showing the instantaneous force direction, synced to the video.
-# Same convention as the Force Field page: x = lateral (right hand mirrored),
-# y = forward with propulsive pointing down; arrow length scales with force.
-def draw_force_arrow(cv, bx, by, bw, bh, now_ms, in_range, show_left, show_right):
-    cx, cy = bx + bw / 2, by + bh / 2
-    r = min(bw, bh) * 0.36
+def draw_force_compass(cv, bx, by, bs, now_ms, in_range, view, show_left, show_right):
+    titleH = 16
+    cv.rrect(bx, by, bs, bs + titleH, 8, fill=rgba("#00352f", 0.72),
+             stroke=rgba("#ffffff", 0.35), stroke_w=1)
+    ftitle = font(FONT_SANS_BOLD, max(8, round(bs * 0.1)))
+    cv.text(bx + 6, by + 12, "Force", ftitle, rgba("#cfe9ff", 1.0), anchor="ls")
+    cv.text(bx + bs - 6, by + 12, view["fLabel"], ftitle, rgba("#cfe9ff", 0.7), anchor="rs")
+
+    cx, cy, r = bx + bs / 2, by + titleH + bs / 2, bs * 0.36
     grid = rgba("#ffffff", 0.18)
     cv.disc(cx, cy, r, fill=None, stroke=grid, stroke_w=1)
     cv.line((cx - r, cy), (cx + r, cy), grid, 1)
@@ -577,22 +600,17 @@ def draw_force_arrow(cv, bx, by, bw, bh, now_ms, in_range, show_left, show_right
     if not in_range:
         return
 
-    forces = G.get("forces") or {}
+    fx, fy = view["force"]["x"], view["force"]["y"]
     idx = int(now_ms // 10)
     scale = r / (G.get("max_total") or 1.0)
 
-    def arrow(name, color, on):
+    def arrow(side, color, on):
         if not on:
             return
-        s = forces.get(name) or {}
-        fwd, lat_a = s.get("forward") or [], s.get("lateral") or []
-        if idx >= len(fwd) or idx >= len(lat_a):
+        vx, vy = force_val(side, fx, idx), force_val(side, fy, idx)
+        if vx is None or vy is None:
             return
-        f, lat = fwd[idx], lat_a[idx]
-        if f is None or lat is None:
-            return
-        x = (-lat if name == "right" else lat) * scale
-        y = f * scale                    # propulsive down
+        x, y = vx * scale, vy * scale
         length = math.hypot(x, y)
         if length < 1:
             return
@@ -608,23 +626,17 @@ def draw_force_arrow(cv, bx, by, bw, bh, now_ms, in_range, show_left, show_right
     arrow("left", "#f5a04b", show_left)
     arrow("right", "#3aa0f5", show_right)
 
-    # force magnitude readouts in the (mostly empty) top quadrants:
-    # left side top-left, right side top-right
+    # in-plane force magnitude in the (mostly empty) top quadrants
     flbl = font(FONT_MONO, max(9, round(r * 0.34)))
 
-    def label(name, color, on, anchor):
+    def label(side, color, on, anchor):
         if not on:
             return
-        s = forces.get(name) or {}
-        tot = s.get("total") or []
-        v = tot[idx] if idx < len(tot) and tot[idx] is not None else None
-        if v is None:
-            fwd, lat_a = s.get("forward") or [], s.get("lateral") or []
-            if idx >= len(fwd) or idx >= len(lat_a) or fwd[idx] is None or lat_a[idx] is None:
-                return
-            v = math.hypot(fwd[idx], lat_a[idx])
+        vx, vy = force_val(side, fx, idx), force_val(side, fy, idx)
+        if vx is None or vy is None:
+            return
         tx = cx - r * 0.96 if anchor[0] == "l" else cx + r * 0.96
-        cv.text(tx, cy - r * 0.55, f"{round(v)} N", flbl, rgba(color, 1.0), anchor=anchor)
+        cv.text(tx, cy - r * 0.55, f"{round(math.hypot(vx, vy))} N", flbl, rgba(color, 1.0), anchor=anchor)
 
     label("left", "#f5a04b", show_left, "lm")
     label("right", "#3aa0f5", show_right, "rm")
@@ -698,10 +710,19 @@ def draw_path_panel(cv, now_ms, w, h, show_left, show_right):
     views = G["views"]
     if not views:
         return
-    gap, titleH, S, ox = path_panel_geom(w, h, len(views), G.get("layout", 1))
+    layout = G.get("layout", 1)
+    gap, titleH, S, ox = path_panel_geom(w, h, len(views), layout)
+    cs = round(S * 0.62)                 # force-compass beside each panel
+    # layout 1: panels are flush right, compass sits to their left; layout 2 mirrors it
+    cx0 = ox + S + gap if layout == 2 else ox - cs - gap
+    times = G["times"]
+    in_range = times[0] <= now_ms <= times[-1]
     oy = 12
     for v in views:
         draw_path_square(cv, ox, oy, S, v, now_ms, show_left, show_right)
+        if v.get("force"):
+            draw_force_compass(cv, cx0, oy + round((S - cs) / 2), cs, now_ms,
+                               in_range, v, show_left, show_right)
         oy += S + titleH + gap
 
 
@@ -788,8 +809,10 @@ def render_overlay(swim_dir: Path, fps: int = FRAME_RATE, keep_frames: bool = Fa
     _l = data.get("left") or {}
     _r = data.get("right") or {}
     forces = {
-        "left": {"forward": _l.get("forward") or [], "lateral": _l.get("lateral") or [], "total": _l.get("total") or []},
-        "right": {"forward": _r.get("forward") or [], "lateral": _r.get("lateral") or [], "total": _r.get("total") or []},
+        "left": {"forward": _l.get("forward") or [], "lateral": _l.get("lateral") or [],
+                 "vertical": _l.get("vertical") or [], "total": _l.get("total") or []},
+        "right": {"forward": _r.get("forward") or [], "lateral": _r.get("lateral") or [],
+                  "vertical": _r.get("vertical") or [], "total": _r.get("total") or []},
     }
     max_total = max([1.0] + (_l.get("total") or []) + (_r.get("total") or []))
 
