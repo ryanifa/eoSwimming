@@ -807,6 +807,28 @@ function drawForceArrow(bx, by, bw, bh, dataT, inRange) {
   };
   arrow('left', '#f5a04b', showLeftOn());
   arrow('right', '#3aa0f5', showRightOn());
+
+  // force magnitude readouts in the (mostly empty) top quadrants:
+  // left side top-left, right side top-right
+  ctx.font = 'bold ' + Math.max(9, Math.round(r * 0.34)) + 'px monospace';
+  ctx.textBaseline = 'middle';
+  const label = (name, color, on, align) => {
+    if (!on) return;
+    const s = data[name] || {};
+    let v = (s.total || [])[idx];
+    if (v == null) {
+      const f = (s.forward || [])[idx], lat = (s.lateral || [])[idx];
+      if (f == null || lat == null) return;
+      v = Math.hypot(f, lat);
+    }
+    ctx.fillStyle = color;
+    ctx.textAlign = align;
+    const tx = align === 'left' ? cx - r * 0.96 : cx + r * 0.96;
+    ctx.fillText(Math.round(v) + ' N', tx, cy - r * 0.55);
+  };
+  label('left', '#f5a04b', showLeftOn(), 'left');
+  label('right', '#3aa0f5', showRightOn(), 'right');
+  ctx.textBaseline = 'alphabetic';
 }
 
 function drawPathPanel(w, h, dataT, inRange) {
