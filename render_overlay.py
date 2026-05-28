@@ -710,9 +710,18 @@ def render_overlay(swim_dir: Path, fps: int = FRAME_RATE, keep_frames: bool = Fa
         shutil.rmtree(frames_dir)
     frames_dir.mkdir()
 
+    _l = data.get("left") or {}
+    _r = data.get("right") or {}
+    forces = {
+        "left": {"forward": _l.get("forward") or [], "lateral": _l.get("lateral") or []},
+        "right": {"forward": _r.get("forward") or [], "lateral": _r.get("lateral") or []},
+    }
+    max_total = max([1.0] + (_l.get("total") or []) + (_r.get("total") or []))
+
     payload = {"times": times, "active": active, "sweep": sweep, "depth": depth,
                "views": views, "show_path": show_path, "show_left": show_left,
-               "show_right": show_right, "layout": layout}
+               "show_right": show_right, "layout": layout,
+               "forces": forces, "max_total": max_total}
     work = [(i, start_ms + i * 1000 / fps, frames_dir) for i in range(total_frames)]
 
     workers = max(1, cpu_count())

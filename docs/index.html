@@ -539,8 +539,10 @@ function drawOverlay() {
   }
 
   const lineH = Math.max(16, Math.min(22, h * 0.03));
-  const pw = Math.min(320, w * 0.30);
+  const tw = Math.min(320, w * 0.30);          // text column width
   const ph = 14 + lineH * (rows.length + 1) + 8;
+  const aw = ph;                                // square force-arrow box to the right of the legend
+  const pw = tw + aw;
   // mode 2 is a 180-degree mirror of mode 1: readout moves to the bottom-right
   const px = lay === 2 ? (w - pw - 14) : 14;
   const py = lay === 2 ? (h - ph - 14) : 14;
@@ -561,6 +563,7 @@ function drawOverlay() {
     overlayCtx.fillText(row.text, px + 12, py + lineH * (i + 2));
   });
 
+  drawForceArrow(px + tw, py, aw, ph, dataT, inRange);
   drawPathPanel(w, h, dataT, inRange);
 }
 
@@ -756,6 +759,54 @@ function pathPanelGeom(w, h, n, layout = 1) {
   let S = Math.min(w * 0.19, (h - 24 - gap * (n - 1)) / n - titleH);
   S = Math.max(78, S);
   return { gap, titleH, S, ox: layout === 2 ? 12 : w - S - 12 };
+}
+
+function maxTotalForce() {
+  if (data._maxTotal != null) return data._maxTotal;
+  let m = 0;
+  for (const name of ['left', 'right']) {
+    const a = (data[name] || {}).total || [];
+    for (const v of a) if (v > m) m = v;
+  }
+  data._maxTotal = m || 1;
+  return data._maxTotal;
+}
+
+// Small compass showing the instantaneous force direction, synced to the video.
+// Same convention as the Force Field page: x = lateral (right hand mirrored),
+// y = forward with propulsive pointing down; arrow length scales with force.
+function drawForceArrow(bx, by, bw, bh, dataT, inRange) {
+  const ctx = overlayCtx;
+  const cx = bx + bw / 2, cy = by + bh / 2, r = Math.min(bw, bh) * 0.36;
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2 * Math.PI); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy);
+  ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r); ctx.stroke();
+  if (!inRange) return;
+
+  const idx = Math.floor(dataT / 10);
+  const scale = r / maxTotalForce();
+  const arrow = (name, color, on) => {
+    if (!on) return;
+    const s = data[name] || {};
+    const f = (s.forward || [])[idx], lat = (s.lateral || [])[idx];
+    if (f == null || lat == null) return;
+    const x = (name === 'right' ? -lat : lat) * scale;
+    const y = f * scale;                       // propulsive down
+    const len = Math.hypot(x, y);
+    if (len < 1) return;
+    const ux = x / len, uy = y / len, hx = cx + x, hy = cy + y, hs = Math.min(7, r * 0.3);
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(hx, hy); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(hx, hy);
+    ctx.lineTo(hx - hs * ux - hs * 0.6 * uy, hy - hs * uy + hs * 0.6 * ux);
+    ctx.lineTo(hx - hs * ux + hs * 0.6 * uy, hy - hs * uy - hs * 0.6 * ux);
+    ctx.closePath(); ctx.fill();
+  };
+  arrow('left', '#f5a04b', showLeftOn());
+  arrow('right', '#3aa0f5', showRightOn());
 }
 
 function drawPathPanel(w, h, dataT, inRange) {
