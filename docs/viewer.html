@@ -89,6 +89,23 @@
       gap: 20px; text-align: center; padding: 32px;
       background: #0e1a17; color: #eaeaea;
     }
+    /* Fallback for phones whose auto-rotate doesn't work: rotate the whole
+       UI 90° so the video shows landscape on a portrait-held phone. */
+    body.force-landscape {
+      position: absolute; top: 0; left: 100%;
+      width: 100vh; height: 100vw; overflow: hidden;
+      transform-origin: left top; transform: rotate(90deg);
+    }
+    body.force-landscape #rotate { display: none !important; }
+  }
+  /* small corner refresh, only in the forced-landscape fallback */
+  #flRefresh { display: none; }
+  body.force-landscape #flRefresh {
+    display: block; position: absolute; right: 8px; top: 8px; z-index: 6;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    background: rgba(0,0,0,.62); color: #fff;
+    border: 2px solid rgba(255,255,255,.92); border-radius: 12px;
+    font-size: 18px; padding: 8px 12px; cursor: pointer;
   }
   .rot-icon { font-size: 76px; line-height: 1; animation: tilt 2s ease-in-out infinite; }
   .rot-title { font-size: 25px; font-weight: 700; }
@@ -120,11 +137,13 @@
     <span>Rotate your phone to landscape.</span>
   </div>
   <button class="rot-refresh" id="refreshBtn">↻ Vernieuwen / Refresh</button>
+  <button class="rot-refresh" id="forceLandscapeBtn" style="background:#2c4540;">Werkt draaien niet? → Toon liggend</button>
   <div class="rot-build">build __BUILD_VERSION__</div>
 </div>
 
 <div class="stage" id="stage">
   <video id="video" muted playsinline webkit-playsinline preload="auto"></video>
+  <button id="flRefresh" title="Refresh">↻</button>
 
   <div class="sidebtns left">
     <button id="back1"  title="Back 1 frame (←)">−1</button>
@@ -278,6 +297,8 @@ layoutBars();
 // video; the portrait screen also has an explicit Refresh button.
 const portraitMQ = window.matchMedia('(orientation: portrait)');
 const onOrient = () => {
+  // ignore while the user has chosen the forced-landscape fallback
+  if (document.body.classList.contains('force-landscape')) return;
   if (portraitMQ.matches && window.matchMedia('(pointer: coarse)').matches) {
     location.reload();
   } else {
@@ -288,6 +309,13 @@ const onOrient = () => {
 if (portraitMQ.addEventListener) portraitMQ.addEventListener('change', onOrient);
 else if (portraitMQ.addListener) portraitMQ.addListener(onOrient);
 $('refreshBtn').addEventListener('click', () => location.reload());
+$('flRefresh').addEventListener('click', () => location.reload());
+
+// Fallback for phones that can't auto-rotate: rotate the whole UI 90°.
+$('forceLandscapeBtn').addEventListener('click', () => {
+  document.body.classList.add('force-landscape');
+  setTimeout(() => { layoutBars(); restart(); }, 100);
+});
 
 window.addEventListener('keydown', e => {
   const tag = (e.target.tagName || '').toLowerCase();
