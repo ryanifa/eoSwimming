@@ -2,168 +2,107 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>eo Swim frame viewer</title>
 <style>
   * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    margin: 0; padding: 20px; background: #0e1a17; color: #eaeaea;
-    max-width: 1200px; margin-left: auto; margin-right: auto;
-  }
-  h1 { margin: 0 0 6px; font-size: 22px; font-weight: 600; }
-  .hint { color: #8aa0a0; font-size: 13px; margin-bottom: 16px; }
-  .hint code { color: #cfe9ff; }
-
-  .drop {
-    border: 2px dashed #2c4540; border-radius: 8px; padding: 18px;
-    text-align: center; color: #8aa0a0; cursor: pointer;
-    transition: border-color .15s, background .15s; margin-bottom: 12px;
-  }
-  .drop:hover, .drop.drag { border-color: #4ea1ff; background: #142826; color: #fff; }
-  .drop.loaded { border-color: #2ca27a; color: #b6f0d2; background: #11231d; }
-  .drop input { display: none; }
-
-  .urlrow { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
-  .urlrow input[type=text] {
-    flex: 1; min-width: 240px; padding: 8px 10px; background: #0a1513;
-    border: 1px solid #2c4540; color: #fff; border-radius: 4px; font-size: 14px;
+    background: #000; color: #eaeaea; overflow: hidden;
+    height: 100vh; height: 100dvh;
+    display: flex; flex-direction: column;
   }
 
+  /* The video fills the whole screen. */
   .stage {
-    position: relative; background: #000; border-radius: 8px;
-    border: 1px solid #2c4540; overflow: hidden; margin-bottom: 12px;
-    aspect-ratio: 16 / 9; cursor: pointer;
+    position: relative; flex: 1 1 auto; min-height: 0; width: 100%;
+    background: #000; overflow: hidden; cursor: pointer;
   }
-  .stage video { width: 100%; height: 100%; display: block; }
+  .stage video { width: 100%; height: 100%; display: block; object-fit: contain; }
+
+  /* Step controls overlaid on the left (back) and right (forward) edges. */
+  .sidebtns {
+    position: absolute; top: 0; bottom: 0; z-index: 3;
+    display: flex; flex-direction: column; justify-content: center;
+    gap: 16px; padding: 0 12px;
+  }
+  .sidebtns.left  { left: 0;  align-items: flex-start; }
+  .sidebtns.right { right: 0; align-items: flex-end; }
+  .sidebtns button {
+    -webkit-tap-highlight-color: transparent;
+    background: rgba(18,38,36,.55); color: #fff; border: 0; border-radius: 12px;
+    font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums;
+    padding: 16px 16px; min-width: 64px; cursor: pointer;
+    backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+  }
+  .sidebtns button:active { background: rgba(31,107,255,.85); }
+  .sidebtns button:disabled { opacity: .35; }
+
+  /* Small time / frame readout on the video. */
+  #readout {
+    position: absolute; left: 50%; transform: translateX(-50%); bottom: 10px;
+    z-index: 3; pointer-events: none;
+    font-family: monospace; font-size: 12px; color: #cfe9ff;
+    background: rgba(0,0,0,.5); padding: 3px 8px; border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  #build {
+    position: absolute; right: 8px; top: 8px; z-index: 3; pointer-events: none;
+    font-size: 10px; color: #6f8a86; opacity: .7;
+  }
+
+  #emptyhint {
+    position: absolute; inset: 0; z-index: 2; display: flex;
+    align-items: center; justify-content: center; text-align: center; padding: 24px;
+    color: #8aa0a0; font-size: 15px; line-height: 1.6;
+  }
+  #emptyhint code { color: #cfe9ff; }
+
   #vmsg {
-    position: absolute; inset: 0; display: none; align-items: center;
-    justify-content: center; text-align: center; padding: 24px;
+    position: absolute; inset: 0; z-index: 4; display: none;
+    align-items: center; justify-content: center; text-align: center; padding: 24px;
     color: #ffb4b4; font-size: 14px; line-height: 1.5; background: rgba(0,0,0,.6);
   }
   #vmsg.show { display: flex; }
   #vmsg code { color: #ffd9a0; }
-
-  /* compact time/frame readout, overlaid on the video so the control bar
-     stays on a single line and the video keeps the space */
-  #readout {
-    position: absolute; left: 8px; bottom: 8px; pointer-events: none;
-    font-family: monospace; font-size: 12px; color: #cfe9ff;
-    background: rgba(0,0,0,.5); padding: 3px 7px; border-radius: 4px;
-    white-space: nowrap;
-  }
-
-  .player { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; flex-wrap: nowrap; }
-  .player button { padding: 8px 9px; font-size: 13px; white-space: nowrap; }
-  .player button.step { min-width: 40px; }
-  input[type=range] { flex: 1 1 40px; min-width: 40px; }
-  button {
-    padding: 8px 16px; background: #1f6bff; color: white; border: 0;
-    border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 600;
-  }
-  button:hover { background: #4286ff; }
-  button.secondary { background: #2c4540; }
-  button.secondary:hover { background: #3a5a54; }
-  button:disabled { opacity: .5; cursor: default; }
-
-  details { margin-top: 14px; color: #8aa0a0; font-size: 13px; }
-  details summary { cursor: pointer; }
-  .advanced { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-  .advanced input[type=number] {
-    width: 86px; padding: 6px 8px; background: #0a1513; border: 1px solid #2c4540;
-    color: #fff; border-radius: 4px; font-family: monospace; font-size: 14px;
-  }
-
-  /* Focus mode: only the video + transport controls, filling the screen.
-     Handy on a phone. Toggled by the ⛶ button (or the "f" key / Esc to exit). */
-  body.focus {
-    padding: 0; margin: 0; max-width: none; background: #000;
-    height: 100vh; height: 100dvh; overflow: hidden;
-    display: flex; flex-direction: column;
-  }
-  body.focus > * { display: none !important; }
-  body.focus .stage {
-    display: block !important; flex: 1 1 auto; min-height: 0;
-    width: 100%; aspect-ratio: auto; border: 0; border-radius: 0; margin: 0;
-  }
-  body.focus .stage video { object-fit: contain; }
-  body.focus .player {
-    display: flex !important; flex: 0 0 auto; margin: 0;
-    padding: 10px 12px; background: #0a1513; border-top: 1px solid #2c4540;
-  }
 </style>
 </head>
 <body>
 
-<div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-  <h1>eo SwimBETTER — frame viewer</h1>
-  <span style="margin-left:auto; font-size:12px; color:#6f8a86; white-space:nowrap;" id="buildVersion" title="Build deployed to GitHub Pages">build __BUILD_VERSION__</span>
-  <a href="index.html" style="color:#4ea1ff; font-size:14px; text-decoration:none; white-space:nowrap;">← Sync tool</a>
-</div>
-<div class="hint">
-  Play the finished <code>composite.mp4</code> from the <strong>Composite video with overlay</strong>
-  workflow, frame by frame. Drop the file below or paste a release / direct video link.
-  Step with the <strong>−10 / −1 / +1 / +10 frame</strong> buttons or the <strong>←</strong> / <strong>→</strong>
-  keys (hold <strong>Shift</strong> for ±10), and <strong>Space</strong> to play/pause.
-  Tap <strong>⛶</strong> to toggle the maximized (full-screen) view.
-  <br><strong>Share a release:</strong> just append <code>?r=&lt;release-tag&gt;</code> to this page's URL
-  (e.g. <code>?r=eindresultaat</code>) and it opens that release's video automatically —
-  the person you send it to needs no GitHub account.
-</div>
-
-<label class="drop" id="dropVideo">
-  <strong>Drop the composite video (.mp4)</strong><br>
-  <small>or click to choose — this is the workflow's <code>composite.mp4</code> output</small>
-  <input type="file" id="videoInput" accept="video/*,.mp4,.mov,.webm">
-</label>
-
-<div class="urlrow">
-  <input type="text" id="urlInput" placeholder="https://github.com/.../releases/download/<tag>/composite.mp4  — or any direct video URL">
-  <button class="secondary" id="loadUrlBtn">Load URL</button>
-</div>
-
 <div class="stage" id="stage">
   <video id="video" muted playsinline webkit-playsinline preload="auto"></video>
-  <div id="readout">0:00.00 / 0:00.00 · frame 0 / 0</div>
+
+  <div class="sidebtns left">
+    <button id="back10" title="Back 10 frames (Shift+←)">−10</button>
+    <button id="back1"  title="Back 1 frame (←)">−1</button>
+  </div>
+  <div class="sidebtns right">
+    <button id="fwd1"  title="Forward 1 frame (→)">+1</button>
+    <button id="fwd10" title="Forward 10 frames (Shift+→)">+10</button>
+  </div>
+
+  <div id="readout"></div>
+  <div id="build">build __BUILD_VERSION__</div>
+  <div id="emptyhint">Tap to choose a video — or open a <code>?r=&lt;release-tag&gt;</code> share link</div>
   <div id="vmsg"></div>
 </div>
 
-<div class="player">
-  <button class="secondary step" id="back10" title="Back 10 frames (Shift+←)">−10</button>
-  <button class="secondary step" id="back1" title="Back 1 frame (←)">−1</button>
-  <button id="playBtn" disabled title="Play / pause (Space)">▶</button>
-  <button class="secondary step" id="fwd1" title="Forward 1 frame (→)">+1</button>
-  <button class="secondary step" id="fwd10" title="Forward 10 frames (Shift+→)">+10</button>
-  <input type="range" id="seek" min="0" max="100" step="0.01" value="0">
-  <button class="secondary" id="focusBtn" title="Fullscreen video (toggle · f)">⛶</button>
-</div>
-
-<details>
-  <summary>Frame rate &amp; tips</summary>
-  <p>
-    The frame rate is detected automatically from the video while it plays, so the step
-    buttons land exactly on frame boundaries. If the frame counter looks off, set it by hand:
-  </p>
-  <div class="advanced">
-    <label for="fps">fps</label>
-    <input type="number" id="fps" min="1" max="240" step="0.001" value="30">
-    <span id="fpsNote" style="color:#6f8a86;">auto</span>
-  </div>
-  <p style="margin-top:10px;">
-    Tip: pause first, then tap <strong>→</strong> / <strong>←</strong> to walk through the
-    stroke frame by frame. The overlay (force chart, hand-path panels and the force compasses)
-    is already burned into this video by the workflow.
-  </p>
-</details>
+<!-- hidden helpers: file picking + (auto-detected) frame rate -->
+<input type="file" id="videoInput" accept="video/*,.mp4,.mov,.webm" style="display:none">
+<input type="number" id="fps" value="30" style="display:none">
 
 <script>
 const $ = id => document.getElementById(id);
 const video = $('video');
-const seek = $('seek');
-const playBtn = $('playBtn');
 const readout = $('readout');
 const fpsInput = $('fps');
-const fpsNote = $('fpsNote');
+const vmsg = $('vmsg');
+const emptyhint = $('emptyhint');
+const stageEl = $('stage');
+
+let hasVideo = false;
 
 function fmtTime(s) {
   if (!isFinite(s)) s = 0;
@@ -172,23 +111,20 @@ function fmtTime(s) {
   return m + ':' + (r < 10 ? '0' : '') + r.toFixed(2);
 }
 
-// ---------- loading ----------
-const vmsg = $('vmsg');
 function showMsg(html) {
   if (!html) { vmsg.classList.remove('show'); vmsg.innerHTML = ''; return; }
   vmsg.innerHTML = html; vmsg.classList.add('show');
 }
 
+// ---------- loading ----------
 let pendingFallback = null;
 function loadSrc(src, name, fallback) {
   showMsg('');
   pendingFallback = fallback || null;
+  hasVideo = true;
+  emptyhint.style.display = 'none';
   video.src = src;
   video.load();              // iOS needs an explicit load to start fetching
-  playBtn.disabled = false;
-  const el = $('dropVideo');
-  el.classList.add('loaded');
-  el.querySelector('strong').textContent = '✓ ' + (name || src);
 }
 
 // iOS often paints a black <video> until a frame is decoded — nudge it.
@@ -199,7 +135,6 @@ video.addEventListener('loadeddata', () => {
 
 // Surface load failures instead of a silent black screen.
 video.addEventListener('error', () => {
-  // If the same-origin Pages copy isn't there yet, try the release asset.
   if (pendingFallback) {
     const fb = pendingFallback; pendingFallback = null;
     loadSrc(fb, fb.split('/').pop() || fb);
@@ -207,78 +142,30 @@ video.addEventListener('error', () => {
   }
   const codes = { 1: 'aborted', 2: 'network', 3: 'decode', 4: 'format not supported' };
   const c = video.error && video.error.code;
-  showMsg(
-    'Could not play this video' + (c ? ' — <code>' + (codes[c] || c) + '</code>' : '') + '.<br>' +
-    'On iPhone the file must be served as <code>video/mp4</code>; a GitHub release ' +
-    'asset stored as <code>application/octet-stream</code> will not play inline.'
-  );
+  showMsg('Could not play this video' + (c ? ' — <code>' + (codes[c] || c) + '</code>' : '') + '.');
 });
 
-function setupDrop(elId, inputId, onFile) {
-  const el = $(elId), input = $(inputId);
-  const hand = files => { if (files && files.length) onFile(files[0], el); };
-  el.addEventListener('click', () => input.click());
-  input.addEventListener('change', e => hand(e.target.files));
-  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag'); });
-  el.addEventListener('dragleave', () => el.classList.remove('drag'));
-  el.addEventListener('drop', e => { e.preventDefault(); el.classList.remove('drag'); hand(e.dataTransfer.files); });
-}
-
-setupDrop('dropVideo', 'videoInput', file => loadSrc(URL.createObjectURL(file), file.name));
-
-$('loadUrlBtn').addEventListener('click', () => {
-  const u = $('urlInput').value.trim();
-  if (u) loadSrc(u, u.split('/').pop() || u);
+// drag/drop or tap-to-choose a local file
+const fileInput = $('videoInput');
+fileInput.addEventListener('change', e => {
+  const f = e.target.files && e.target.files[0];
+  if (f) loadSrc(URL.createObjectURL(f), f.name);
 });
-$('urlInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('loadUrlBtn').click(); });
+stageEl.addEventListener('dragover', e => e.preventDefault());
+stageEl.addEventListener('drop', e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) loadSrc(URL.createObjectURL(f), f.name);
+});
 
-// Auto-load on open via the query string:
-//   ?v=<full-url>       any direct video / release download link
-//   ?r=<tag>            a release tag in THIS repo (asset defaults to composite.mp4)
-//   ?r=<tag>&f=<file>   pick a different asset name from that release
-// The ?r= form is the easy share link: send someone
-//   <this-page>?r=<tag>  and it opens that release's video — no GitHub account needed.
-const qp = new URLSearchParams(location.search);
-const qv = qp.get('v') || qp.get('video');
-const rtag = qp.get('r') || qp.get('release');
-if (qv) {
-  $('urlInput').value = qv;
-  loadSrc(qv, qv.split('/').pop() || qv);
-} else if (rtag) {
-  const owner = location.hostname.split('.')[0];
-  const repo = location.pathname.split('/').filter(Boolean)[0] || '';
-  const file = qp.get('f') || qp.get('file') || 'composite.mp4';
-  const release = (owner && repo)
-    ? 'https://github.com/' + owner + '/' + repo +
-      '/releases/download/' + encodeURIComponent(rtag) + '/' + encodeURIComponent(file)
-    : '';
-  if (file === 'composite.mp4') {
-    // Prefer the same-origin Pages copy (served as video/mp4, so it plays
-    // inline on iPhone); fall back to the release asset if it isn't mirrored
-    // yet (that still works on desktop).
-    const local = 'videos/' + encodeURIComponent(rtag) + '.mp4';
-    $('urlInput').value = release || local;
-    loadSrc(local, rtag + '.mp4', release || null);
-  } else if (release) {
-    $('urlInput').value = release;
-    loadSrc(release, file);
-  }
-}
-
-// ---------- playback ----------
+// ---------- playback: tap the video to play/pause (or pick a file if empty) ----------
 function togglePlay() {
-  if (!video.src) return;
   if (video.paused) { const p = video.play(); if (p && p.catch) p.catch(() => {}); }
   else video.pause();
 }
-playBtn.addEventListener('click', togglePlay);
-const stageEl = $('stage');
-stageEl.addEventListener('click', togglePlay);
-video.addEventListener('play', () => playBtn.textContent = '⏸');
-video.addEventListener('pause', () => playBtn.textContent = '▶');
-
-seek.addEventListener('input', e => {
-  if (video.duration) video.currentTime = (e.target.value / 100) * video.duration;
+stageEl.addEventListener('click', () => {
+  if (!hasVideo) { fileInput.click(); return; }
+  togglePlay();
 });
 
 // ---------- frame stepping ----------
@@ -287,43 +174,30 @@ function currentFps() {
   return f && f > 0 ? f : 30;
 }
 function frameStep(deltaFrames) {
-  if (!video.src || !isFinite(video.duration)) return;
+  if (!hasVideo || !isFinite(video.duration)) return;
   if (!video.paused) video.pause();
   const fps = currentFps();
   const idx = Math.round(video.currentTime * fps) + deltaFrames;
   const t = Math.max(0, Math.min(video.duration - 0.5 / fps, idx / fps));
   video.currentTime = t;
 }
-$('back10').addEventListener('click', () => frameStep(-10));
-$('back1').addEventListener('click', () => frameStep(-1));
-$('fwd1').addEventListener('click', () => frameStep(1));
-$('fwd10').addEventListener('click', () => frameStep(10));
-
-// ---------- focus (phone) mode: video + transport controls only ----------
-const focusBtn = $('focusBtn');
-function setFocus(on) {
-  document.body.classList.toggle('focus', on);
-  focusBtn.textContent = on ? '✕' : '⛶';
-  focusBtn.title = on ? 'Exit fullscreen (Esc)' : 'Fullscreen video (toggle · f)';
+function wireStep(id, delta) {
+  $(id).addEventListener('click', e => { e.stopPropagation(); frameStep(delta); });
 }
-focusBtn.addEventListener('click', () => setFocus(!document.body.classList.contains('focus')));
-
-// Open maximized when a video was provided via the share link.
-if (qv || rtag) setFocus(true);
+wireStep('back10', -10);
+wireStep('back1', -1);
+wireStep('fwd1', 1);
+wireStep('fwd10', 10);
 
 window.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { if (document.body.classList.contains('focus')) setFocus(false); return; }
   const tag = (e.target.tagName || '').toLowerCase();
   if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
   if (e.key === 'ArrowRight') { frameStep(e.shiftKey ? 10 : 1); e.preventDefault(); }
   else if (e.key === 'ArrowLeft') { frameStep(e.shiftKey ? -10 : -1); e.preventDefault(); }
-  else if (e.key === ' ' || e.code === 'Space') { togglePlay(); e.preventDefault(); }
-  else if (e.key === 'f' || e.key === 'F') { setFocus(!document.body.classList.contains('focus')); e.preventDefault(); }
+  else if (e.key === ' ' || e.code === 'Space') { if (hasVideo) togglePlay(); e.preventDefault(); }
 });
 
 // ---------- fps auto-detect (sample frame timestamps while playing) ----------
-let fpsTouched = false;
-fpsInput.addEventListener('input', () => { fpsTouched = true; fpsNote.textContent = 'manual'; });
 if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
   let last = null, deltas = [];
   const sample = (now, meta) => {
@@ -332,16 +206,15 @@ if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
       if (dt > 0.001 && dt < 0.2) deltas.push(dt);
     }
     last = meta.mediaTime;
-    if (!fpsTouched && deltas.length < 40 && !video.paused) {
+    if (deltas.length < 40 && !video.paused) {
       video.requestVideoFrameCallback(sample);
-    } else if (!fpsTouched && deltas.length >= 12) {
+    } else if (deltas.length >= 12) {
       deltas.sort((a, b) => a - b);
       const med = deltas[Math.floor(deltas.length / 2)];
       const raw = 1 / med;
       const common = [23.976, 24, 25, 29.97, 30, 50, 59.94, 60, 120, 240];
       const snap = common.reduce((p, c) => Math.abs(c - raw) < Math.abs(p - raw) ? c : p);
       fpsInput.value = Math.abs(snap - raw) / raw < 0.05 ? snap : raw.toFixed(3);
-      fpsNote.textContent = 'auto (' + fpsInput.value + ')';
     }
   };
   video.addEventListener('play', () => { last = null; deltas = []; video.requestVideoFrameCallback(sample); });
@@ -353,7 +226,6 @@ function tick() {
     const fps = currentFps();
     const frame = Math.round(video.currentTime * fps);
     const total = Math.round(video.duration * fps);
-    seek.value = (video.currentTime / video.duration) * 100;
     readout.textContent =
       fmtTime(video.currentTime) + ' / ' + fmtTime(video.duration) +
       ' · frame ' + frame + ' / ' + total;
@@ -361,6 +233,33 @@ function tick() {
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
+
+// ---------- auto-load from the query string ----------
+//   ?v=<full-url>       any direct video / release download link
+//   ?r=<tag>            a release tag in THIS repo (asset defaults to composite.mp4)
+//   ?r=<tag>&f=<file>   pick a different asset name from that release
+const qp = new URLSearchParams(location.search);
+const qv = qp.get('v') || qp.get('video');
+const rtag = qp.get('r') || qp.get('release');
+if (qv) {
+  loadSrc(qv, qv.split('/').pop() || qv);
+} else if (rtag) {
+  const owner = location.hostname.split('.')[0];
+  const repo = location.pathname.split('/').filter(Boolean)[0] || '';
+  const file = qp.get('f') || qp.get('file') || 'composite.mp4';
+  const release = (owner && repo)
+    ? 'https://github.com/' + owner + '/' + repo +
+      '/releases/download/' + encodeURIComponent(rtag) + '/' + encodeURIComponent(file)
+    : '';
+  if (file === 'composite.mp4') {
+    // Prefer the same-origin Pages copy (served as video/mp4 → plays inline on
+    // iPhone); fall back to the release asset if it isn't mirrored yet.
+    const local = 'videos/' + encodeURIComponent(rtag) + '.mp4';
+    loadSrc(local, rtag + '.mp4', release || null);
+  } else if (release) {
+    loadSrc(release, file);
+  }
+}
 </script>
 </body>
 </html>
