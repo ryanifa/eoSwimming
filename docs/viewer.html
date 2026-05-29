@@ -24,20 +24,22 @@
   /* Step controls overlaid on the left (back) and right (forward) edges. */
   .sidebtns {
     position: absolute; top: 0; bottom: 0; z-index: 3;
-    display: flex; flex-direction: column; justify-content: center;
-    gap: 16px; padding: 0 12px;
+    display: flex; flex-direction: column; justify-content: space-evenly;
+    padding: 10px 14px;
   }
   .sidebtns.left  { left: 0;  align-items: flex-start; }
   .sidebtns.right { right: 0; align-items: flex-end; }
   .sidebtns button {
     -webkit-tap-highlight-color: transparent;
-    background: rgba(18,38,36,.55); color: #fff; border: 0; border-radius: 12px;
-    font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums;
-    padding: 16px 16px; min-width: 64px; cursor: pointer;
+    background: rgba(0,0,0,.62); color: #fff;
+    border: 2px solid rgba(255,255,255,.92); border-radius: 14px;
+    font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums;
+    padding: 18px 18px; min-width: 74px; cursor: pointer;
+    text-shadow: 0 1px 2px rgba(0,0,0,.85);
+    box-shadow: 0 2px 12px rgba(0,0,0,.55);
     backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
   }
-  .sidebtns button:active { background: rgba(31,107,255,.85); }
-  .sidebtns button:disabled { opacity: .35; }
+  .sidebtns button:active { background: #1f6bff; border-color: #1f6bff; }
 
   /* Small time / frame readout on the video. */
   #readout {
@@ -67,16 +69,44 @@
   }
   #vmsg.show { display: flex; }
   #vmsg code { color: #ffd9a0; }
+
+  /* "Rotate your phone" prompt — only on a phone held in portrait. */
+  #rotate { display: none; }
+  @media (orientation: portrait) and (pointer: coarse) {
+    #rotate {
+      display: flex; position: fixed; inset: 0; z-index: 50;
+      flex-direction: column; align-items: center; justify-content: center;
+      gap: 20px; text-align: center; padding: 32px;
+      background: #0e1a17; color: #eaeaea;
+    }
+  }
+  .rot-icon { font-size: 76px; line-height: 1; animation: tilt 2s ease-in-out infinite; }
+  .rot-title { font-size: 25px; font-weight: 700; }
+  .rot-sub { font-size: 15px; color: #8aa0a0; line-height: 1.6; }
+  .rot-sub span { display: block; font-size: 13px; opacity: .8; margin-top: 4px; }
+  @keyframes tilt {
+    0%, 35%  { transform: rotate(0deg); }
+    65%, 100% { transform: rotate(90deg); }
+  }
 </style>
 </head>
 <body>
+
+<div id="rotate">
+  <div class="rot-icon">📱</div>
+  <div class="rot-title">Draai je telefoon</div>
+  <div class="rot-sub">
+    Bekijk de viewer in liggende (landscape) stand.
+    <span>Rotate your phone to landscape.</span>
+  </div>
+</div>
 
 <div class="stage" id="stage">
   <video id="video" muted playsinline webkit-playsinline preload="auto"></video>
 
   <div class="sidebtns left">
-    <button id="back10" title="Back 10 frames (Shift+←)">−10</button>
     <button id="back1"  title="Back 1 frame (←)">−1</button>
+    <button id="back10" title="Back 10 frames (Shift+←)">−10</button>
   </div>
   <div class="sidebtns right">
     <button id="fwd1"  title="Forward 1 frame (→)">+1</button>
@@ -188,6 +218,10 @@ wireStep('back10', -10);
 wireStep('back1', -1);
 wireStep('fwd1', 1);
 wireStep('fwd10', 10);
+
+// taps in the side columns step frames only — play/pause stays on the video
+document.querySelectorAll('.sidebtns').forEach(el =>
+  el.addEventListener('click', e => e.stopPropagation()));
 
 window.addEventListener('keydown', e => {
   const tag = (e.target.tagName || '').toLowerCase();
