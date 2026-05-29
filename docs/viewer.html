@@ -6,7 +6,11 @@
 <title>eo Swim frame viewer</title>
 <style>
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; height: 100%; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    touch-action: manipulation;            /* no double-tap-to-zoom / tap delay */
+    -webkit-text-size-adjust: 100%;
+  }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     background: #000; color: #eaeaea; overflow: hidden;
@@ -18,6 +22,7 @@
   .stage {
     position: relative; flex: 1 1 auto; min-height: 0; width: 100%;
     background: #000; overflow: hidden; cursor: pointer;
+    touch-action: manipulation;
   }
   .stage video { width: 100%; height: 100%; display: block; object-fit: contain; }
 
@@ -34,7 +39,7 @@
   .sidebtns.left  { left: 0; }
   .sidebtns.right { right: 0; }
   .sidebtns button {
-    -webkit-tap-highlight-color: transparent;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
     width: 100%; max-width: 112px; min-width: 0;
     background: rgba(0,0,0,.62); color: #fff;
     border: 2px solid rgba(255,255,255,.92); border-radius: 14px;
@@ -89,6 +94,10 @@
   .rot-title { font-size: 25px; font-weight: 700; }
   .rot-sub { font-size: 15px; color: #8aa0a0; line-height: 1.6; }
   .rot-sub span { display: block; font-size: 13px; opacity: .8; margin-top: 4px; }
+  .rot-build {
+    position: absolute; left: 0; right: 0; bottom: 18px;
+    text-align: center; font-size: 14px; color: #b9c9c5; font-family: monospace;
+  }
   @keyframes tilt {
     0%, 35%  { transform: rotate(0deg); }
     65%, 100% { transform: rotate(90deg); }
@@ -104,6 +113,7 @@
     Bekijk de viewer in liggende (landscape) stand.
     <span>Rotate your phone to landscape.</span>
   </div>
+  <div class="rot-build">build __BUILD_VERSION__</div>
 </div>
 
 <div class="stage" id="stage">
