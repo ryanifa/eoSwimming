@@ -94,6 +94,12 @@
   .rot-title { font-size: 25px; font-weight: 700; }
   .rot-sub { font-size: 15px; color: #8aa0a0; line-height: 1.6; }
   .rot-sub span { display: block; font-size: 13px; opacity: .8; margin-top: 4px; }
+  .rot-refresh {
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    margin-top: 6px; background: #1f6bff; color: #fff; border: 0; border-radius: 10px;
+    font-size: 16px; font-weight: 700; padding: 14px 24px; cursor: pointer;
+  }
+  .rot-refresh:active { background: #4286ff; }
   .rot-build {
     position: absolute; left: 0; right: 0; bottom: 18px;
     text-align: center; font-size: 14px; color: #b9c9c5; font-family: monospace;
@@ -113,6 +119,7 @@
     Bekijk de viewer in liggende (landscape) stand.
     <span>Rotate your phone to landscape.</span>
   </div>
+  <button class="rot-refresh" id="refreshBtn">↻ Vernieuwen / Refresh</button>
   <div class="rot-build">build __BUILD_VERSION__</div>
 </div>
 
@@ -263,8 +270,22 @@ function layoutBars() {
 }
 video.addEventListener('loadedmetadata', layoutBars);
 window.addEventListener('resize', layoutBars);
-window.addEventListener('orientationchange', () => setTimeout(layoutBars, 200));
 layoutBars();
+
+// iOS can leave the video frozen after switching apps. Refresh everything when
+// the phone is rotated to portrait, so rotating back to landscape shows a fresh
+// video; the portrait screen also has an explicit Refresh button.
+const portraitMQ = window.matchMedia('(orientation: portrait)');
+const onOrient = () => {
+  if (portraitMQ.matches && window.matchMedia('(pointer: coarse)').matches) {
+    location.reload();
+  } else {
+    setTimeout(layoutBars, 200);
+  }
+};
+if (portraitMQ.addEventListener) portraitMQ.addEventListener('change', onOrient);
+else if (portraitMQ.addListener) portraitMQ.addListener(onOrient);
+$('refreshBtn').addEventListener('click', () => location.reload());
 
 window.addEventListener('keydown', e => {
   const tag = (e.target.tagName || '').toLowerCase();
