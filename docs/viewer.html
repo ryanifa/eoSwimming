@@ -248,11 +248,12 @@ const playBtn = $('playBtn');
 playBtn.addEventListener('click', () => { if (hasVideo) togglePlay(); });
 video.addEventListener('play', () => playBtn.textContent = '⏸');
 video.addEventListener('pause', () => playBtn.textContent = '▶');
-$('resetBtn').addEventListener('click', () => {
+function restart() {
   if (!hasVideo) return;
-  video.currentTime = 0;
+  try { video.currentTime = 0; } catch (_) {}
   const p = video.play(); if (p && p.catch) p.catch(() => {});
-});
+}
+$('resetBtn').addEventListener('click', restart);
 
 // taps in the side columns step frames only — play/pause stays on the video
 document.querySelectorAll('.sidebtns').forEach(el =>
@@ -280,7 +281,8 @@ const onOrient = () => {
   if (portraitMQ.matches && window.matchMedia('(pointer: coarse)').matches) {
     location.reload();
   } else {
-    setTimeout(layoutBars, 200);
+    // rotated to landscape: re-measure and play from the beginning
+    setTimeout(() => { layoutBars(); restart(); }, 250);
   }
 };
 if (portraitMQ.addEventListener) portraitMQ.addEventListener('change', onOrient);
