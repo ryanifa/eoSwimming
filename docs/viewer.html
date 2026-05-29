@@ -121,10 +121,12 @@
 
   <div class="sidebtns left">
     <button id="back1"  title="Back 1 frame (←)">−1</button>
+    <button id="resetBtn" title="Restart from the beginning">↺</button>
     <button id="back10" title="Back 10 frames (Shift+←)">−10</button>
   </div>
   <div class="sidebtns right">
     <button id="fwd1"  title="Forward 1 frame (→)">+1</button>
+    <button id="playBtn" title="Play / pause">▶</button>
     <button id="fwd10" title="Forward 10 frames (Shift+→)">+10</button>
   </div>
 
@@ -233,6 +235,17 @@ wireStep('back10', -10);
 wireStep('back1', -1);
 wireStep('fwd1', 1);
 wireStep('fwd10', 10);
+
+// play/pause button (right, middle) and restart button (left, middle)
+const playBtn = $('playBtn');
+playBtn.addEventListener('click', () => { if (hasVideo) togglePlay(); });
+video.addEventListener('play', () => playBtn.textContent = '⏸');
+video.addEventListener('pause', () => playBtn.textContent = '▶');
+$('resetBtn').addEventListener('click', () => {
+  if (!hasVideo) return;
+  video.currentTime = 0;
+  const p = video.play(); if (p && p.catch) p.catch(() => {});
+});
 
 // taps in the side columns step frames only — play/pause stays on the video
 document.querySelectorAll('.sidebtns').forEach(el =>
