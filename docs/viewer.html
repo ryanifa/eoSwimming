@@ -24,7 +24,11 @@
     background: #000; overflow: hidden; cursor: pointer;
     touch-action: manipulation;
   }
-  .stage video { width: 100%; height: 100%; display: block; object-fit: contain; }
+  .stage video {
+    position: absolute; top: 0; bottom: 0;
+    left: var(--vpad, 0px); right: var(--vpad, 0px);
+    width: auto; height: 100%; display: block; object-fit: contain;
+  }
 
   /* Step controls live in the letterbox bar beside the (contained) video,
      centred across the bar width so they don't cover the film. --bar is the
@@ -293,8 +297,17 @@ function layoutBars() {
   const sw = stageEl.clientWidth, sh = stageEl.clientHeight;
   if (!sw || !sh) return;
   const scale = Math.min(sw / vw, sh / vh);
-  const bar = Math.max(0, (sw - vw * scale) / 2);
+  const natural = Math.max(0, (sw - vw * scale) / 2);   // letterbox the video makes on its own
+  const MIN = 72;                                        // guarantee tappable columns
+  let bar = natural, vpad = 0;
+  if (natural < MIN) {
+    // not enough black margin: squeeze the video in so a MIN-wide column exists.
+    // once the video is width-limited its rendered edge sits exactly at vpad.
+    bar = MIN;
+    vpad = MIN;
+  }
   document.documentElement.style.setProperty('--bar', bar.toFixed(1) + 'px');
+  document.documentElement.style.setProperty('--vpad', vpad.toFixed(1) + 'px');
 }
 video.addEventListener('loadedmetadata', layoutBars);
 window.addEventListener('resize', layoutBars);
