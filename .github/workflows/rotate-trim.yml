@@ -1,4 +1,5 @@
 name: Rotate & trim video
+run-name: "Rotate & trim (rotate ${{ inputs.rotate }}, ${{ inputs.start_seconds }}–${{ inputs.end_seconds }}s)"
 
 on:
   workflow_dispatch:

@@ -1,4 +1,5 @@
 name: Render video overlay (latest swim)
+run-name: "Render overlay (latest swim, ${{ inputs.fps }} fps)"
 
 on:
   workflow_dispatch:

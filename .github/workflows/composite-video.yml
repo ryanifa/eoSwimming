@@ -1,4 +1,5 @@
 name: Composite video with overlay (by swim ID)
+run-name: "Composite → swim ${{ inputs.swim_id }} (offset ${{ inputs.swim_start_seconds }}s, ${{ inputs.playback_speed }}×)"
 
 on:
   workflow_dispatch:

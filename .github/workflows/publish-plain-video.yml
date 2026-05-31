@@ -1,5 +1,8 @@
 name: Publish a plain video to the viewer (no data)
 
+# Distinct title per run so triggered runs are easy to tell apart in the list.
+run-name: "Plain video → ${{ inputs.tag }}"
+
 # For a video that has no swim data — you just want to watch it frame by
 # frame in the viewer and share it. Downloads the video, applies +faststart
 # (so it streams on mobile) and publishes it as composite.mp4 in a release.

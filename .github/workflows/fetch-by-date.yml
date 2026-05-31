@@ -1,4 +1,5 @@
 name: Fetch swim by date
+run-name: "Fetch swim by date → ${{ inputs.custom_date || inputs.date }}${{ inputs.swim_id && format(' (id {0})', inputs.swim_id) || '' }}"
 
 on:
   workflow_dispatch:
