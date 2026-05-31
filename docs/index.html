@@ -145,6 +145,19 @@
   <span id="speedVal" style="font-family:monospace;color:#cfe9ff;min-width:46px;text-align:right;">1.0×</span>
 </div>
 
+<div class="controls">
+  <div class="row">
+    <label>Coarse offset (s):</label>
+    <input type="range" id="coarse" min="-30" max="60" step="0.5" value="0">
+    <span id="coarseVal" style="font-family:monospace;width:60px;text-align:right;">0.0</span>
+  </div>
+  <div class="row">
+    <label>Fine offset (s):</label>
+    <input type="range" id="fine" min="-1" max="1" step="0.01" value="0">
+    <span id="fineVal" style="font-family:monospace;width:60px;text-align:right;">0.00</span>
+  </div>
+</div>
+
 <div class="legend" id="legend">
   <span class="m">Current data position</span>
   <span style="margin-left:auto">Use the slider above to scrub the video</span>
@@ -178,16 +191,6 @@
 </div>
 
 <div class="controls">
-  <div class="row">
-    <label>Coarse offset (s):</label>
-    <input type="range" id="coarse" min="-30" max="60" step="0.5" value="0">
-    <span id="coarseVal" style="font-family:monospace;width:60px;text-align:right;">0.0</span>
-  </div>
-  <div class="row">
-    <label>Fine offset (s):</label>
-    <input type="range" id="fine" min="-1" max="1" step="0.01" value="0">
-    <span id="fineVal" style="font-family:monospace;width:60px;text-align:right;">0.00</span>
-  </div>
   <div class="row">
     <label>swim_start_seconds:</label>
     <span class="offset" id="offsetVal">0.00</span>
