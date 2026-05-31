@@ -1,0 +1,78 @@
+name: Publish a plain video to the viewer (no data)
+
+# For a video that has no swim data — you just want to watch it frame by
+# frame in the viewer and share it. Downloads the video, applies +faststart
+# (so it streams on mobile) and publishes it as composite.mp4 in a release.
+# The Pages deploy then mirrors it to video/mp4, so the share link
+#   https://ryanifa.github.io/eoSwimming/viewer.html?r=<tag>
+# works on iPhone too — no GitHub account needed for whoever you send it to.
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: "Direct download URL for the video (transfer.sh, public Dropbox/Drive direct link, GitHub Release asset, etc.)"
+        required: true
+      tag:
+        description: "Release tag / share name (used in the ?r=<tag> link, e.g. peter-freestyle)"
+        required: true
+      title:
+        description: "Release title (optional)"
+        required: false
+        default: ""
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write          # needed to publish the video as a Release asset
+    steps:
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Download the video
+        run: |
+          curl -L --fail --max-time 900 -o input.mp4 "${{ inputs.video_url }}"
+          ls -lh input.mp4
+          ffprobe -v error -show_entries format=duration,size:stream=width,height,codec_name \
+            -of default=noprint_wrappers=1 input.mp4 || true
+
+      - name: Remux to a mobile-friendly composite.mp4
+        run: |
+          # Re-encode to H.264/AAC yuv420p with the index up front. Re-encoding
+          # (rather than -c copy) guarantees the result plays inline on iPhone
+          # even if the source used an unsupported codec/profile.
+          ffmpeg -y -i input.mp4 \
+            -c:v libx264 -pix_fmt yuv420p -preset fast -crf 20 \
+            -c:a aac -b:a 192k \
+            -movflags +faststart \
+            composite.mp4
+          ls -lh composite.mp4
+
+      - name: Publish to a Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.tag }}"
+          TITLE="${{ inputs.title }}"
+          [ -n "$TITLE" ] || TITLE="Video — $TAG"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" composite.mp4 --clobber
+          else
+            gh release create "$TAG" composite.mp4 \
+              --title "$TITLE" \
+              --notes "Open frame by frame: https://ryanifa.github.io/eoSwimming/viewer.html?r=$TAG"
+          fi
+          VIEWER="https://ryanifa.github.io/eoSwimming/viewer.html?r=$TAG"
+          ASSET="https://github.com/${{ github.repository }}/releases/download/$TAG/composite.mp4"
+          echo "Frame viewer: $VIEWER"
+          {
+            echo "### Frame-by-frame viewer"
+            echo ""
+            echo "[Open this video in the frame viewer]($VIEWER)"
+            echo ""
+            echo "(Plays inline on iPhone once the Pages deploy has mirrored this release — usually a minute or two.)"
+            echo ""
+            echo "Direct video: <$ASSET>"
+          } >> "$GITHUB_STEP_SUMMARY"
