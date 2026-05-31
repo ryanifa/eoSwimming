@@ -60,10 +60,14 @@ jobs:
           TAG="${{ inputs.tag }}"
           TITLE="${{ inputs.title }}"
           [ -n "$TITLE" ] || TITLE="Video — $TAG"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" composite.mp4 --clobber
+          # --repo is required: this job has no checkout, so gh can't infer the
+          # repo from a local .git directory.
+          REPO="${{ github.repository }}"
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" composite.mp4 --clobber --repo "$REPO"
           else
             gh release create "$TAG" composite.mp4 \
+              --repo "$REPO" \
               --title "$TITLE" \
               --notes "Open frame by frame: https://ryanifa.github.io/eoSwimming/viewer.html?r=$TAG"
           fi
