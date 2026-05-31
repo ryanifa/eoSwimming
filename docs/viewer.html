@@ -94,9 +94,17 @@
     body.force-landscape {
       position: absolute; top: 0; left: 100%;
       width: 100vh; height: 100vw; overflow: hidden;
+      /* size to the *visible* viewport so the rotated edges (which map to the
+         screen top/bottom) don't fall under the browser toolbar / home bar */
+      width: 100dvh; height: 100dvw;
       transform-origin: left top; transform: rotate(90deg);
     }
     body.force-landscape #rotate { display: none !important; }
+    /* After the 90° rotation the body's left/right edges map to the screen's
+       top/bottom edges, so inset the columns there to clear any system UI
+       (browser bar, home indicator) — this is what hid the right column. */
+    body.force-landscape .sidebtns.left  { left: 10px; }
+    body.force-landscape .sidebtns.right { right: 10px; }
   }
   /* small corner refresh, only in the forced-landscape fallback */
   #flRefresh { display: none; }
@@ -314,7 +322,9 @@ $('flRefresh').addEventListener('click', () => location.reload());
 // Fallback for phones that can't auto-rotate: rotate the whole UI 90°.
 $('forceLandscapeBtn').addEventListener('click', () => {
   document.body.classList.add('force-landscape');
+  // recompute after the rotated layout settles (twice, for slower devices)
   setTimeout(() => { layoutBars(); restart(); }, 100);
+  setTimeout(layoutBars, 450);
 });
 
 window.addEventListener('keydown', e => {
