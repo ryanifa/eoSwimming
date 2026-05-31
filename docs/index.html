@@ -128,6 +128,32 @@
   <canvas id="overlay"></canvas>
 </div>
 
+<div class="player">
+  <button id="playBtn">▶ Play</button>
+  <button class="secondary" id="back10" title="Back 10 frames (Shift+←)">−10f</button>
+  <button class="secondary" id="back1" title="Back 1 frame (←)">−1f</button>
+  <button class="secondary" id="fwd1" title="Forward 1 frame (→)">+1f</button>
+  <button class="secondary" id="fwd10" title="Forward 10 frames (Shift+→)">+10f</button>
+  <input type="range" id="seek" min="0" max="100" step="0.01" value="0">
+  <span id="timeLabel" style="font-family:monospace;color:#8aa0a0;min-width:210px;text-align:right;white-space:nowrap;">0:00.00 / 0:00.00  ·  0.00s</span>
+  <label style="display:inline-flex;width:auto;align-items:center;gap:6px;color:#8aa0a0;white-space:nowrap;">fps
+    <input type="number" id="fps" min="1" max="240" step="0.001" value="30" style="width:74px;">
+  </label>
+  <label style="display:inline-flex;width:auto;align-items:center;gap:6px;color:#8aa0a0;white-space:nowrap;">Speed
+    <input type="range" id="speed" min="0.1" max="2" step="0.05" value="1" style="width:110px;">
+  </label>
+  <span id="speedVal" style="font-family:monospace;color:#cfe9ff;min-width:46px;text-align:right;">1.0×</span>
+</div>
+
+<div class="legend" id="legend">
+  <span class="m">Current data position</span>
+  <span style="margin-left:auto">Use the slider above to scrub the video</span>
+</div>
+
+<div class="timeline">
+  <canvas id="timelineCanvas"></canvas>
+</div>
+
 <div class="series" id="seriesControls">
   <div class="title">
     Charts to overlay (left = solid, right = dashed) &nbsp;
@@ -149,32 +175,6 @@
 <div class="series" id="layoutControls">
   <div class="title">Layout (matches the composite workflow's "layout" option)</div>
   <label><input type="checkbox" id="layoutMirror"> Mirror (mode 2): paths left, force chart top, time/legend bottom-right</label>
-</div>
-
-<div class="legend" id="legend">
-  <span class="m">Current data position</span>
-  <span style="margin-left:auto">Use the slider below to scrub the video</span>
-</div>
-
-<div class="timeline">
-  <canvas id="timelineCanvas"></canvas>
-</div>
-
-<div class="player">
-  <button id="playBtn">▶ Play</button>
-  <button class="secondary" id="back10" title="Back 10 frames (Shift+←)">−10f</button>
-  <button class="secondary" id="back1" title="Back 1 frame (←)">−1f</button>
-  <button class="secondary" id="fwd1" title="Forward 1 frame (→)">+1f</button>
-  <button class="secondary" id="fwd10" title="Forward 10 frames (Shift+→)">+10f</button>
-  <input type="range" id="seek" min="0" max="100" step="0.01" value="0">
-  <span id="timeLabel" style="font-family:monospace;color:#8aa0a0;min-width:210px;text-align:right;white-space:nowrap;">0:00.00 / 0:00.00  ·  0.00s</span>
-  <label style="display:inline-flex;width:auto;align-items:center;gap:6px;color:#8aa0a0;white-space:nowrap;">fps
-    <input type="number" id="fps" min="1" max="240" step="0.001" value="30" style="width:74px;">
-  </label>
-  <label style="display:inline-flex;width:auto;align-items:center;gap:6px;color:#8aa0a0;white-space:nowrap;">Speed
-    <input type="range" id="speed" min="0.1" max="2" step="0.05" value="1" style="width:110px;">
-  </label>
-  <span id="speedVal" style="font-family:monospace;color:#cfe9ff;min-width:46px;text-align:right;">1.0×</span>
 </div>
 
 <div class="controls">
