@@ -182,6 +182,7 @@
   <label><input type="checkbox" id="viewSide"> Side On</label>
   <label><input type="checkbox" id="viewOverhead"> Overhead</label>
   <label><input type="checkbox" id="viewHeadon"> Head On</label>
+  <label><input type="checkbox" id="markDeepest" checked> Mark deepest point</label>
   <span class="empty" id="pathHint">Drop a pathsweep / pathdepth file to enable.</span>
 </div>
 
@@ -254,6 +255,7 @@ for (const k in SWIMMER_SRC) {
 function showLeftOn() { const el = $('showLeft'); return !el || el.checked; }
 function showRightOn() { const el = $('showRight'); return !el || el.checked; }
 function layoutMode() { const el = $('layoutMirror'); return el && el.checked ? 2 : 1; }
+function markDeepestOn() { const el = $('markDeepest'); return el && el.checked; }
 
 const FRIENDLY = {
   forward: 'Propulsive', propulsive: 'Propulsive', propulsion: 'Propulsive',
@@ -727,6 +729,33 @@ function drawPathSquare(ox, oy, S, view, dataT) {
       i = j;
     }
     ctx.setLineDash([]);
+    // static marker at the deepest point of this stroke (depth panels only):
+    // a fixed anchor to fine-tune the sync by eye — scrub the video to the
+    // frame where the hand is deepest, then nudge the offset until the moving
+    // dot sits on this crosshair.
+    if (view.y.key === 'depth' && markDeepestOn()) {
+      let di = -1, dv = Infinity;
+      for (let k = 0; k < pts.cmY.length; k++) {
+        if (pts.cmY[k] < dv) { dv = pts.cmY[k]; di = k; }
+      }
+      if (di >= 0) {
+        const mx = PX(pts.cmX[di], pts.cmY[di]), my = PY(pts.cmX[di], pts.cmY[di]);
+        const col = side === 'left' ? '#ff8a3d' : '#19e0ff';
+        const a = Math.max(6, S * 0.075);
+        ctx.setLineDash([]);
+        // white halo then coloured crosshair + ring so it reads on any path colour
+        for (const [c, lw] of [['#fff', 3.5], [col, 1.6]]) {
+          ctx.strokeStyle = c; ctx.lineWidth = lw;
+          ctx.beginPath();
+          ctx.moveTo(mx - a, my); ctx.lineTo(mx + a, my);
+          ctx.moveTo(mx, my - a); ctx.lineTo(mx, my + a);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(mx, my, a * 0.55, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+    }
     // moving dot — only while the playhead is actually inside this stroke
     const t = pts.stroke.time;
     if (t && t.length && dataT >= t[0] && dataT <= t[t.length - 1]) {
