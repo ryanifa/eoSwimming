@@ -381,6 +381,8 @@ function togglePlay() {
 }
 stageEl.addEventListener('click', () => {
   if (!hasVideo) { fileInput.click(); return; }
+  // in edit mode the film is a drawing surface — don't toggle play on taps
+  if (document.body.classList.contains('trainer')) return;
   togglePlay();
 });
 
@@ -563,7 +565,7 @@ if (qv) {
 
   // visible version marker so we can confirm which build loaded (caches!)
   const bld = $('build');
-  if (bld) { bld.textContent = 'annot v2 · edit:' + (editable ? 'AAN' : 'uit');
+  if (bld) { bld.textContent = 'annot v3 · edit:' + (editable ? 'AAN' : 'uit');
              bld.style.color = '#9fffe0'; bld.style.opacity = '1'; bld.style.fontSize = '11px'; }
 
   // ---------- canvas sizing & video-rect mapping ----------
