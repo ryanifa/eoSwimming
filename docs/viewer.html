@@ -555,6 +555,7 @@ if (qv) {
   const WINDOW = 0.20;          // s: a non-pinned mark shows within ±WINDOW of its time
   let marks = [];               // {t,k:'pen'|'arrow'|'memo',color,pin, pts|x1..y2 | dur,mime,au}
   let tool = 'pen', color = COLORS[0], pinned = false, liveMark = null;
+  let prevTime = 0, memoPlaying = false;   // for auto play/pause on memo frames
   const tl = $('timeline'), memoBadge = $('memoBadge');
 
   // edit mode: ?edit=1 on our own URL, or anywhere in the href so it still
@@ -565,7 +566,7 @@ if (qv) {
 
   // visible version marker so we can confirm which build loaded (caches!)
   const bld = $('build');
-  if (bld) { bld.textContent = 'annot v5 · edit:' + (editable ? 'AAN' : 'uit');
+  if (bld) { bld.textContent = 'annot v6 · edit:' + (editable ? 'AAN' : 'uit');
              bld.style.color = '#9fffe0'; bld.style.opacity = '1'; bld.style.fontSize = '11px'; }
 
   // ---------- canvas sizing & video-rect mapping ----------
@@ -732,17 +733,20 @@ if (qv) {
     const t = video.currentTime || 0;
     memoBadge.classList.toggle('show', marks.some(m => m.k === 'memo' && (m.pin || Math.abs(m.t - t) <= WINDOW)));
   }
-  memoBadge.addEventListener('click', e => {
-    e.stopPropagation();
-    const t = video.currentTime || 0;
-    const m = marks.filter(x => x.k === 'memo').sort((a, b) => Math.abs(a.t - t) - Math.abs(b.t - t))[0];
-    if (!m) return;
-    if (audioEl) audioEl.pause();
+  function nearestMemo(t) {
+    return marks.filter(x => x.k === 'memo').sort((a, b) => Math.abs(a.t - t) - Math.abs(b.t - t))[0];
+  }
+  function playMemo(m, onDone) {
+    if (!m) { if (onDone) onDone(); return; }
+    if (audioEl) { try { audioEl.pause(); } catch (_) {} }
     audioEl = new Audio('data:' + (m.mime || 'audio/webm') + ';base64,' + m.au);
     memoBadge.classList.add('playing');
-    audioEl.onended = () => memoBadge.classList.remove('playing');
-    audioEl.play().catch(() => { memoBadge.classList.remove('playing'); toast('Kan deze memo niet afspelen op dit toestel.'); });
-  });
+    const finish = () => { memoBadge.classList.remove('playing'); if (onDone) onDone(); };
+    audioEl.onended = finish;
+    audioEl.play().catch(() => { toast('Kan deze memo niet afspelen op dit toestel.'); finish(); });
+  }
+  // manual tap on the badge just plays the nearest memo
+  memoBadge.addEventListener('click', e => { e.stopPropagation(); playMemo(nearestMemo(video.currentTime || 0)); });
 
   // ---------- timeline (dots + scrub) ----------
   function updateTimeline() {
@@ -866,10 +870,31 @@ if (qv) {
              .catch(() => toast('Kon de annotaties in deze link niet lezen.'));
   })();
 
+  // ---------- auto play/pause on memo frames ----------
+  // While the film plays and reaches a memo's frame, pause and play that memo;
+  // when it ends, the film carries on by itself. Crossing detection (prev<t<=now)
+  // makes it fire once per pass and not while frame-stepping/scrubbing.
+  function autoMemo() {
+    const t = video.currentTime || 0;
+    if (!video.paused && !memoPlaying) {
+      for (const m of marks) {
+        if (m.k === 'memo' && prevTime < m.t && t >= m.t) {
+          memoPlaying = true; video.pause();
+          playMemo(m, () => {
+            memoPlaying = false; prevTime = video.currentTime || 0;
+            const p = video.play(); if (p && p.catch) p.catch(() => {});
+          });
+          break;
+        }
+      }
+    }
+    prevTime = t;
+  }
+
   // ---------- render loop ----------
   function loop() {
     const active = marks.length || document.body.classList.contains('trainer');
-    if (active) { renderAnnotations(); updateMemoBadge(); }
+    if (active) { renderAnnotations(); updateMemoBadge(); autoMemo(); }
     if (active || document.body.classList.contains('has-annot')) updateTimelineFill();
     requestAnimationFrame(loop);
   }
