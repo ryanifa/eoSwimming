@@ -558,7 +558,8 @@ if (qv) {
   const WINDOW = 0.20;          // s: a non-pinned mark shows within ±WINDOW of its time
   let marks = [];               // {t,k:'pen'|'arrow'|'memo',color,pin, pts|x1..y2 | dur,mime,au}
   let tool = 'pen', color = COLORS[0], pinned = false, liveMark = null;
-  let prevTime = 0, memoPlaying = false;   // for auto play/pause on memo frames
+  let prevTime = 0, memoPlaying = false, holdUntil = 0;   // auto play/pause state
+  const HOLD_MS = 2000;          // how long to hold on a drawing-only frame
   const tl = $('timeline'), memoBadge = $('memoBadge');
 
   // edit mode: ?edit=1 on our own URL, or anywhere in the href so it still
@@ -569,7 +570,7 @@ if (qv) {
 
   // visible version marker so we can confirm which build loaded (caches!)
   const bld = $('build');
-  if (bld) { bld.textContent = 'annot v7 · edit:' + (editable ? 'AAN' : 'uit');
+  if (bld) { bld.textContent = 'annot v8 · edit:' + (editable ? 'AAN' : 'uit');
              bld.style.color = '#9fffe0'; bld.style.opacity = '1'; bld.style.fontSize = '11px'; }
 
   // ---------- canvas sizing & video-rect mapping ----------
@@ -873,21 +874,31 @@ if (qv) {
              .catch(() => toast('Kon de annotaties in deze link niet lezen.'));
   })();
 
-  // ---------- auto play/pause on memo frames ----------
-  // While the film plays and reaches a memo's frame, pause and play that memo;
-  // when it ends, the film carries on by itself. Crossing detection (prev<t<=now)
-  // makes it fire once per pass and not while frame-stepping/scrubbing.
-  function autoMemo() {
+  // ---------- auto play/pause on annotated frames ----------
+  // While the film plays through a frame that carries a (non-pinned) mark, it
+  // pauses: a memo plays and the film resumes when it ends; a drawing-only frame
+  // is held for HOLD_MS so it's clearly visible, then resumes. Pinned marks span
+  // a range and are always on screen, so they don't trigger a pause. Crossing
+  // detection (prev<t<=now) fires once per pass and never while stepping/scrubbing.
+  const resumePlay = () => { const p = video.play(); if (p && p.catch) p.catch(() => {}); };
+  function autoStop() {
     const t = video.currentTime || 0;
+    if (holdUntil) {                              // currently holding on a drawing
+      if (performance.now() >= holdUntil) { holdUntil = 0; prevTime = t; resumePlay(); }
+      prevTime = t; return;
+    }
     if (!video.paused && !memoPlaying) {
-      for (const m of marks) {
-        if (m.k === 'memo' && prevTime < m.t && t >= m.t) {
-          memoPlaying = true; video.pause();
-          playMemo(m, () => {
-            memoPlaying = false; prevTime = video.currentTime || 0;
-            const p = video.play(); if (p && p.catch) p.catch(() => {});
-          });
-          break;
+      const crossed = marks.filter(m => !m.pin && prevTime < m.t && t >= m.t);
+      if (crossed.length) {
+        const t0 = Math.min(...crossed.map(m => m.t));
+        const group = marks.filter(m => !m.pin && Math.abs(m.t - t0) <= 0.05);
+        const memo = group.find(m => m.k === 'memo');
+        video.pause();
+        if (memo) {
+          memoPlaying = true;
+          playMemo(memo, () => { memoPlaying = false; prevTime = video.currentTime || 0; resumePlay(); });
+        } else {
+          holdUntil = performance.now() + HOLD_MS;
         }
       }
     }
@@ -897,7 +908,7 @@ if (qv) {
   // ---------- render loop ----------
   function loop() {
     const active = marks.length || document.body.classList.contains('trainer');
-    if (active) { renderAnnotations(); updateMemoBadge(); autoMemo(); }
+    if (active) { renderAnnotations(); updateMemoBadge(); autoStop(); }
     if (active || document.body.classList.contains('has-annot')) updateTimelineFill();
     requestAnimationFrame(loop);
   }
