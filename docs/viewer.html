@@ -190,6 +190,34 @@
   }
   #noteCap.show { display: block; }
 
+  /* voice-memo play badge (viewer taps to replay) */
+  #memoBadge {
+    position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
+    z-index: 4; display: none;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    background: rgba(0,0,0,.7); color: #38bdf8; border: 2px solid #38bdf8;
+    border-radius: 999px; font-size: 16px; font-weight: 700;
+    padding: 7px 14px; cursor: pointer; white-space: nowrap;
+  }
+  #memoBadge.show { display: block; }
+  #memoBadge.playing { background: #38bdf8; color: #04110d; }
+
+  /* compact recording bar — floats over the video so the frame stays visible */
+  #recBar {
+    position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
+    z-index: 8; display: none; align-items: center; gap: 11px;
+    background: rgba(0,0,0,.78); border: 1px solid #284038; border-radius: 14px;
+    padding: 8px 12px; max-width: 92%;
+  }
+  #recBar.show { display: flex; }
+  .recdot { width: 16px; height: 16px; border-radius: 50%; background: #ef4444;
+            flex: 0 0 auto; animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(.72);opacity:.6} }
+  .rectime { font-family: monospace; font-size: 16px; color: #fff; }
+  .recstop { background: #fff; color: #04110d; border: 0; border-radius: 10px;
+             font-size: 14px; font-weight: 700; padding: 9px 14px; cursor: pointer;
+             -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+
   /* slim timeline with annotation dots */
   #timeline { position: absolute; left: 12px; right: 12px; bottom: 30px; height: 16px;
               z-index: 3; cursor: pointer; display: none; }
@@ -204,6 +232,7 @@
            border-radius: 50%; background: #ffcf33; box-shadow: 0 0 0 1px rgba(0,0,0,.4);
            pointer-events: none; }
   .tldot.audio { background: #34d399; }
+  .tldot.memo { background: #38bdf8; }
 
   /* note input bar — floats over the video so the frame stays visible */
   #noteInput {
@@ -234,6 +263,31 @@
   }
   #toast.show { display: block; }
   #toast b { color: #9fffe0; }
+
+  /* publish panel (how the coach saves annotations to the repo) */
+  #pubPanel {
+    position: absolute; inset: 0; z-index: 10; display: none;
+    align-items: center; justify-content: center; padding: 20px;
+    background: rgba(4,17,13,.92);
+  }
+  #pubPanel.show { display: flex; }
+  .pubcard {
+    width: 560px; max-width: 94%; background: #0e1a17; border: 1px solid #284038;
+    border-radius: 14px; padding: 18px 18px 14px; color: #eaeaea;
+  }
+  .pubcard h3 { margin: 0 0 8px; font-size: 17px; }
+  .pubcard p { margin: 6px 0; font-size: 13.5px; line-height: 1.5; color: #b9c9c5; }
+  .pubcard ol { margin: 8px 0; padding-left: 20px; font-size: 13.5px; line-height: 1.6; }
+  .publink { display: flex; gap: 6px; margin: 10px 0; }
+  .publink input { flex: 1 1 auto; min-width: 0; background: #0b1714; color: #cfe9ff;
+                   border: 1px solid #284038; border-radius: 8px; padding: 9px 10px; font-size: 13px; }
+  .pubrow { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .pubbtn { -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+            border: 0; border-radius: 10px; font-size: 14px; font-weight: 700;
+            padding: 11px 14px; cursor: pointer; flex: 1 1 auto; text-align: center;
+            text-decoration: none; }
+  .pubbtn.primary { background: #1f6bff; color: #fff; }
+  .pubbtn.alt { background: #16241f; color: #cfe9ff; border: 1px solid #284038; }
 </style>
 </head>
 <body>
@@ -264,6 +318,7 @@
   <div class="sep"></div>
   <div class="group">
     <button class="tool" id="noteBtn" title="Tekstnotitie op dit frame">📝 notitie</button>
+    <button class="tool" id="micBtn"  title="Spraakmemo op dit frame">🎙️ memo</button>
     <button class="tool" id="pinBtn"  title="Markering op hele video tonen">📌 vastzet</button>
   </div>
   <div class="sep"></div>
@@ -272,7 +327,7 @@
     <button class="tool" id="clearBtn" title="Frame wissen">🗑</button>
   </div>
   <div class="spacer"></div>
-  <button class="tool" id="shareBtn" title="Deellink maken">🔗 deel</button>
+  <button class="tool" id="publishBtn" title="Annotaties opslaan & deellink maken">⇪ publiceer</button>
 </div>
 
 <div class="stage" id="stage">
@@ -282,12 +337,30 @@
   <button id="flRefresh" title="Refresh">↻</button>
 
   <div id="noteCap"></div>
+  <button id="memoBadge">🔊 memo</button>
   <div id="timeline"><div id="tlbar"></div><div id="tlfill"></div><div id="tlhandle"></div></div>
   <div id="toast"></div>
   <div id="noteInput">
     <input id="noteText" type="text" placeholder="Typ je opmerking…" autocomplete="off" autocapitalize="sentences">
     <button class="notebtn" id="noteSave">Bewaar</button>
     <button class="notebtn" id="noteCancel" title="Annuleren">✕</button>
+  </div>
+  <div id="recBar">
+    <div class="recdot"></div>
+    <div class="rectime" id="recTime">0,0s</div>
+    <button class="recstop" id="recStop">■ Stop &amp; bewaar</button>
+  </div>
+  <div id="pubPanel">
+    <div class="pubcard">
+      <h3>Annotaties publiceren</h3>
+      <p id="pubIntro"></p>
+      <div class="publink"><input id="pubUrl" readonly><button class="notebtn" id="pubCopy" style="background:#1f6bff;color:#fff">Kopieer</button></div>
+      <ol id="pubSteps"></ol>
+      <div class="pubrow">
+        <a class="pubbtn primary" id="pubGo" target="_blank" rel="noopener">Open in GitHub</a>
+        <button class="pubbtn alt" id="pubClose">Sluiten</button>
+      </div>
+    </div>
   </div>
 
   <div class="sidebtns left">
@@ -549,7 +622,7 @@ if (qv) {
 
 // ===================== annotaties / trainer-laag =====================
 // Self-contained: renders annotations on top of the video (read-only for
-// viewers) and, in edit mode (?edit=1), lets a coach draw, add short text
+// viewers) and, in edit mode (?edit=1), lets a coach draw, add text notes + voice memos, and save them to the repo (short ?a= link)
 // notes, and pack everything into the share link's #n= fragment.
 (function () {
   const draw = $('draw'), dctx = draw.getContext('2d');
@@ -569,7 +642,7 @@ if (qv) {
 
   // visible version marker so we can confirm which build loaded (caches!)
   const bld = $('build');
-  if (bld) { bld.textContent = 'annot v10 (tekst) · edit:' + (editable ? 'AAN' : 'uit');
+  if (bld) { bld.textContent = 'annot v11 (opslag) · edit:' + (editable ? 'AAN' : 'uit');
              bld.style.color = '#9fffe0'; bld.style.opacity = '1'; bld.style.fontSize = '11px'; }
 
   // ---------- canvas sizing & video-rect mapping ----------
@@ -687,11 +760,11 @@ if (qv) {
   $('undoBtn').addEventListener('click', () => {
     const t = video.currentTime || 0;
     for (let i = marks.length - 1; i >= 0; i--) { if (visible(marks[i], t)) { marks.splice(i, 1); break; } }
-    updateTimeline(); updateNoteCaption();
+    updateTimeline(); updateNoteCaption(); updateMemoBadge();
   });
   $('clearBtn').addEventListener('click', () => {
     const t = video.currentTime || 0; marks = marks.filter(m => !visible(m, t));
-    updateTimeline(); updateNoteCaption();
+    updateTimeline(); updateNoteCaption(); updateMemoBadge();
   });
 
   // ---------- text notes ----------
@@ -732,6 +805,62 @@ if (qv) {
     else noteCap.classList.remove('show');
   }
 
+  // ---------- voice memos ----------
+  let mediaRec = null, chunks = [], recStart = 0, recTimer = null, audioEl = null, memoPlaying = false;
+  const memoBadge = $('memoBadge');
+  function blobToB64(blob) {
+    return new Promise(res => { const fr = new FileReader();
+      fr.onload = () => res(String(fr.result).split(',')[1] || ''); fr.readAsDataURL(blob); });
+  }
+  $('micBtn').addEventListener('click', async () => {
+    if (!hasVideo) { toast('Laad eerst een video.'); return; }
+    if (!navigator.mediaDevices || !window.MediaRecorder) { toast('Opnemen wordt niet ondersteund op dit toestel.'); return; }
+    if (!video.paused) video.pause();
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } }); }
+    catch (_) { toast('Geen toegang tot de microfoon.'); return; }
+    const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac']
+      .find(m => { try { return MediaRecorder.isTypeSupported(m); } catch (_) { return false; } }) || '';
+    try { mediaRec = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 24000 } : undefined); }
+    catch (_) { mediaRec = new MediaRecorder(stream); }
+    chunks = [];
+    mediaRec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+    mediaRec.onstop = async () => {
+      stream.getTracks().forEach(tr => tr.stop());
+      const blob = new Blob(chunks, { type: mediaRec.mimeType || mime || 'audio/webm' });
+      const dur = (performance.now() - recStart) / 1000;
+      marks.push({ t: video.currentTime || 0, k: 'memo', pin: false, color: '#38bdf8', dur, mime: blob.type, au: await blobToB64(blob) });
+      updateTimeline(); updateMemoBadge();
+      toast('Spraakmemo bewaard (' + dur.toFixed(1).replace('.', ',') + 's).');
+      const p = video.play(); if (p && p.catch) p.catch(() => {});   // carry on playing
+    };
+    recStart = performance.now(); mediaRec.start();
+    $('recBar').classList.add('show');
+    recTimer = setInterval(() => { $('recTime').textContent = ((performance.now() - recStart) / 1000).toFixed(1).replace('.', ',') + 's'; }, 100);
+  });
+  $('recStop').addEventListener('click', e => {
+    e.stopPropagation();
+    if (mediaRec && mediaRec.state !== 'inactive') mediaRec.stop();
+    clearInterval(recTimer); $('recBar').classList.remove('show');
+  });
+  function nearestMemo(t) {
+    return marks.filter(x => x.k === 'memo').sort((a, b) => Math.abs(a.t - t) - Math.abs(b.t - t))[0];
+  }
+  function playMemo(m, onDone) {
+    if (!m) { if (onDone) onDone(); return; }
+    if (audioEl) { try { audioEl.pause(); } catch (_) {} }
+    audioEl = new Audio('data:' + (m.mime || 'audio/webm') + ';base64,' + m.au);
+    memoBadge.classList.add('playing');
+    const finish = () => { memoBadge.classList.remove('playing'); if (onDone) onDone(); };
+    audioEl.onended = finish;
+    audioEl.play().catch(() => { toast('Kan deze memo niet afspelen op dit toestel.'); finish(); });
+  }
+  function updateMemoBadge() {
+    const t = video.currentTime || 0;
+    memoBadge.classList.toggle('show', marks.some(m => m.k === 'memo' && (m.pin || Math.abs(m.t - t) <= WINDOW)));
+  }
+  memoBadge.addEventListener('click', e => { e.stopPropagation(); playMemo(nearestMemo(video.currentTime || 0)); });
+
   // ---------- timeline (dots + scrub) ----------
   function updateTimeline() {
     const dur = video.duration || 0;
@@ -739,10 +868,11 @@ if (qv) {
     if (dur > 0) {
       const seen = new Set();
       for (const m of marks) {
-        const key = m.t.toFixed(2) + (m.k === 'note' ? 'a' : 'd');
+        const kind = m.k === 'note' ? 'note' : m.k === 'memo' ? 'memo' : 'draw';
+        const key = m.t.toFixed(2) + kind;
         if (seen.has(key)) continue; seen.add(key);
         const dot = document.createElement('div');
-        dot.className = 'tldot' + (m.k === 'note' ? ' audio' : '');
+        dot.className = 'tldot' + (kind === 'note' ? ' audio' : kind === 'memo' ? ' memo' : '');
         dot.style.left = (Math.min(1, m.t / dur) * 100) + '%';
         tl.appendChild(dot);
       }
@@ -805,38 +935,75 @@ if (qv) {
       o.c = Math.max(0, COLORS.indexOf(m.color));
       if (m.k === 'pen') o.p = m.pts.map(p => [round(p[0], 4), round(p[1], 4)]);
       else if (m.k === 'arrow') o.a = [round(m.x1, 4), round(m.y1, 4), round(m.x2, 4), round(m.y2, 4)];
-      else o.x = m.text;
+      else if (m.k === 'note') o.x = m.text;
+      else { o.d = round(m.dur, 2); o.mi = m.mime; o.au = m.au; }   // memo (audio)
       return o;
     }) };
   }
   function deserialize(obj) {
     marks = ((obj && obj.m) || []).map(o => {
-      const k = o.k === 'p' ? 'pen' : o.k === 'a' ? 'arrow' : 'note';
+      const k = o.k === 'p' ? 'pen' : o.k === 'a' ? 'arrow' : o.k === 'm' ? 'memo' : 'note';
       const m = { t: o.t || 0, k, pin: !!o.P, color: COLORS[o.c || 0] || COLORS[0] };
       if (m.pin) m.end = (o.e != null ? o.e : Infinity);
       if (k === 'pen') m.pts = (o.p || []).map(p => [p[0], p[1]]);
       else if (k === 'arrow') { m.x1 = o.a[0]; m.y1 = o.a[1]; m.x2 = o.a[2]; m.y2 = o.a[3]; }
-      else { m.color = '#34d399'; m.text = o.x || ''; }
+      else if (k === 'note') { m.color = '#34d399'; m.text = o.x || ''; }
+      else { m.color = '#38bdf8'; m.dur = o.d || 0; m.mime = o.mi || 'audio/webm'; m.au = o.au || ''; }
       return m;
     });
   }
 
-  // ---------- share ----------
-  $('shareBtn').addEventListener('click', async () => {
-    if (!marks.length) { toast('Nog niets om te delen — teken eerst iets of voeg een notitie toe.'); return; }
-    const payload = await pack(serialize());
-    const params = new URLSearchParams(location.search); params.delete('edit');
-    const qs = params.toString();
-    const url = location.origin + location.pathname + (qs ? '?' + qs : '') + '#n=' + payload;
-    const kb = (url.length / 1024).toFixed(1).replace('.', ',');
-    const big = url.length > 30000;
-    const note = 'Deellink klaar (' + kb + ' KB)' + (big ? ' — ⚠️ vrij groot, houd notities kort' : '') + '.';
-    try {
-      if (navigator.share) { await navigator.share({ title: 'eo Swim analyse', url }); toast(note); return; }
-      if (navigator.clipboard) { await navigator.clipboard.writeText(url); toast(note + ' Gekopieerd naar klembord.'); return; }
-    } catch (_) {}
-    // last resort: show it so it can be copied by hand
-    prompt('Kopieer de deellink:', url);
+  // ---------- publish (save to the repo, share a short ?a=<id> link) ----------
+  async function publish() {
+    if (!marks.length) { toast('Nog niets om te publiceren — teken, typ of spreek eerst iets in.'); return; }
+    const jsonStr = JSON.stringify(serialize());
+    const id = 'a' + Math.random().toString(36).slice(2, 8);
+    const owner = location.hostname.split('.')[0];
+    const repo = location.pathname.split('/').filter(Boolean)[0] || '';
+    const branch = 'main';
+    const path = 'docs/annotations/' + id + '.json';
+
+    const params = new URLSearchParams(location.search);
+    params.delete('edit'); params.set('a', id);
+    const shortUrl = location.origin + location.pathname + '?' + params.toString();
+    $('pubUrl').value = shortUrl;
+
+    // prefilled "new file" deep link — used when it fits in a URL (text/drawings)
+    const deepLink = 'https://github.com/' + owner + '/' + repo + '/new/' + branch +
+      '?filename=' + encodeURIComponent(path) + '&value=' + encodeURIComponent(jsonStr);
+    const go = $('pubGo');
+
+    if (deepLink.length <= 7000) {
+      $('pubIntro').textContent = 'Bewaar je annotaties in je eigen repo. De korte deellink staat hieronder (al gekopieerd).';
+      $('pubSteps').innerHTML =
+        '<li>Tik <b>Open in GitHub &amp; commit</b> — het bestand staat al ingevuld.</li>' +
+        '<li>Tik onderaan op <b>Commit changes</b>.</li>' +
+        '<li>Na ~1–2 min werkt de deellink.</li>';
+      go.textContent = 'Open in GitHub & commit'; go.href = deepLink;
+    } else {
+      // large (audio): download the file, open the upload page for the folder
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const dl = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = dl; a.download = id + '.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(dl), 60000);
+      $('pubIntro').textContent = 'Bestand ' + id + '.json is gedownload (bevat audio). De korte deellink staat hieronder (al gekopieerd).';
+      $('pubSteps').innerHTML =
+        '<li>Tik <b>Open GitHub upload</b>.</li>' +
+        '<li>Kies het gedownloade <b>' + id + '.json</b> en tik <b>Commit changes</b>.</li>' +
+        '<li>Na ~1–2 min werkt de deellink.</li>';
+      go.textContent = 'Open GitHub upload';
+      go.href = 'https://github.com/' + owner + '/' + repo + '/upload/' + branch + '/docs/annotations';
+    }
+    try { if (navigator.clipboard) await navigator.clipboard.writeText(shortUrl); } catch (_) {}
+    $('pubPanel').classList.add('show');
+  }
+  $('publishBtn').addEventListener('click', publish);
+  $('pubClose').addEventListener('click', () => $('pubPanel').classList.remove('show'));
+  $('pubCopy').addEventListener('click', async () => {
+    const el = $('pubUrl'); el.select();
+    try { await navigator.clipboard.writeText(el.value); toast('Link gekopieerd.'); }
+    catch (_) { try { document.execCommand('copy'); toast('Link gekopieerd.'); } catch (e) {} }
   });
 
   // ---------- toast ----------
@@ -846,23 +1013,34 @@ if (qv) {
     clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 4200);
   }
 
-  // ---------- load annotations from the #n= fragment ----------
-  (function loadFromHash() {
+  // ---------- load annotations: ?a=<id> from the repo, or #n= inline ----------
+  function reportLoaded() {
+    updateTimeline(); updateNoteCaption(); updateMemoBadge();
+    const dr = marks.filter(m => m.k === 'pen' || m.k === 'arrow').length;
+    const nt = marks.filter(m => m.k === 'note').length;
+    const me = marks.filter(m => m.k === 'memo').length;
+    toast('Geladen: <b>' + dr + '</b> tekening(en), <b>' + nt + '</b> notitie(s), <b>' + me + "</b> memo('s).");
+  }
+  (function loadAnnotations() {
+    const aid = new URLSearchParams(location.search).get('a');
     const n = new URLSearchParams(location.hash.replace(/^#/, '')).get('n');
-    if (!n) return;
-    unpack(n).then(obj => {
-      deserialize(obj); updateTimeline(); updateNoteCaption();
-      const d = marks.filter(m => m.k !== 'note').length, a = marks.filter(m => m.k === 'note').length;
-      toast('Annotaties geladen: <b>' + d + '</b> tekening(en), <b>' + a + "</b> notitie(s).");
-    }).catch(() => toast('⚠️ Kon de annotaties niet lezen — de link is waarschijnlijk afgekapt (te lang). Lengte: ' + n.length + ' tekens.'));
+    if (aid) {
+      fetch('annotations/' + encodeURIComponent(aid) + '.json', { cache: 'no-store' })
+        .then(r => { if (!r.ok) throw 0; return r.json(); })
+        .then(obj => { deserialize(obj); reportLoaded(); })
+        .catch(() => toast('⚠️ Kon annotaties niet laden (' + aid + '). Net gepubliceerd? Wacht ~1–2 min en ververs.'));
+    } else if (n) {
+      unpack(n).then(obj => { deserialize(obj); reportLoaded(); })
+               .catch(() => toast('⚠️ Kon de annotaties in deze link niet lezen.'));
+    }
   })();
 
   // ---------- auto-pause on annotated frames ----------
-  // While the film plays through a frame that carries a (non-pinned) mark, it
-  // pauses so the drawing/note is visible, then resumes after a short hold. A
-  // note holds longer (scaled to its length) so it can be read. Pinned marks
-  // span a range and stay on screen, so they don't trigger a pause. Crossing
-  // detection (prev<t<=now) fires once per pass, never while stepping/scrubbing.
+  // While the film plays through a frame that carries a (non-pinned) mark it
+  // pauses: a memo plays and the film resumes when it ends; otherwise it holds
+  // a moment (a note scales with its length so it can be read), then resumes.
+  // Pinned marks span a range and stay on screen, so they don't trigger a pause.
+  // Crossing detection (prev<t<=now) fires once per pass, never while stepping.
   const resumePlay = () => { const p = video.play(); if (p && p.catch) p.catch(() => {}); };
   function autoStop() {
     const t = video.currentTime || 0;
@@ -870,16 +1048,21 @@ if (qv) {
       if (performance.now() >= holdUntil) { holdUntil = 0; prevTime = t; resumePlay(); }
       prevTime = t; return;
     }
-    if (!video.paused) {
+    if (!video.paused && !memoPlaying) {
       const crossed = marks.filter(m => !m.pin && prevTime < m.t && t >= m.t);
       if (crossed.length) {
         const t0 = Math.min(...crossed.map(m => m.t));
         const group = marks.filter(m => !m.pin && Math.abs(m.t - t0) <= 0.05);
+        const memo = group.find(m => m.k === 'memo');
         const note = group.find(m => m.k === 'note');
-        // reading time for a note (~70ms/char), capped; drawings use the base hold
-        const hold = note ? Math.min(9000, Math.max(HOLD_MS, 1200 + 70 * note.text.length)) : HOLD_MS;
         video.pause();
-        holdUntil = performance.now() + hold;
+        if (memo) {                               // play the voice memo, resume when it ends
+          memoPlaying = true;
+          playMemo(memo, () => { memoPlaying = false; prevTime = video.currentTime || 0; resumePlay(); });
+        } else {                                  // drawing/note: hold then resume
+          const hold = note ? Math.min(9000, Math.max(HOLD_MS, 1200 + 70 * note.text.length)) : HOLD_MS;
+          holdUntil = performance.now() + hold;
+        }
       }
     }
     prevTime = t;
@@ -888,7 +1071,7 @@ if (qv) {
   // ---------- render loop ----------
   function loop() {
     const active = marks.length || document.body.classList.contains('trainer');
-    if (active) { renderAnnotations(); updateNoteCaption(); autoStop(); }
+    if (active) { renderAnnotations(); updateNoteCaption(); updateMemoBadge(); autoStop(); }
     if (active || document.body.classList.contains('has-annot')) updateTimelineFill();
     requestAnimationFrame(loop);
   }
