@@ -207,6 +207,7 @@
   }
   #memoBadge.show { display: block; }
   #memoBadge.playing { background: #38bdf8; color: #04110d; }
+  #memoBadge.await { animation: pulse 1s ease-in-out infinite; }
 
   /* compact recording bar — floats over the video so the frame stays visible */
   #recBar {
@@ -659,7 +660,7 @@ if (qv) {
 
   // visible version marker so we can confirm which build loaded (caches!)
   const bld = $('build');
-  if (bld) { bld.textContent = 'annot v15 (memo-kick) · edit:' + (editable ? 'AAN' : 'uit');
+  if (bld) { bld.textContent = 'annot v16 (memo-unlock) · edit:' + (editable ? 'AAN' : 'uit');
              bld.style.color = '#9fffe0'; bld.style.opacity = '1'; bld.style.fontSize = '11px'; }
 
   // ---------- canvas sizing & video-rect mapping ----------
@@ -849,15 +850,27 @@ if (qv) {
   // reuse one <audio> element and prime it (play a silent clip) on the first
   // tap, so memos can later auto-play during the annotation pause.
   const SILENT_WAV = 'data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA';
-  let memoAudio = null, audioPrimed = false;
+  let memoAudio = null, audioPrimed = false, pendingMemo = null;
   function getAudio() { if (!memoAudio) { memoAudio = new Audio(); memoAudio.preload = 'auto'; } return memoAudio; }
   function primeAudio() {
     if (audioPrimed) return; audioPrimed = true;
     const a = getAudio();
     try { a.src = SILENT_WAV; const p = a.play(); if (p && p.catch) p.catch(() => {}); } catch (_) {}
   }
+  // First user gesture: unlock audio, and if the film paused at a memo while
+  // audio was still locked (e.g. after a physical rotate, with no prior tap),
+  // play that memo now and let it resume the film.
+  function onUserGesture(e) {
+    primeAudio();
+    if (pendingMemo) {
+      if (e && e.stopPropagation) e.stopPropagation();   // this tap is "play the memo", not play/pause
+      const m = pendingMemo; pendingMemo = null;
+      memoBadge.classList.remove('await');
+      playMemo(m, finishMemo);
+    }
+  }
   ['pointerdown', 'touchend', 'click'].forEach(ev =>
-    window.addEventListener(ev, primeAudio, { capture: true }));
+    window.addEventListener(ev, onUserGesture, { capture: true }));
   function blobToB64(blob) {
     return new Promise(res => { const fr = new FileReader();
       fr.onload = () => res(String(fr.result).split(',')[1] || ''); fr.readAsDataURL(blob); });
@@ -924,7 +937,11 @@ if (qv) {
     const t = video.currentTime || 0;
     memoBadge.classList.toggle('show', marks.some(m => m.k === 'memo' && (m.pin || Math.abs(m.t - t) <= WINDOW)));
   }
-  memoBadge.addEventListener('click', e => { e.stopPropagation(); playMemo(nearestMemo(video.currentTime || 0)); });
+  memoBadge.addEventListener('click', e => {
+    e.stopPropagation();
+    if (memoBadge.classList.contains('playing')) return;   // already playing (avoid double-trigger)
+    playMemo(nearestMemo(video.currentTime || 0));
+  });
 
   // ---------- timeline (dots + scrub) ----------
   function updateTimeline() {
@@ -1114,6 +1131,10 @@ if (qv) {
     try { video.pause(); } catch (_) {}
     setTimeout(resumePlay, 90);
   };
+  function finishMemo() {
+    memoPlaying = false; prevTime = video.currentTime || 0;
+    setAnnotLock(false); resumeAfterMemo();
+  }
   function autoStop() {
     const t = video.currentTime || 0;
     if (holdUntil) {                              // currently holding on a mark
@@ -1131,7 +1152,13 @@ if (qv) {
         setAnnotLock(true);                       // freeze the transport while we hold
         if (memo) {                               // play the voice memo, resume when it ends
           memoPlaying = true;
-          playMemo(memo, () => { memoPlaying = false; prevTime = video.currentTime || 0; setAnnotLock(false); resumeAfterMemo(); });
+          if (audioPrimed) {
+            playMemo(memo, finishMemo);
+          } else {                                // audio still locked — wait for one tap
+            pendingMemo = memo;
+            memoBadge.classList.add('show', 'await');
+            toast('🔊 Tik op het scherm om de gesproken memo te horen.');
+          }
         } else {                                  // drawing/note: hold then resume
           const hold = note ? Math.min(9000, Math.max(HOLD_MS, 1200 + 70 * note.text.length)) : HOLD_MS;
           holdUntil = performance.now() + hold;
