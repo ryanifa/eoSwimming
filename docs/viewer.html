@@ -659,7 +659,7 @@ if (qv) {
 
   // visible version marker so we can confirm which build loaded (caches!)
   const bld = $('build');
-  if (bld) { bld.textContent = 'annot v13 (mobiel-fix) · edit:' + (editable ? 'AAN' : 'uit');
+  if (bld) { bld.textContent = 'annot v14 (memo-resume) · edit:' + (editable ? 'AAN' : 'uit');
              bld.style.color = '#9fffe0'; bld.style.opacity = '1'; bld.style.fontSize = '11px'; }
 
   // ---------- canvas sizing & video-rect mapping ----------
@@ -903,8 +903,19 @@ if (qv) {
     a.muted = false;
     a.src = 'data:' + (m.mime || 'audio/webm') + ';base64,' + m.au;
     memoBadge.classList.add('playing');
-    const finish = () => { memoBadge.classList.remove('playing'); a.onended = null; if (onDone) onDone(); };
+    let done = false;
+    const finish = () => {                          // run exactly once, however we get here
+      if (done) return; done = true;
+      clearTimeout(wd);
+      memoBadge.classList.remove('playing');
+      a.onended = null; a.onerror = null;
+      if (onDone) onDone();
+    };
     a.onended = finish;
+    a.onerror = finish;
+    // Mobile browsers don't always fire 'ended' for data-URI audio, which left
+    // the film stuck paused — resume after the memo's known length as a backstop.
+    const wd = setTimeout(finish, Math.max(1000, (m.dur || 4) * 1000 + 1200));
     const p = a.play();
     if (p && p.catch) p.catch(() => { toast('Tik op de video om geluid aan te zetten, en speel opnieuw af.'); finish(); });
   }
