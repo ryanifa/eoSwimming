@@ -561,6 +561,11 @@ if (qv) {
                    || location.href.indexOf('edit=1') !== -1;
   if (editable) document.body.classList.add('can-edit', 'trainer');
 
+  // visible version marker so we can confirm which build loaded (caches!)
+  const bld = $('build');
+  if (bld) { bld.textContent = 'annot v2 · edit:' + (editable ? 'AAN' : 'uit');
+             bld.style.color = '#9fffe0'; bld.style.opacity = '1'; bld.style.fontSize = '11px'; }
+
   // ---------- canvas sizing & video-rect mapping ----------
   function ensureCanvasSize() {
     const r = stageEl.getBoundingClientRect();
