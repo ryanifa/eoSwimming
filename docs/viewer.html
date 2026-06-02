@@ -659,7 +659,7 @@ if (qv) {
 
   // visible version marker so we can confirm which build loaded (caches!)
   const bld = $('build');
-  if (bld) { bld.textContent = 'annot v14 (memo-resume) · edit:' + (editable ? 'AAN' : 'uit');
+  if (bld) { bld.textContent = 'annot v15 (memo-kick) · edit:' + (editable ? 'AAN' : 'uit');
              bld.style.color = '#9fffe0'; bld.style.opacity = '1'; bld.style.fontSize = '11px'; }
 
   // ---------- canvas sizing & video-rect mapping ----------
@@ -909,6 +909,7 @@ if (qv) {
       clearTimeout(wd);
       memoBadge.classList.remove('playing');
       a.onended = null; a.onerror = null;
+      try { a.pause(); a.removeAttribute('src'); a.load(); } catch (_) {}  // free the media session
       if (onDone) onDone();
     };
     a.onended = finish;
@@ -1106,6 +1107,13 @@ if (qv) {
   // Pinned marks span a range and stay on screen, so they don't trigger a pause.
   // Crossing detection (prev<t<=now) fires once per pass, never while stepping.
   const resumePlay = () => { const p = video.play(); if (p && p.catch) p.catch(() => {}); };
+  // After a memo, the muted video can report playing while staying frozen
+  // (the audio stole the media session). Re-kick it the way a manual
+  // pause→play does: pause now, play again a tick later.
+  const resumeAfterMemo = () => {
+    try { video.pause(); } catch (_) {}
+    setTimeout(resumePlay, 90);
+  };
   function autoStop() {
     const t = video.currentTime || 0;
     if (holdUntil) {                              // currently holding on a mark
@@ -1123,7 +1131,7 @@ if (qv) {
         setAnnotLock(true);                       // freeze the transport while we hold
         if (memo) {                               // play the voice memo, resume when it ends
           memoPlaying = true;
-          playMemo(memo, () => { memoPlaying = false; prevTime = video.currentTime || 0; setAnnotLock(false); resumePlay(); });
+          playMemo(memo, () => { memoPlaying = false; prevTime = video.currentTime || 0; setAnnotLock(false); resumeAfterMemo(); });
         } else {                                  // drawing/note: hold then resume
           const hold = note ? Math.min(9000, Math.max(HOLD_MS, 1200 + 70 * note.text.length)) : HOLD_MS;
           holdUntil = performance.now() + hold;
