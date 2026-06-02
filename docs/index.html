@@ -82,6 +82,15 @@
     width: 22px; height: 4px; border-radius: 2px; display: inline-block;
   }
   .series .empty { color: #5a7670; font-size: 13px; }
+  #splitsTable { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+  #splitsTable th, #splitsTable td {
+    border-bottom: 1px solid #1d2c28; padding: 5px 9px; text-align: right;
+    font-family: monospace; white-space: nowrap;
+  }
+  #splitsTable th:first-child, #splitsTable td:first-child { text-align: left; }
+  #splitsTable th { color: #8aa0a0; font-weight: 600; }
+  #splitsTable tbody tr:last-child td { border-bottom: 0; }
+  #splitsTable .total td { color: #9fe6d8; border-top: 1px solid #2c4540; }
   details { margin-top: 14px; color: #8aa0a0; font-size: 13px; }
   details summary { cursor: pointer; }
 </style>
@@ -197,6 +206,18 @@
   <span class="empty">Slagfrequentie komt uit de slag-timing (pathsweep/pathdepth); snelheid uit hand-velocity.</span>
 </div>
 
+<div class="series" id="splitsPanel">
+  <div class="title">Per-100m splits</div>
+  <label style="width:auto;">Baanlengte (m)
+    <input type="number" id="poolLen" value="25" min="1" step="1" style="width:64px;margin-left:6px;">
+  </label>
+  <table id="splitsTable">
+    <thead><tr><th>Afstand</th><th>Tijd</th><th>Snelheid</th><th>Tempo /100m</th><th>Slagfreq.</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <span class="empty" id="splitsHint">Sleep pathsweep- of pathdepth-bestanden (één per baan) om splits te berekenen.</span>
+</div>
+
 <div class="controls">
   <div class="row">
     <label>swim_start_seconds:</label>
@@ -243,6 +264,8 @@ let data = null;
 let series = [];   // discovered series: {id, label, kind, color, data:{left,right,single}, enabled}
 let pathSweep = null;  // parsed lap-NN-pathsweep.json
 let pathDepth = null;  // parsed lap-NN-pathdepth.json
+let lapsData = [];     // per-lap windows: {lap,start,end,strokeRate,strokesL,strokesR}
+let lapsFromSweep = false;
 
 const PHASE_COLOR = { catch: '#ff4040', pull: '#4ea1ff', recovery: '#9aa7a3', none: '#9aa7a3' };
 
@@ -1142,6 +1165,96 @@ function mergePathFiles(parsedList) {
   return merged;
 }
 
+// Per-lap window + stroke rate from the (per-lap) path files. Stroke .time is
+// absolute ms across the swim, so each file's stroke span gives the lap window.
+function computeLaps(files, parsedList) {
+  const out = [];
+  parsedList.forEach((p, i) => {
+    const name = (files[i] && files[i].name) || '';
+    const m = name.match(/lap-?0*(\d+)/i);
+    const lapNum = m ? parseInt(m[1], 10) : (i + 1);
+    const all = [...(p.strokesLeft || []), ...(p.strokesRight || [])];
+    let tStart = Infinity, tEnd = -Infinity;
+    for (const s of all) {
+      if (s.time && s.time.length) {
+        tStart = Math.min(tStart, s.time[0]);
+        tEnd = Math.max(tEnd, s.time[s.time.length - 1]);
+      }
+    }
+    if (tStart === Infinity) return;
+    // per-arm cadence = strokes over their own time span (same-hand cycle)
+    const armRate = strokes => {
+      const st = (strokes || []).map(s => (s.time && s.time.length) ? s.time[0] : null)
+                                .filter(v => v != null).sort((a, b) => a - b);
+      return st.length >= 2 ? 60000 * (st.length - 1) / (st[st.length - 1] - st[0]) : null;
+    };
+    const rates = [armRate(p.strokesLeft), armRate(p.strokesRight)].filter(v => v != null);
+    out.push({
+      lap: lapNum, start: tStart, end: tEnd,
+      strokeRate: rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : null,
+      strokesL: (p.strokesLeft || []).length, strokesR: (p.strokesRight || []).length,
+    });
+  });
+  out.sort((a, b) => a.start - b.start);
+  return out;
+}
+
+function fmtClock(s) {
+  if (!isFinite(s) || s < 0) return '—';
+  const m = Math.floor(s / 60), r = s - m * 60;
+  return m ? `${m}:${r.toFixed(1).padStart(4, '0')}` : `${r.toFixed(1)}s`;
+}
+
+function renderSplits() {
+  const tbody = document.querySelector('#splitsTable tbody');
+  const hint = $('splitsHint');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  const L = lapsData;
+  if (!L.length) { if (hint) hint.style.display = ''; return; }
+  if (hint) hint.style.display = 'none';
+  const poolLen = parseFloat($('poolLen').value) || 25;
+  // lap duration: start-to-next-start (covers the turn); last lap uses its span
+  const lapDur = i => (i < L.length - 1 ? (L[i + 1].start - L[i].start) : (L[i].end - L[i].start)) / 1000;
+
+  const rows = [];
+  let cum = 0, totTime = 0, totRateW = 0, totW = 0;
+  let cur = null;
+  for (let i = 0; i < L.length; i++) {
+    if (!cur) cur = { dist: 0, time: 0, rateW: 0, w: 0 };
+    cur.dist += poolLen;
+    cur.time += lapDur(i);
+    const w = (L[i].strokesL + L[i].strokesR) || 1;
+    if (L[i].strokeRate != null) { cur.rateW += L[i].strokeRate * w; cur.w += w; }
+    const last = i === L.length - 1;
+    if (cur.dist >= 100 - 1e-6 || last) {
+      cum += cur.dist; totTime += cur.time;
+      totRateW += cur.rateW; totW += cur.w;
+      const spd = cur.time > 0 ? cur.dist / cur.time : 0;
+      const pace = spd > 0 ? 100 / spd : NaN;
+      const sr = cur.w ? cur.rateW / cur.w : null;
+      rows.push({ dist: cum, time: cur.time, spd, pace, sr });
+      cur = null;
+    }
+  }
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${r.dist} m</td><td>${fmtClock(r.time)}</td>` +
+      `<td>${r.spd.toFixed(2)} m/s</td><td>${fmtClock(r.pace)}</td>` +
+      `<td>${r.sr != null ? Math.round(r.sr) + ' /min' : '—'}</td>`;
+    tbody.appendChild(tr);
+  }
+  if (rows.length > 1) {
+    const spd = totTime > 0 ? cum / totTime : 0;
+    const tr = document.createElement('tr');
+    tr.className = 'total';
+    tr.innerHTML = `<td>Totaal ${cum} m</td><td>${fmtClock(totTime)}</td>` +
+      `<td>${spd.toFixed(2)} m/s</td><td>${fmtClock(spd > 0 ? 100 / spd : NaN)}</td>` +
+      `<td>${totW ? Math.round(totRateW / totW) + ' /min' : '—'}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
 async function loadPathFiles(files, el, assign, label) {
   try {
     const list = Array.from(files);
@@ -1156,6 +1269,10 @@ async function loadPathFiles(files, el, assign, label) {
     }
     const merged = mergePathFiles(parsedList);
     assign(merged);
+    // sweep is preferred for splits; depth only fills in if sweep isn't loaded
+    if (label === 'pathsweep') { lapsData = computeLaps(list, parsedList); lapsFromSweep = true; }
+    else if (!lapsFromSweep) { lapsData = computeLaps(list, parsedList); }
+    renderSplits();
     el.classList.add('loaded');
     const nl = merged.strokesLeft.length, nr = merged.strokesRight.length;
     el.querySelector('strong').textContent = '✓ ' + list.length + ' file' + (list.length > 1 ? 's' : '');
@@ -1183,6 +1300,7 @@ function refreshPathHint() {
 
 setupDrop('dropSweep', 'sweepInput', (files, el) => loadPathFiles(files, el, p => pathSweep = p, 'pathsweep'), true);
 setupDrop('dropDepth', 'depthInput', (files, el) => loadPathFiles(files, el, p => pathDepth = p, 'pathdepth'), true);
+if ($('poolLen')) $('poolLen').addEventListener('input', renderSplits);
 
 ['viewSide', 'viewOverhead', 'viewHeadon'].forEach(id => {
   const el = $(id);
