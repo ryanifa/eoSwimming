@@ -659,14 +659,17 @@ if (qv) {
 
   // visible version marker so we can confirm which build loaded (caches!)
   const bld = $('build');
-  if (bld) { bld.textContent = 'annot v12 (lock) · edit:' + (editable ? 'AAN' : 'uit');
+  if (bld) { bld.textContent = 'annot v13 (mobiel-fix) · edit:' + (editable ? 'AAN' : 'uit');
              bld.style.color = '#9fffe0'; bld.style.opacity = '1'; bld.style.fontSize = '11px'; }
 
   // ---------- canvas sizing & video-rect mapping ----------
   function ensureCanvasSize() {
-    const r = stageEl.getBoundingClientRect();
+    // Use layout size (clientWidth/Height), not getBoundingClientRect: in the
+    // force-landscape fallback the stage is CSS-rotated 90°, which would swap
+    // the measured width/height and distort the canvas.
+    const cw = stageEl.clientWidth, ch = stageEl.clientHeight;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+    const w = Math.max(1, Math.round(cw * dpr)), h = Math.max(1, Math.round(ch * dpr));
     if (draw.width !== w || draw.height !== h) { draw.width = w; draw.height = h; }
     dctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
@@ -722,9 +725,26 @@ if (qv) {
   }
 
   // ---------- drawing input (edit mode only) ----------
+  // canvas top-left in body-local layout coords (walks offset parents)
+  function offsetInBody(el) {
+    let x = 0, y = 0, n = el;
+    while (n && n !== document.body) { x += n.offsetLeft; y += n.offsetTop; n = n.offsetParent; }
+    return { x, y };
+  }
   function evToNorm(e) {
-    const r = draw.getBoundingClientRect(), R = videoRect();
-    return [ (e.clientX - r.left - R.left) / R.width, (e.clientY - r.top - R.top) / R.height ];
+    const R = videoRect();
+    let sx, sy;                                   // pointer in stage-layout coords
+    if (document.body.classList.contains('force-landscape')) {
+      // body is rotate(90deg) about its top-left placed at (innerWidth, 0):
+      // screen = (innerWidth - localY, localX)  ->  invert to local coords.
+      const off = offsetInBody(draw);
+      const lx = e.clientY, ly = window.innerWidth - e.clientX;
+      sx = lx - off.x; sy = ly - off.y;
+    } else {
+      const r = draw.getBoundingClientRect();
+      sx = e.clientX - r.left; sy = e.clientY - r.top;
+    }
+    return [ (sx - R.left) / R.width, (sy - R.top) / R.height ];
   }
   function startDraw(e) {
     if (!document.body.classList.contains('trainer') || !hasVideo) return;
@@ -823,8 +843,21 @@ if (qv) {
   }
 
   // ---------- voice memos ----------
-  let mediaRec = null, chunks = [], recStart = 0, recTimer = null, audioEl = null, memoPlaying = false;
+  let mediaRec = null, chunks = [], recStart = 0, recTimer = null, memoPlaying = false;
   const memoBadge = $('memoBadge');
+  // Mobile browsers only allow audio that a user gesture has "unlocked". We
+  // reuse one <audio> element and prime it (play a silent clip) on the first
+  // tap, so memos can later auto-play during the annotation pause.
+  const SILENT_WAV = 'data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA';
+  let memoAudio = null, audioPrimed = false;
+  function getAudio() { if (!memoAudio) { memoAudio = new Audio(); memoAudio.preload = 'auto'; } return memoAudio; }
+  function primeAudio() {
+    if (audioPrimed) return; audioPrimed = true;
+    const a = getAudio();
+    try { a.src = SILENT_WAV; const p = a.play(); if (p && p.catch) p.catch(() => {}); } catch (_) {}
+  }
+  ['pointerdown', 'touchend', 'click'].forEach(ev =>
+    window.addEventListener(ev, primeAudio, { capture: true }));
   function blobToB64(blob) {
     return new Promise(res => { const fr = new FileReader();
       fr.onload = () => res(String(fr.result).split(',')[1] || ''); fr.readAsDataURL(blob); });
@@ -865,12 +898,15 @@ if (qv) {
   }
   function playMemo(m, onDone) {
     if (!m) { if (onDone) onDone(); return; }
-    if (audioEl) { try { audioEl.pause(); } catch (_) {} }
-    audioEl = new Audio('data:' + (m.mime || 'audio/webm') + ';base64,' + m.au);
+    const a = getAudio();
+    try { a.pause(); } catch (_) {}
+    a.muted = false;
+    a.src = 'data:' + (m.mime || 'audio/webm') + ';base64,' + m.au;
     memoBadge.classList.add('playing');
-    const finish = () => { memoBadge.classList.remove('playing'); if (onDone) onDone(); };
-    audioEl.onended = finish;
-    audioEl.play().catch(() => { toast('Kan deze memo niet afspelen op dit toestel.'); finish(); });
+    const finish = () => { memoBadge.classList.remove('playing'); a.onended = null; if (onDone) onDone(); };
+    a.onended = finish;
+    const p = a.play();
+    if (p && p.catch) p.catch(() => { toast('Tik op de video om geluid aan te zetten, en speel opnieuw af.'); finish(); });
   }
   function updateMemoBadge() {
     const t = video.currentTime || 0;
