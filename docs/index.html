@@ -191,6 +191,12 @@
   <label><input type="checkbox" id="layoutMirror"> Mirror (mode 2): paths left, force chart top, time/legend bottom-right</label>
 </div>
 
+<div class="series" id="liveControls">
+  <div class="title">Live readout (speelt mee met de video)</div>
+  <label><input type="checkbox" id="showLive" checked> Toon slagfrequentie + snelheid</label>
+  <span class="empty">Slagfrequentie komt uit de slag-timing (pathsweep/pathdepth); snelheid uit hand-velocity.</span>
+</div>
+
 <div class="controls">
   <div class="row">
     <label>swim_start_seconds:</label>
@@ -256,6 +262,46 @@ function showLeftOn() { const el = $('showLeft'); return !el || el.checked; }
 function showRightOn() { const el = $('showRight'); return !el || el.checked; }
 function layoutMode() { const el = $('layoutMirror'); return el && el.checked ? 2 : 1; }
 function markDeepestOn() { const el = $('markDeepest'); return el && el.checked; }
+function showLiveOn() { const el = $('showLive'); return !el || el.checked; }
+
+// Stroke starts (ms) for one hand, taken from whichever stroke file is loaded.
+function strokeStarts(side) {
+  const f = pathSweep || pathDepth;
+  return strokesOf(f, side)
+    .map(s => (s.time && s.time.length) ? s.time[0] : null)
+    .filter(v => v != null)
+    .sort((a, b) => a - b);
+}
+// Live stroke rate (strokes/min): one full arm cycle = same-arm start-to-start,
+// which for freestyle is the conventional "slagfrequentie". Uses the most
+// recently begun stroke (either hand) and its predecessor on that hand.
+function strokeRateAt(dataT) {
+  let best = null;
+  for (const side of ['left', 'right']) {
+    const arr = strokeStarts(side);
+    for (let i = arr.length - 1; i >= 0; i--) {
+      if (arr[i] <= dataT) {
+        if (i > 0) {
+          const dt = arr[i] - arr[i - 1];
+          if (dt > 0 && (!best || arr[i] > best.start)) best = { start: arr[i], rate: 60000 / dt };
+        }
+        break;
+      }
+    }
+  }
+  return best ? best.rate : null;
+}
+// Live hand speed (m/s): mean of the available sides of the velocity series.
+function handSpeedAt(dataT) {
+  const vs = series.find(s => s.kind === 'velocity');
+  if (!vs || !data) return null;
+  const t = data.time, vals = [];
+  for (const part of ['single', 'left', 'right']) {
+    if (vs.data[part]) { const v = valueAt(t, vs.data[part], dataT); if (v != null) vals.push(v); }
+  }
+  if (!vals.length) return null;
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
 
 const FRIENDLY = {
   forward: 'Propulsive', propulsive: 'Propulsive', propulsion: 'Propulsive',
@@ -545,6 +591,15 @@ function drawOverlay() {
       if (r !== null) parts.push('R ' + r.toFixed(dec));
       rows.push({ color: s.color, text: `${s.label}  ${parts.join('  ')} ${u}` });
     }
+  }
+
+  // live, video-synced metrics on top: stroke rate + hand speed
+  if (showLiveOn() && inRange) {
+    const sr = strokeRateAt(dataT), hs = handSpeedAt(dataT);
+    const live = [];
+    if (hs != null) live.push({ color: '#9fe6d8', text: 'Snelheid    ' + hs.toFixed(2) + ' m/s' });
+    if (sr != null) live.push({ color: '#9fe6d8', text: 'Slagfreq.   ' + Math.round(sr) + ' /min' });
+    rows.unshift(...live);
   }
 
   const lineH = Math.max(16, Math.min(22, h * 0.03));
