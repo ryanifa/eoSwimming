@@ -207,19 +207,22 @@
            pointer-events: none; }
   .tldot.audio { background: #34d399; }
 
-  /* recording overlay (real microphone capture) */
+  /* compact recording bar — floats over the video so the frame stays visible */
   #recOverlay {
-    position: absolute; inset: 0; z-index: 8; display: none;
-    flex-direction: column; align-items: center; justify-content: center;
-    gap: 16px; background: rgba(4,17,13,.9); text-align: center; padding: 24px;
+    position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
+    z-index: 8; display: none; align-items: center; gap: 11px;
+    background: rgba(0,0,0,.72); border: 1px solid #284038; border-radius: 14px;
+    padding: 8px 12px; max-width: 92%;
   }
   #recOverlay.show { display: flex; }
-  .recdot { width: 60px; height: 60px; border-radius: 50%; background: #ef4444;
-            animation: pulse 1s ease-in-out infinite; }
+  .recdot { width: 16px; height: 16px; border-radius: 50%; background: #ef4444;
+            flex: 0 0 auto; animation: pulse 1s ease-in-out infinite; }
   @keyframes pulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(.72);opacity:.6} }
-  .recstop { background: #fff; color: #04110d; border: 0; border-radius: 12px;
-             font-size: 16px; font-weight: 700; padding: 14px 28px; cursor: pointer; }
-  .rectime { font-family: monospace; font-size: 22px; color: #fff; }
+  .rectime { font-family: monospace; font-size: 16px; color: #fff; }
+  .rectxt { color: #9fb4af; font-size: 12px; white-space: nowrap; }
+  .recstop { background: #fff; color: #04110d; border: 0; border-radius: 10px;
+             font-size: 14px; font-weight: 700; padding: 9px 14px; cursor: pointer;
+             -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 
   /* share toast */
   #toast {
@@ -284,7 +287,7 @@
   <div id="recOverlay">
     <div class="recdot"></div>
     <div class="rectime" id="recTime">0,0s</div>
-    <div style="color:#9fb4af;font-size:13px">Spreek je memo in voor dit frame…</div>
+    <div class="rectxt">opnemen…</div>
     <button class="recstop" id="recStop">■ Stop &amp; bewaar</button>
   </div>
 
@@ -566,7 +569,7 @@ if (qv) {
 
   // visible version marker so we can confirm which build loaded (caches!)
   const bld = $('build');
-  if (bld) { bld.textContent = 'annot v6 · edit:' + (editable ? 'AAN' : 'uit');
+  if (bld) { bld.textContent = 'annot v7 · edit:' + (editable ? 'AAN' : 'uit');
              bld.style.color = '#9fffe0'; bld.style.opacity = '1'; bld.style.fontSize = '11px'; }
 
   // ---------- canvas sizing & video-rect mapping ----------
