@@ -555,7 +555,10 @@ if (qv) {
   let tool = 'pen', color = COLORS[0], pinned = false, liveMark = null;
   const tl = $('timeline'), memoBadge = $('memoBadge');
 
-  const editable = new URLSearchParams(location.search).has('edit');
+  // edit mode: ?edit=1 on our own URL, or anywhere in the href so it still
+  // works when the page is opened through a wrapper like htmlpreview.github.io
+  const editable = new URLSearchParams(location.search).has('edit')
+                   || location.href.indexOf('edit=1') !== -1;
   if (editable) document.body.classList.add('can-edit', 'trainer');
 
   // ---------- canvas sizing & video-rect mapping ----------
