@@ -66,7 +66,9 @@
     position: absolute; inset: 0; width: 100%; height: 100%;
     z-index: 2; touch-action: none;
   }
-  body:not(.drawing) #draw { pointer-events: none; }
+  /* tekenlaag vangt aanrakingen in trainer-modus; in kijker-modus gaan taps
+     dóór naar het beeld (play/pause). */
+  body:not(.trainer) #draw { pointer-events: none; }
 
   .sidebtns {
     position: absolute; top: 0; bottom: 0; z-index: 3;
