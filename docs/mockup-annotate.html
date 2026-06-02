@@ -163,6 +163,14 @@
     font-size: 16px; font-weight: 700; padding: 14px 28px; cursor: pointer;
   }
   .rectime { font-family: monospace; font-size: 22px; color: #fff; }
+
+  /* versie + live invoer-status, zodat we kunnen zien welke build je hebt
+     en of je vinger/muis geregistreerd wordt */
+  #dbg {
+    position: absolute; left: 8px; bottom: 30px; z-index: 6; pointer-events: none;
+    font-family: monospace; font-size: 11px; color: #9fffe0;
+    background: rgba(0,0,0,.55); padding: 3px 7px; border-radius: 5px; white-space: nowrap;
+  }
 </style>
 </head>
 <body class="trainer">
@@ -217,6 +225,7 @@
 
   <button id="memoBadge">🔊 memo</button>
   <div id="readout"></div>
+  <div id="dbg">build v4 · wacht op invoer…</div>
 
   <div id="timeline">
     <div id="tlbar"></div>
@@ -337,16 +346,18 @@ function drawMark(ctx, m, w, h) {
   }
 }
 
-// ---------- tekenen (touch + muis) ----------
+// ---------- tekenen (Pointer Events: muis + touch + pen in één) ----------
 let liveMark = null;
+const dbg = (t) => { const e=$('dbg'); if(e) e.textContent='build v4 · '+t; };
 function evPos(e) {
   const r = draw.getBoundingClientRect();
-  const p = e.touches ? e.touches[0] : e;
-  return { x: (p.clientX - r.left)/r.width, y: (p.clientY - r.top)/r.height };
+  return { x: (e.clientX - r.left)/r.width, y: (e.clientY - r.top)/r.height };
 }
 function startDraw(e) {
+  dbg('down @ '+e.clientX.toFixed(0)+','+e.clientY.toFixed(0)+(document.body.classList.contains('trainer')?'':' (kijker-modus!)'));
   if (!document.body.classList.contains('trainer')) return;
   e.preventDefault();
+  try { draw.setPointerCapture(e.pointerId); } catch(_) {}
   if (playing) pause();                 // tekenen pauzeert altijd op dit frame
   const p = evPos(e);
   if (tool === 'pen') liveMark = { frame, type:'pen', color, pinned, pts:[p] };
@@ -365,19 +376,18 @@ function moveDraw(e) {
   renderMarks();
 }
 function endDraw() {
-  if (!liveMark) return;
+  if (!liveMark) { dbg('up (niets getekend)'); return; }
   // negeer per-ongeluk-tikjes
   if (liveMark.type==='pen' && liveMark.pts.length<2) marks.pop();
   if (liveMark.type==='circle' && liveMark.r<0.01) marks.pop();
   liveMark = null;
+  dbg('klaar — '+marks.length+' markering(en)');
   refreshUi();
 }
-draw.addEventListener('mousedown', startDraw);
-window.addEventListener('mousemove', moveDraw);
-window.addEventListener('mouseup', endDraw);
-draw.addEventListener('touchstart', startDraw, {passive:false});
-draw.addEventListener('touchmove', moveDraw, {passive:false});
-draw.addEventListener('touchend', endDraw);
+draw.addEventListener('pointerdown', startDraw);
+draw.addEventListener('pointermove', moveDraw);
+draw.addEventListener('pointerup', endDraw);
+draw.addEventListener('pointercancel', endDraw);
 
 // ---------- toolbar bediening ----------
 document.querySelectorAll('.tool[data-tool]').forEach(b =>
