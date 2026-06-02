@@ -570,7 +570,7 @@ if (qv) {
 
   // visible version marker so we can confirm which build loaded (caches!)
   const bld = $('build');
-  if (bld) { bld.textContent = 'annot v8 · edit:' + (editable ? 'AAN' : 'uit');
+  if (bld) { bld.textContent = 'annot v9 · edit:' + (editable ? 'AAN' : 'uit');
              bld.style.color = '#9fffe0'; bld.style.opacity = '1'; bld.style.fontSize = '11px'; }
 
   // ---------- canvas sizing & video-rect mapping ----------
@@ -870,8 +870,11 @@ if (qv) {
   (function loadFromHash() {
     const n = new URLSearchParams(location.hash.replace(/^#/, '')).get('n');
     if (!n) return;
-    unpack(n).then(obj => { deserialize(obj); updateTimeline(); updateMemoBadge(); })
-             .catch(() => toast('Kon de annotaties in deze link niet lezen.'));
+    unpack(n).then(obj => {
+      deserialize(obj); updateTimeline(); updateMemoBadge();
+      const d = marks.filter(m => m.k !== 'memo').length, a = marks.filter(m => m.k === 'memo').length;
+      toast('Annotaties geladen: <b>' + d + '</b> tekening(en), <b>' + a + "</b> memo('s).");
+    }).catch(() => toast('⚠️ Kon de annotaties niet lezen — de link is waarschijnlijk afgekapt (te lang). Lengte: ' + n.length + ' tekens.'));
   })();
 
   // ---------- auto play/pause on annotated frames ----------
