@@ -53,6 +53,12 @@
   }
   .sidebtns button:active { background: #1f6bff; border-color: #1f6bff; }
 
+  /* While annotation auto-pause holds the film, the transport controls are
+     locked so manual play/step can't fight the hold or the playing memo. */
+  body.annot-lock .sidebtns button {
+    opacity: .3; pointer-events: none; filter: grayscale(1);
+  }
+
   /* Small time / frame readout on the video. */
   #readout {
     position: absolute; left: 50%; transform: translateX(-50%); bottom: 10px;
@@ -395,6 +401,15 @@ const stageEl = $('stage');
 
 let hasVideo = false;
 
+// Set while annotation auto-pause is in control (holding on a mark / playing a
+// memo). Transport controls bail out and dim until the film resumes itself.
+let annotLock = false;
+function setAnnotLock(on) {
+  if (on && document.body.classList.contains('trainer')) return;  // coach keeps control
+  annotLock = on;
+  document.body.classList.toggle('annot-lock', on);
+}
+
 function fmtTime(s) {
   if (!isFinite(s)) s = 0;
   const m = Math.floor(s / 60);
@@ -451,6 +466,7 @@ stageEl.addEventListener('drop', e => {
 
 // ---------- playback: tap the video to play/pause (or pick a file if empty) ----------
 function togglePlay() {
+  if (annotLock) return;                       // auto-pause is holding the film
   if (video.paused) { const p = video.play(); if (p && p.catch) p.catch(() => {}); }
   else video.pause();
 }
@@ -467,6 +483,7 @@ function currentFps() {
   return f && f > 0 ? f : 30;
 }
 function frameStep(deltaFrames) {
+  if (annotLock) return;                       // locked while auto-pause holds
   if (!hasVideo || !isFinite(video.duration)) return;
   if (!video.paused) video.pause();
   const fps = currentFps();
@@ -488,7 +505,7 @@ playBtn.addEventListener('click', () => { if (hasVideo) togglePlay(); });
 video.addEventListener('play', () => playBtn.textContent = '⏸');
 video.addEventListener('pause', () => playBtn.textContent = '▶');
 function restart() {
-  if (!hasVideo) return;
+  if (annotLock || !hasVideo) return;
   try { video.currentTime = 0; } catch (_) {}
   const p = video.play(); if (p && p.catch) p.catch(() => {});
 }
@@ -642,7 +659,7 @@ if (qv) {
 
   // visible version marker so we can confirm which build loaded (caches!)
   const bld = $('build');
-  if (bld) { bld.textContent = 'annot v11 (opslag) · edit:' + (editable ? 'AAN' : 'uit');
+  if (bld) { bld.textContent = 'annot v12 (lock) · edit:' + (editable ? 'AAN' : 'uit');
              bld.style.color = '#9fffe0'; bld.style.opacity = '1'; bld.style.fontSize = '11px'; }
 
   // ---------- canvas sizing & video-rect mapping ----------
@@ -1045,7 +1062,7 @@ if (qv) {
   function autoStop() {
     const t = video.currentTime || 0;
     if (holdUntil) {                              // currently holding on a mark
-      if (performance.now() >= holdUntil) { holdUntil = 0; prevTime = t; resumePlay(); }
+      if (performance.now() >= holdUntil) { holdUntil = 0; prevTime = t; setAnnotLock(false); resumePlay(); }
       prevTime = t; return;
     }
     if (!video.paused && !memoPlaying) {
@@ -1056,9 +1073,10 @@ if (qv) {
         const memo = group.find(m => m.k === 'memo');
         const note = group.find(m => m.k === 'note');
         video.pause();
+        setAnnotLock(true);                       // freeze the transport while we hold
         if (memo) {                               // play the voice memo, resume when it ends
           memoPlaying = true;
-          playMemo(memo, () => { memoPlaying = false; prevTime = video.currentTime || 0; resumePlay(); });
+          playMemo(memo, () => { memoPlaying = false; prevTime = video.currentTime || 0; setAnnotLock(false); resumePlay(); });
         } else {                                  // drawing/note: hold then resume
           const hold = note ? Math.min(9000, Math.max(HOLD_MS, 1200 + 70 * note.text.length)) : HOLD_MS;
           holdUntil = performance.now() + hold;
