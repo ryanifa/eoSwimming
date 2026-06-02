@@ -617,7 +617,7 @@ if (qv) {
     return [ (e.clientX - r.left - R.left) / R.width, (e.clientY - r.top - R.top) / R.height ];
   }
   function startDraw(e) {
-    if (!document.body.classList.contains('trainer')) return;
+    if (!document.body.classList.contains('trainer') || !hasVideo) return;
     e.preventDefault();
     try { draw.setPointerCapture(e.pointerId); } catch (_) {}
     if (!video.paused) video.pause();
