@@ -185,9 +185,6 @@
   <div class="group" id="swatches">
     <button class="swatch active" style="background:#ff3b30" data-color="#ff3b30"></button>
     <button class="swatch" style="background:#ffcf33" data-color="#ffcf33"></button>
-    <button class="swatch" style="background:#34d399" data-color="#34d399"></button>
-    <button class="swatch" style="background:#3b82f6" data-color="#3b82f6"></button>
-    <button class="swatch" style="background:#ffffff" data-color="#ffffff"></button>
   </div>
   <div class="sep"></div>
   <div class="group">
@@ -224,7 +221,7 @@
 
   <button id="memoBadge">🔊 memo</button>
   <div id="readout"></div>
-  <div id="dbg">build v6 · wacht op invoer…</div>
+  <div id="dbg">build v7 · wacht op invoer…</div>
 
   <div id="timeline">
     <div id="tlbar"></div>
@@ -359,7 +356,7 @@ function drawMark(ctx, m, w, h) {
 
 // ---------- tekenen (Pointer Events: muis + touch + pen in één) ----------
 let liveMark = null;
-const dbg = (t) => { const e=$('dbg'); if(e) e.textContent='build v6 · '+t; };
+const dbg = (t) => { const e=$('dbg'); if(e) e.textContent='build v7 · '+t; };
 function evPos(e) {
   const r = draw.getBoundingClientRect();
   return { x: (e.clientX - r.left)/r.width, y: (e.clientY - r.top)/r.height };
