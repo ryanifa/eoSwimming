@@ -180,17 +180,15 @@
   }
   body.can-edit.trainer #trainerToggle { background: #1f6bff; border-color: #1f6bff; }
 
-  /* voice-memo play badge (what the viewer taps) */
-  #memoBadge {
-    position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
-    z-index: 4; display: none;
-    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
-    background: rgba(0,0,0,.7); color: #34d399; border: 2px solid #34d399;
-    border-radius: 999px; font-size: 16px; font-weight: 700;
-    padding: 7px 14px; cursor: pointer; white-space: nowrap;
+  /* text-note caption (what the viewer reads on a note frame) */
+  #noteCap {
+    position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%);
+    z-index: 4; display: none; max-width: 86%;
+    background: rgba(0,0,0,.78); color: #fff; border: 1px solid #34d399;
+    border-left: 4px solid #34d399; border-radius: 10px;
+    font-size: 16px; line-height: 1.4; padding: 9px 14px; text-align: center;
   }
-  #memoBadge.show { display: block; }
-  #memoBadge.playing { background: #34d399; color: #04110d; }
+  #noteCap.show { display: block; }
 
   /* slim timeline with annotation dots */
   #timeline { position: absolute; left: 12px; right: 12px; bottom: 30px; height: 16px;
@@ -207,22 +205,24 @@
            pointer-events: none; }
   .tldot.audio { background: #34d399; }
 
-  /* compact recording bar — floats over the video so the frame stays visible */
-  #recOverlay {
+  /* note input bar — floats over the video so the frame stays visible */
+  #noteInput {
     position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
-    z-index: 8; display: none; align-items: center; gap: 11px;
-    background: rgba(0,0,0,.72); border: 1px solid #284038; border-radius: 14px;
-    padding: 8px 12px; max-width: 92%;
+    z-index: 8; display: none; align-items: center; gap: 8px;
+    background: rgba(0,0,0,.82); border: 1px solid #284038; border-radius: 14px;
+    padding: 8px 10px; max-width: 94%; width: 560px;
   }
-  #recOverlay.show { display: flex; }
-  .recdot { width: 16px; height: 16px; border-radius: 50%; background: #ef4444;
-            flex: 0 0 auto; animation: pulse 1s ease-in-out infinite; }
-  @keyframes pulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(.72);opacity:.6} }
-  .rectime { font-family: monospace; font-size: 16px; color: #fff; }
-  .rectxt { color: #9fb4af; font-size: 12px; white-space: nowrap; }
-  .recstop { background: #fff; color: #04110d; border: 0; border-radius: 10px;
-             font-size: 14px; font-weight: 700; padding: 9px 14px; cursor: pointer;
-             -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  #noteInput.show { display: flex; }
+  #noteText {
+    flex: 1 1 auto; min-width: 0; background: #0b1714; color: #fff;
+    border: 1px solid #284038; border-radius: 10px; font-size: 16px; padding: 10px 12px;
+  }
+  #noteText:focus { outline: none; border-color: #1f6bff; }
+  .notebtn { -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+             border: 0; border-radius: 10px; font-size: 15px; font-weight: 700;
+             padding: 10px 14px; cursor: pointer; flex: 0 0 auto; }
+  #noteSave { background: #34d399; color: #04110d; }
+  #noteCancel { background: #16241f; color: #cfe9ff; border: 1px solid #284038; }
 
   /* share toast */
   #toast {
@@ -263,7 +263,7 @@
   </div>
   <div class="sep"></div>
   <div class="group">
-    <button class="tool" id="micBtn"  title="Spraakmemo op dit frame">🎙️ memo</button>
+    <button class="tool" id="noteBtn" title="Tekstnotitie op dit frame">📝 notitie</button>
     <button class="tool" id="pinBtn"  title="Markering op hele video tonen">📌 vastzet</button>
   </div>
   <div class="sep"></div>
@@ -281,14 +281,13 @@
   <button id="trainerToggle" title="Bewerken / voorvertonen">✏️</button>
   <button id="flRefresh" title="Refresh">↻</button>
 
-  <button id="memoBadge">🔊 memo</button>
+  <div id="noteCap"></div>
   <div id="timeline"><div id="tlbar"></div><div id="tlfill"></div><div id="tlhandle"></div></div>
   <div id="toast"></div>
-  <div id="recOverlay">
-    <div class="recdot"></div>
-    <div class="rectime" id="recTime">0,0s</div>
-    <div class="rectxt">opnemen…</div>
-    <button class="recstop" id="recStop">■ Stop &amp; bewaar</button>
+  <div id="noteInput">
+    <input id="noteText" type="text" placeholder="Typ je opmerking…" autocomplete="off" autocapitalize="sentences">
+    <button class="notebtn" id="noteSave">Bewaar</button>
+    <button class="notebtn" id="noteCancel" title="Annuleren">✕</button>
   </div>
 
   <div class="sidebtns left">
@@ -550,17 +549,17 @@ if (qv) {
 
 // ===================== annotaties / trainer-laag =====================
 // Self-contained: renders annotations on top of the video (read-only for
-// viewers) and, in edit mode (?edit=1), lets a coach draw, record short voice
-// memos, and pack everything into the share link's #n= fragment.
+// viewers) and, in edit mode (?edit=1), lets a coach draw, add short text
+// notes, and pack everything into the share link's #n= fragment.
 (function () {
   const draw = $('draw'), dctx = draw.getContext('2d');
   const COLORS = ['#ff3b30', '#ffcf33'];
   const WINDOW = 0.20;          // s: a non-pinned mark shows within ±WINDOW of its time
-  let marks = [];               // {t,k:'pen'|'arrow'|'memo',color,pin, pts|x1..y2 | dur,mime,au}
+  let marks = [];               // {t,k:'pen'|'arrow'|'note',color,pin, pts|x1..y2 | text}
   let tool = 'pen', color = COLORS[0], pinned = false, liveMark = null;
-  let prevTime = 0, memoPlaying = false, holdUntil = 0;   // auto play/pause state
-  const HOLD_MS = 2000;          // how long to hold on a drawing-only frame
-  const tl = $('timeline'), memoBadge = $('memoBadge');
+  let prevTime = 0, holdUntil = 0;   // auto play/pause state
+  const HOLD_MS = 2200;          // base hold on a drawing/short-note frame
+  const tl = $('timeline'), noteCap = $('noteCap');
 
   // edit mode: ?edit=1 on our own URL, or anywhere in the href so it still
   // works when the page is opened through a wrapper like htmlpreview.github.io
@@ -570,7 +569,7 @@ if (qv) {
 
   // visible version marker so we can confirm which build loaded (caches!)
   const bld = $('build');
-  if (bld) { bld.textContent = 'annot v9 · edit:' + (editable ? 'AAN' : 'uit');
+  if (bld) { bld.textContent = 'annot v10 (tekst) · edit:' + (editable ? 'AAN' : 'uit');
              bld.style.color = '#9fffe0'; bld.style.opacity = '1'; bld.style.fontSize = '11px'; }
 
   // ---------- canvas sizing & video-rect mapping ----------
@@ -606,7 +605,7 @@ if (qv) {
     dctx.clearRect(0, 0, stageEl.clientWidth, stageEl.clientHeight);
     const R = videoRect(), t = video.currentTime || 0;
     for (const m of marks) {
-      if (m.k === 'memo' || !visible(m, t)) continue;
+      if (m.k === 'note' || !visible(m, t)) continue;
       dctx.globalAlpha = (m === liveMark) ? 1
         : (m.pin ? 0.55 : Math.max(0.3, 1 - Math.abs(m.t - t) / WINDOW));
       drawMark(m, R);
@@ -688,69 +687,50 @@ if (qv) {
   $('undoBtn').addEventListener('click', () => {
     const t = video.currentTime || 0;
     for (let i = marks.length - 1; i >= 0; i--) { if (visible(marks[i], t)) { marks.splice(i, 1); break; } }
-    updateTimeline(); updateMemoBadge();
+    updateTimeline(); updateNoteCaption();
   });
   $('clearBtn').addEventListener('click', () => {
     const t = video.currentTime || 0; marks = marks.filter(m => !visible(m, t));
-    updateTimeline(); updateMemoBadge();
+    updateTimeline(); updateNoteCaption();
   });
 
-  // ---------- voice memos (real microphone capture) ----------
-  let mediaRec = null, chunks = [], recStart = 0, recTimer = null, audioEl = null;
-  function blobToB64(blob) {
-    return new Promise(res => { const fr = new FileReader();
-      fr.onload = () => res(String(fr.result).split(',')[1] || ''); fr.readAsDataURL(blob); });
-  }
-  $('micBtn').addEventListener('click', async () => {
-    if (!navigator.mediaDevices || !window.MediaRecorder) { toast('Opnemen wordt niet ondersteund op dit toestel.'); return; }
+  // ---------- text notes ----------
+  const noteInput = $('noteInput'), noteText = $('noteText');
+  function openNote() {
+    if (!hasVideo) { toast('Laad eerst een video.'); return; }
     if (!video.paused) video.pause();
-    let stream;
-    try { stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } }); }
-    catch (_) { toast('Geen toegang tot de microfoon.'); return; }
-    const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac']
-      .find(m => { try { return MediaRecorder.isTypeSupported(m); } catch (_) { return false; } }) || '';
-    try { mediaRec = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 24000 } : undefined); }
-    catch (_) { mediaRec = new MediaRecorder(stream); }
-    chunks = [];
-    mediaRec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
-    mediaRec.onstop = async () => {
-      stream.getTracks().forEach(tr => tr.stop());
-      const blob = new Blob(chunks, { type: mediaRec.mimeType || mime || 'audio/webm' });
-      const dur = (performance.now() - recStart) / 1000;
-      marks.push({ t: video.currentTime || 0, k: 'memo', pin: false, color: '#34d399', dur, mime: blob.type, au: await blobToB64(blob) });
-      updateTimeline(); updateMemoBadge();
-      toast('Spraakmemo bewaard (' + dur.toFixed(1).replace('.', ',') + 's).');
-      // recording done → let the film carry on playing
-      const p = video.play(); if (p && p.catch) p.catch(() => {});
-    };
-    recStart = performance.now(); mediaRec.start();
-    $('recOverlay').classList.add('show');
-    recTimer = setInterval(() => { $('recTime').textContent = ((performance.now() - recStart) / 1000).toFixed(1).replace('.', ',') + 's'; }, 100);
+    noteText.value = '';
+    noteInput.classList.add('show');
+    setTimeout(() => noteText.focus(), 30);
+  }
+  function saveNote() {
+    const text = noteText.value.trim();
+    noteInput.classList.remove('show');
+    if (!text) return;
+    marks.push({ t: video.currentTime || 0, k: 'note', pin: false, color: '#34d399', text });
+    updateTimeline(); updateNoteCaption();
+    toast('Notitie bewaard.');
+    const p = video.play(); if (p && p.catch) p.catch(() => {});   // carry on playing
+  }
+  $('noteBtn').addEventListener('click', openNote);
+  $('noteSave').addEventListener('click', e => { e.stopPropagation(); saveNote(); });
+  $('noteCancel').addEventListener('click', e => { e.stopPropagation(); noteInput.classList.remove('show'); });
+  noteText.addEventListener('keydown', e => {
+    e.stopPropagation();                                  // don't let arrows step frames while typing
+    if (e.key === 'Enter') { e.preventDefault(); saveNote(); }
+    else if (e.key === 'Escape') noteInput.classList.remove('show');
   });
-  function stopMemo() {
-    if (mediaRec && mediaRec.state !== 'inactive') mediaRec.stop();
-    clearInterval(recTimer); $('recOverlay').classList.remove('show');
-  }
-  $('recStop').addEventListener('click', e => { e.stopPropagation(); stopMemo(); });
 
-  function updateMemoBadge() {
-    const t = video.currentTime || 0;
-    memoBadge.classList.toggle('show', marks.some(m => m.k === 'memo' && (m.pin || Math.abs(m.t - t) <= WINDOW)));
+  // the caption the viewer reads: shows the note nearest the current frame
+  function noteAt(t) {
+    return marks.filter(m => m.k === 'note' && (m.pin || Math.abs(m.t - t) <= WINDOW))
+                .sort((a, b) => Math.abs(a.t - t) - Math.abs(b.t - t))[0];
   }
-  function nearestMemo(t) {
-    return marks.filter(x => x.k === 'memo').sort((a, b) => Math.abs(a.t - t) - Math.abs(b.t - t))[0];
+  function updateNoteCaption() {
+    const m = noteAt(video.currentTime || 0);
+    if (m) { noteCap.textContent = m.text; noteCap.classList.add('show'); }
+    else noteCap.classList.remove('show');
   }
-  function playMemo(m, onDone) {
-    if (!m) { if (onDone) onDone(); return; }
-    if (audioEl) { try { audioEl.pause(); } catch (_) {} }
-    audioEl = new Audio('data:' + (m.mime || 'audio/webm') + ';base64,' + m.au);
-    memoBadge.classList.add('playing');
-    const finish = () => { memoBadge.classList.remove('playing'); if (onDone) onDone(); };
-    audioEl.onended = finish;
-    audioEl.play().catch(() => { toast('Kan deze memo niet afspelen op dit toestel.'); finish(); });
-  }
-  // manual tap on the badge just plays the nearest memo
-  memoBadge.addEventListener('click', e => { e.stopPropagation(); playMemo(nearestMemo(video.currentTime || 0)); });
 
   // ---------- timeline (dots + scrub) ----------
   function updateTimeline() {
@@ -759,10 +739,10 @@ if (qv) {
     if (dur > 0) {
       const seen = new Set();
       for (const m of marks) {
-        const key = m.t.toFixed(2) + (m.k === 'memo' ? 'a' : 'd');
+        const key = m.t.toFixed(2) + (m.k === 'note' ? 'a' : 'd');
         if (seen.has(key)) continue; seen.add(key);
         const dot = document.createElement('div');
-        dot.className = 'tldot' + (m.k === 'memo' ? ' audio' : '');
+        dot.className = 'tldot' + (m.k === 'note' ? ' audio' : '');
         dot.style.left = (Math.min(1, m.t / dur) * 100) + '%';
         tl.appendChild(dot);
       }
@@ -825,32 +805,32 @@ if (qv) {
       o.c = Math.max(0, COLORS.indexOf(m.color));
       if (m.k === 'pen') o.p = m.pts.map(p => [round(p[0], 4), round(p[1], 4)]);
       else if (m.k === 'arrow') o.a = [round(m.x1, 4), round(m.y1, 4), round(m.x2, 4), round(m.y2, 4)];
-      else { o.d = round(m.dur, 2); o.mi = m.mime; o.au = m.au; }
+      else o.x = m.text;
       return o;
     }) };
   }
   function deserialize(obj) {
     marks = ((obj && obj.m) || []).map(o => {
-      const k = o.k === 'p' ? 'pen' : o.k === 'a' ? 'arrow' : 'memo';
+      const k = o.k === 'p' ? 'pen' : o.k === 'a' ? 'arrow' : 'note';
       const m = { t: o.t || 0, k, pin: !!o.P, color: COLORS[o.c || 0] || COLORS[0] };
       if (m.pin) m.end = (o.e != null ? o.e : Infinity);
       if (k === 'pen') m.pts = (o.p || []).map(p => [p[0], p[1]]);
       else if (k === 'arrow') { m.x1 = o.a[0]; m.y1 = o.a[1]; m.x2 = o.a[2]; m.y2 = o.a[3]; }
-      else { m.color = '#34d399'; m.dur = o.d || 0; m.mime = o.mi || 'audio/webm'; m.au = o.au || ''; }
+      else { m.color = '#34d399'; m.text = o.x || ''; }
       return m;
     });
   }
 
   // ---------- share ----------
   $('shareBtn').addEventListener('click', async () => {
-    if (!marks.length) { toast('Nog niets om te delen — teken eerst iets of neem een memo op.'); return; }
+    if (!marks.length) { toast('Nog niets om te delen — teken eerst iets of voeg een notitie toe.'); return; }
     const payload = await pack(serialize());
     const params = new URLSearchParams(location.search); params.delete('edit');
     const qs = params.toString();
     const url = location.origin + location.pathname + (qs ? '?' + qs : '') + '#n=' + payload;
     const kb = (url.length / 1024).toFixed(1).replace('.', ',');
     const big = url.length > 30000;
-    const note = 'Deellink klaar (' + kb + ' KB)' + (big ? ' — ⚠️ vrij groot, houd memo\'s kort' : '') + '.';
+    const note = 'Deellink klaar (' + kb + ' KB)' + (big ? ' — ⚠️ vrij groot, houd notities kort' : '') + '.';
     try {
       if (navigator.share) { await navigator.share({ title: 'eo Swim analyse', url }); toast(note); return; }
       if (navigator.clipboard) { await navigator.clipboard.writeText(url); toast(note + ' Gekopieerd naar klembord.'); return; }
@@ -871,38 +851,35 @@ if (qv) {
     const n = new URLSearchParams(location.hash.replace(/^#/, '')).get('n');
     if (!n) return;
     unpack(n).then(obj => {
-      deserialize(obj); updateTimeline(); updateMemoBadge();
-      const d = marks.filter(m => m.k !== 'memo').length, a = marks.filter(m => m.k === 'memo').length;
-      toast('Annotaties geladen: <b>' + d + '</b> tekening(en), <b>' + a + "</b> memo('s).");
+      deserialize(obj); updateTimeline(); updateNoteCaption();
+      const d = marks.filter(m => m.k !== 'note').length, a = marks.filter(m => m.k === 'note').length;
+      toast('Annotaties geladen: <b>' + d + '</b> tekening(en), <b>' + a + "</b> notitie(s).");
     }).catch(() => toast('⚠️ Kon de annotaties niet lezen — de link is waarschijnlijk afgekapt (te lang). Lengte: ' + n.length + ' tekens.'));
   })();
 
-  // ---------- auto play/pause on annotated frames ----------
+  // ---------- auto-pause on annotated frames ----------
   // While the film plays through a frame that carries a (non-pinned) mark, it
-  // pauses: a memo plays and the film resumes when it ends; a drawing-only frame
-  // is held for HOLD_MS so it's clearly visible, then resumes. Pinned marks span
-  // a range and are always on screen, so they don't trigger a pause. Crossing
-  // detection (prev<t<=now) fires once per pass and never while stepping/scrubbing.
+  // pauses so the drawing/note is visible, then resumes after a short hold. A
+  // note holds longer (scaled to its length) so it can be read. Pinned marks
+  // span a range and stay on screen, so they don't trigger a pause. Crossing
+  // detection (prev<t<=now) fires once per pass, never while stepping/scrubbing.
   const resumePlay = () => { const p = video.play(); if (p && p.catch) p.catch(() => {}); };
   function autoStop() {
     const t = video.currentTime || 0;
-    if (holdUntil) {                              // currently holding on a drawing
+    if (holdUntil) {                              // currently holding on a mark
       if (performance.now() >= holdUntil) { holdUntil = 0; prevTime = t; resumePlay(); }
       prevTime = t; return;
     }
-    if (!video.paused && !memoPlaying) {
+    if (!video.paused) {
       const crossed = marks.filter(m => !m.pin && prevTime < m.t && t >= m.t);
       if (crossed.length) {
         const t0 = Math.min(...crossed.map(m => m.t));
         const group = marks.filter(m => !m.pin && Math.abs(m.t - t0) <= 0.05);
-        const memo = group.find(m => m.k === 'memo');
+        const note = group.find(m => m.k === 'note');
+        // reading time for a note (~70ms/char), capped; drawings use the base hold
+        const hold = note ? Math.min(9000, Math.max(HOLD_MS, 1200 + 70 * note.text.length)) : HOLD_MS;
         video.pause();
-        if (memo) {
-          memoPlaying = true;
-          playMemo(memo, () => { memoPlaying = false; prevTime = video.currentTime || 0; resumePlay(); });
-        } else {
-          holdUntil = performance.now() + HOLD_MS;
-        }
+        holdUntil = performance.now() + hold;
       }
     }
     prevTime = t;
@@ -911,7 +888,7 @@ if (qv) {
   // ---------- render loop ----------
   function loop() {
     const active = marks.length || document.body.classList.contains('trainer');
-    if (active) { renderAnnotations(); updateMemoBadge(); autoStop(); }
+    if (active) { renderAnnotations(); updateNoteCaption(); autoStop(); }
     if (active || document.body.classList.contains('has-annot')) updateTimelineFill();
     requestAnimationFrame(loop);
   }
