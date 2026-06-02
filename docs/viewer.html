@@ -565,7 +565,7 @@ if (qv) {
 
   // visible version marker so we can confirm which build loaded (caches!)
   const bld = $('build');
-  if (bld) { bld.textContent = 'annot v3 · edit:' + (editable ? 'AAN' : 'uit');
+  if (bld) { bld.textContent = 'annot v4 · edit:' + (editable ? 'AAN' : 'uit');
              bld.style.color = '#9fffe0'; bld.style.opacity = '1'; bld.style.fontSize = '11px'; }
 
   // ---------- canvas sizing & video-rect mapping ----------
@@ -589,7 +589,13 @@ if (qv) {
   }
 
   // ---------- rendering ----------
-  const visible = (m, t) => m.pin || Math.abs(m.t - t) <= WINDOW;
+  // A non-pinned mark shows briefly around its frame. A pinned ("vastgezet")
+  // mark shows from the frame it was drawn on until its end frame — which is
+  // set when the coach turns vastzetten off (open-ended until then).
+  function visible(m, t) {
+    if (m.pin) { const end = isFinite(m.end) ? m.end : Infinity; return t >= m.t - WINDOW && t <= end; }
+    return Math.abs(m.t - t) <= WINDOW;
+  }
   function renderAnnotations() {
     ensureCanvasSize();
     dctx.clearRect(0, 0, stageEl.clientWidth, stageEl.clientHeight);
@@ -635,6 +641,7 @@ if (qv) {
     liveMark = (tool === 'pen')
       ? { t, k: 'pen', color, pin: pinned, pts: [[x, y]] }
       : { t, k: 'arrow', color, pin: pinned, x1: x, y1: y, x2: x, y2: y };
+    if (pinned) liveMark.end = Infinity;   // open-ended until vastzetten is turned off
     marks.push(liveMark); renderAnnotations();
   }
   function moveDraw(e) {
@@ -662,8 +669,16 @@ if (qv) {
     b.addEventListener('click', () => { setActive('.swatch', b); color = b.dataset.color; }));
   $('pinBtn').addEventListener('click', () => {
     pinned = !pinned; $('pinBtn').classList.toggle('active', pinned);
-    toast(pinned ? 'Vastzetten AAN — nieuwe markeringen blijven de hele video zichtbaar'
-                 : 'Vastzetten uit — markeringen horen bij dit frame');
+    if (pinned) {
+      toast('Vastzetten AAN — wat je nu tekent blijft staan, tot je vastzetten weer uitzet');
+    } else {
+      // close any still-open pinned marks at the current frame: they disappear from here on
+      const t = video.currentTime || 0; let n = 0;
+      for (const m of marks) if (m.pin && !isFinite(m.end)) { m.end = t; n++; }
+      updateTimeline();
+      toast(n ? ('Vastzetten gestopt — ' + n + ' markering(en) lopen tot hier en zijn daarna weg')
+              : 'Vastzetten uit — nieuwe markeringen horen bij hun frame');
+    }
   });
   $('undoBtn').addEventListener('click', () => {
     const t = video.currentTime || 0;
@@ -796,7 +811,7 @@ if (qv) {
   function serialize() {
     return { v: 1, m: marks.map(m => {
       const o = { t: round(m.t, 3), k: m.k[0] };
-      if (m.pin) o.P = 1;
+      if (m.pin) { o.P = 1; if (isFinite(m.end)) o.e = round(m.end, 3); }
       o.c = Math.max(0, COLORS.indexOf(m.color));
       if (m.k === 'pen') o.p = m.pts.map(p => [round(p[0], 4), round(p[1], 4)]);
       else if (m.k === 'arrow') o.a = [round(m.x1, 4), round(m.y1, 4), round(m.x2, 4), round(m.y2, 4)];
@@ -808,6 +823,7 @@ if (qv) {
     marks = ((obj && obj.m) || []).map(o => {
       const k = o.k === 'p' ? 'pen' : o.k === 'a' ? 'arrow' : 'memo';
       const m = { t: o.t || 0, k, pin: !!o.P, color: COLORS[o.c || 0] || COLORS[0] };
+      if (m.pin) m.end = (o.e != null ? o.e : Infinity);
       if (k === 'pen') m.pts = (o.p || []).map(p => [p[0], p[1]]);
       else if (k === 'arrow') { m.x1 = o.a[0]; m.y1 = o.a[1]; m.x2 = o.a[2]; m.y2 = o.a[3]; }
       else { m.color = '#34d399'; m.dur = o.d || 0; m.mime = o.mi || 'audio/webm'; m.au = o.au || ''; }
