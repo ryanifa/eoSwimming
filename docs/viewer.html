@@ -565,7 +565,7 @@ if (qv) {
 
   // visible version marker so we can confirm which build loaded (caches!)
   const bld = $('build');
-  if (bld) { bld.textContent = 'annot v4 · edit:' + (editable ? 'AAN' : 'uit');
+  if (bld) { bld.textContent = 'annot v5 · edit:' + (editable ? 'AAN' : 'uit');
              bld.style.color = '#9fffe0'; bld.style.opacity = '1'; bld.style.fontSize = '11px'; }
 
   // ---------- canvas sizing & video-rect mapping ----------
@@ -715,6 +715,8 @@ if (qv) {
       marks.push({ t: video.currentTime || 0, k: 'memo', pin: false, color: '#34d399', dur, mime: blob.type, au: await blobToB64(blob) });
       updateTimeline(); updateMemoBadge();
       toast('Spraakmemo bewaard (' + dur.toFixed(1).replace('.', ',') + 's).');
+      // recording done → let the film carry on playing
+      const p = video.play(); if (p && p.catch) p.catch(() => {});
     };
     recStart = performance.now(); mediaRec.start();
     $('recOverlay').classList.add('show');
