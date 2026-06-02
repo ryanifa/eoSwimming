@@ -180,7 +180,6 @@
   <div class="group">
     <button class="tool active" data-tool="pen"   title="Vrij tekenen">✐ pen</button>
     <button class="tool"        data-tool="arrow" title="Pijl">↗ pijl</button>
-    <button class="tool"        data-tool="circle"title="Cirkel">◯ cirkel</button>
   </div>
   <div class="sep"></div>
   <div class="group" id="swatches">
@@ -225,7 +224,7 @@
 
   <button id="memoBadge">🔊 memo</button>
   <div id="readout"></div>
-  <div id="dbg">build v5 · wacht op invoer…</div>
+  <div id="dbg">build v6 · wacht op invoer…</div>
 
   <div id="timeline">
     <div id="tlbar"></div>
@@ -346,22 +345,21 @@ function drawMark(ctx, m, w, h) {
     ctx.beginPath();
     m.pts.forEach((p,i)=> i? ctx.lineTo(p.x*w,p.y*h) : ctx.moveTo(p.x*w,p.y*h));
     ctx.stroke();
-  } else if (m.type === 'circle') {
-    ctx.beginPath(); ctx.ellipse(m.x*w, m.y*h, m.r*w, m.r*w, 0, 0, 7); ctx.stroke();
   } else if (m.type === 'arrow') {
     const x1=m.x1*w,y1=m.y1*h,x2=m.x2*w,y2=m.y2*h;
     ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
-    const a = Math.atan2(y2-y1, x2-x1), L = 16;
-    ctx.beginPath(); ctx.moveTo(x2,y2);
-    ctx.lineTo(x2-L*Math.cos(a-0.4), y2-L*Math.sin(a-0.4));
-    ctx.lineTo(x2-L*Math.cos(a+0.4), y2-L*Math.sin(a+0.4));
+    // pijlpunt aan het BEGIN (x1,y1), wijzend weg van de lijn
+    const a = Math.atan2(y1-y2, x1-x2), L = 16;
+    ctx.beginPath(); ctx.moveTo(x1,y1);
+    ctx.lineTo(x1-L*Math.cos(a-0.4), y1-L*Math.sin(a-0.4));
+    ctx.lineTo(x1-L*Math.cos(a+0.4), y1-L*Math.sin(a+0.4));
     ctx.closePath(); ctx.fill();
   }
 }
 
 // ---------- tekenen (Pointer Events: muis + touch + pen in één) ----------
 let liveMark = null;
-const dbg = (t) => { const e=$('dbg'); if(e) e.textContent='build v5 · '+t; };
+const dbg = (t) => { const e=$('dbg'); if(e) e.textContent='build v6 · '+t; };
 function evPos(e) {
   const r = draw.getBoundingClientRect();
   return { x: (e.clientX - r.left)/r.width, y: (e.clientY - r.top)/r.height };
@@ -374,7 +372,6 @@ function startDraw(e) {
   if (playing) pause();                 // tekenen pauzeert altijd op dit frame
   const p = evPos(e);
   if (tool === 'pen') liveMark = { frame, type:'pen', color, pinned, pts:[p] };
-  else if (tool === 'circle') liveMark = { frame, type:'circle', color, pinned, x:p.x, y:p.y, r:0.001 };
   else liveMark = { frame, type:'arrow', color, pinned, x1:p.x, y1:p.y, x2:p.x, y2:p.y };
   marks.push(liveMark);
   document.body.classList.add('drawing');
@@ -384,7 +381,6 @@ function moveDraw(e) {
   if (!liveMark) return; e.preventDefault();
   const p = evPos(e);
   if (liveMark.type==='pen') liveMark.pts.push(p);
-  else if (liveMark.type==='circle') liveMark.r = Math.hypot(p.x-liveMark.x, p.y-liveMark.y);
   else { liveMark.x2=p.x; liveMark.y2=p.y; }
   renderMarks();
 }
@@ -392,7 +388,6 @@ function endDraw() {
   if (!liveMark) { dbg('up (niets getekend)'); return; }
   // negeer per-ongeluk-tikjes
   if (liveMark.type==='pen' && liveMark.pts.length<2) marks.pop();
-  if (liveMark.type==='circle' && liveMark.r<0.01) marks.pop();
   liveMark = null;
   dbg('klaar — '+marks.length+' markering(en)');
   refreshUi();
