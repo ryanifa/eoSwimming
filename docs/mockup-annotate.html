@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Teken-UI mockup — eo Swim</title>
+<!--
+  STANDALONE MOCKUP — niet gekoppeld aan viewer.html.
+  Doel: het GEVOEL van de teken-/annotatie-UI testen (op telefoon en desktop)
+  voordat we iets in de echte viewer bouwen. De "video" is hier nagebootst:
+  een zwemmer die over de baan beweegt, getekend op een canvas, zodat je
+  frame-voor-frame kunt steppen en erop kunt tekenen.
+
+  Niets hiervan schrijft naar een release of het netwerk. Alles blijft lokaal.
+-->
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    touch-action: manipulation; -webkit-text-size-adjust: 100%;
+    -webkit-user-select: none; user-select: none;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #000; color: #eaeaea; overflow: hidden;
+    height: 100vh; height: 100dvh;
+    display: flex; flex-direction: column;
+  }
+
+  /* ---- trainer toolbar (alleen zichtbaar in trainer-modus) ---- */
+  .toolbar {
+    flex: 0 0 auto; display: none; align-items: center; gap: 6px;
+    padding: 8px 10px; background: #0e1a17;
+    border-bottom: 1px solid #1d2c28; overflow-x: auto; white-space: nowrap;
+  }
+  body.trainer .toolbar { display: flex; }
+  .toolbar .group { display: flex; align-items: center; gap: 4px; }
+  .toolbar .sep { width: 1px; align-self: stretch; background: #25393400; margin: 4px 4px;
+                  border-left: 1px solid #20322d; }
+  .tool {
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    background: #16241f; color: #cfe9ff; border: 1px solid #284038;
+    border-radius: 10px; font-size: 14px; font-weight: 600;
+    padding: 9px 11px; cursor: pointer; white-space: nowrap;
+  }
+  .tool:active { background: #1f6bff; }
+  .tool.active { background: #1f6bff; color: #fff; border-color: #1f6bff; }
+  .swatch {
+    width: 26px; height: 26px; border-radius: 7px; border: 2px solid #284038;
+    cursor: pointer; padding: 0;
+  }
+  .swatch.active { border-color: #fff; box-shadow: 0 0 0 2px #1f6bff; }
+  .toolbar .spacer { flex: 1 1 auto; }
+  .hintchip { font-size: 11px; color: #6f8a86; padding-right: 4px; }
+
+  /* ---- stage (zelfde sfeer als viewer.html) ---- */
+  .stage {
+    position: relative; flex: 1 1 auto; min-height: 0; width: 100%;
+    background: #04110d; overflow: hidden; cursor: pointer;
+    touch-action: manipulation; padding: 0 var(--vpad, 0px);
+  }
+  /* faux "video" frame */
+  #scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  /* annotatie-laag bovenop */
+  #draw {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    z-index: 2; touch-action: none;
+  }
+  /* tekenlaag vangt aanrakingen in trainer-modus; in kijker-modus gaan taps
+     dóór naar het beeld (play/pause). */
+  body:not(.trainer) #draw { pointer-events: none; }
+
+  .sidebtns {
+    position: absolute; top: 0; bottom: 0; z-index: 3;
+    width: var(--bar, 78px);
+    display: flex; flex-direction: column;
+    justify-content: space-evenly; align-items: center;
+    padding: 10px 6px;
+  }
+  .sidebtns.left  { left: 0; }
+  .sidebtns.right { right: 0; }
+  .sidebtns button {
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    width: 100%; max-width: 112px; min-width: 0;
+    background: rgba(0,0,0,.62); color: #fff;
+    border: 2px solid rgba(255,255,255,.92); border-radius: 14px;
+    font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums;
+    padding: 16px 6px; cursor: pointer;
+    text-shadow: 0 1px 2px rgba(0,0,0,.85);
+    box-shadow: 0 2px 12px rgba(0,0,0,.55);
+    backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+  }
+  .sidebtns button:active { background: #1f6bff; border-color: #1f6bff; }
+
+  #readout {
+    position: absolute; left: 50%; transform: translateX(-50%); bottom: 30px;
+    z-index: 3; pointer-events: none;
+    font-family: monospace; font-size: 12px; color: #cfe9ff;
+    background: rgba(0,0,0,.5); padding: 3px 8px; border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  /* ---- timeline / scrub met annotatie-stipjes ---- */
+  #timeline {
+    position: absolute; left: 12px; right: 12px; bottom: 12px; height: 14px;
+    z-index: 3; cursor: pointer;
+  }
+  #tlbar {
+    position: absolute; left: 0; right: 0; top: 6px; height: 3px;
+    background: rgba(255,255,255,.25); border-radius: 2px;
+  }
+  #tlfill { position: absolute; left: 0; top: 6px; height: 3px;
+            background: #1f6bff; border-radius: 2px; width: 0; }
+  #tlhandle {
+    position: absolute; top: 1px; width: 13px; height: 13px; margin-left: -6px;
+    border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.6);
+  }
+  .tldot {
+    position: absolute; top: 3px; width: 7px; height: 7px; margin-left: -3px;
+    border-radius: 50%; background: #ffcf33; box-shadow: 0 0 0 1px rgba(0,0,0,.4);
+    pointer-events: none;
+  }
+  .tldot.audio { background: #34d399; }
+
+  /* spraakmemo-knop op het frame */
+  #memoBadge {
+    position: absolute; z-index: 4; display: none;
+    -webkit-tap-highlight-color: transparent;
+    background: rgba(0,0,0,.7); color: #34d399; border: 2px solid #34d399;
+    border-radius: 999px; font-size: 16px; font-weight: 700;
+    padding: 7px 12px; cursor: pointer; white-space: nowrap;
+  }
+  #memoBadge.show { display: block; }
+
+  /* trainer-toggle knop (kijker ziet 'm niet) — kleine ✏️ rechtsboven */
+  #trainerToggle {
+    position: absolute; right: 8px; top: 8px; z-index: 5;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    background: rgba(0,0,0,.55); color: #fff; border: 1px solid rgba(255,255,255,.5);
+    border-radius: 10px; font-size: 15px; padding: 7px 9px; cursor: pointer;
+  }
+  body.trainer #trainerToggle { background: #1f6bff; border-color: #1f6bff; }
+
+  #banner {
+    position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
+    z-index: 5; font-size: 11px; color: #9fb4af; background: rgba(0,0,0,.45);
+    padding: 4px 10px; border-radius: 6px; pointer-events: none; max-width: 80%;
+    text-align: center;
+  }
+
+  /* mock "memo opnemen" overlay */
+  #recOverlay {
+    position: absolute; inset: 0; z-index: 8; display: none;
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; background: rgba(4,17,13,.88); text-align: center; padding: 24px;
+  }
+  #recOverlay.show { display: flex; }
+  .recdot { width: 64px; height: 64px; border-radius: 50%; background: #ef4444;
+            animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(.75);opacity:.6} }
+  .recstop {
+    background: #fff; color: #04110d; border: 0; border-radius: 12px;
+    font-size: 16px; font-weight: 700; padding: 14px 28px; cursor: pointer;
+  }
+  .rectime { font-family: monospace; font-size: 22px; color: #fff; }
+
+  /* versie + live invoer-status, zodat we kunnen zien welke build je hebt
+     en of je vinger/muis geregistreerd wordt */
+  #dbg {
+    position: absolute; left: 8px; bottom: 30px; z-index: 6; pointer-events: none;
+    font-family: monospace; font-size: 11px; color: #9fffe0;
+    background: rgba(0,0,0,.55); padding: 3px 7px; border-radius: 5px; white-space: nowrap;
+  }
+</style>
+</head>
+<body class="trainer">
+
+<!-- ===================== TRAINER TOOLBAR ===================== -->
+<div class="toolbar" id="toolbar">
+  <div class="group">
+    <button class="tool active" data-tool="pen"   title="Vrij tekenen">✐ pen</button>
+    <button class="tool"        data-tool="arrow" title="Pijl">↗ pijl</button>
+  </div>
+  <div class="sep"></div>
+  <div class="group" id="swatches">
+    <button class="swatch active" style="background:#ff3b30" data-color="#ff3b30"></button>
+    <button class="swatch" style="background:#ffcf33" data-color="#ffcf33"></button>
+  </div>
+  <div class="sep"></div>
+  <div class="group">
+    <button class="tool" id="micBtn"  title="Spraakmemo op dit frame">🎙️ memo</button>
+    <button class="tool" id="pinBtn"  title="Markering op hele video tonen">📌 vastzet</button>
+  </div>
+  <div class="sep"></div>
+  <div class="group">
+    <button class="tool" id="undoBtn" title="Ongedaan maken">⟲ undo</button>
+    <button class="tool" id="clearBtn"title="Frame wissen">🗑 wis</button>
+  </div>
+  <div class="spacer"></div>
+  <span class="hintchip" id="markCount">0 markeringen</span>
+</div>
+
+<!-- ===================== STAGE ===================== -->
+<div class="stage" id="stage">
+  <canvas id="scene"></canvas>
+  <canvas id="draw"></canvas>
+
+  <button id="trainerToggle" title="Trainer-modus aan/uit">✏️</button>
+  <div id="banner">Mockup · trainer-modus aan — pak een gereedschap en teken op het beeld</div>
+
+  <div class="sidebtns left">
+    <button id="back1"  title="1 frame terug">−1</button>
+    <button id="resetBtn" title="Opnieuw vanaf begin">↺</button>
+    <button id="back10" title="10 frames terug">−10</button>
+  </div>
+  <div class="sidebtns right">
+    <button id="fwd1"  title="1 frame vooruit">+1</button>
+    <button id="playBtn" title="Afspelen / pauze">▶</button>
+    <button id="fwd10" title="10 frames vooruit">+10</button>
+  </div>
+
+  <button id="memoBadge">🔊 memo</button>
+  <div id="readout"></div>
+  <div id="dbg">build v7 · wacht op invoer…</div>
+
+  <div id="timeline">
+    <div id="tlbar"></div>
+    <div id="tlfill"></div>
+    <div id="tlhandle"></div>
+  </div>
+
+  <div id="recOverlay">
+    <div class="recdot"></div>
+    <div class="rectime" id="recTime">0,0s</div>
+    <div style="color:#9fb4af;font-size:13px">Spreek je memo in voor dit frame…<br>(mockup — er wordt niets opgenomen)</div>
+    <button class="recstop" id="recStop">■ Stop &amp; bewaar</button>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ---------- faux "video" model ----------
+const FPS = 30, TOTAL = 360;            // 12 seconden nagebootste film
+let frame = 0, playing = false;
+
+const scene = $('scene'), sctx = scene.getContext('2d');
+const draw  = $('draw'),  dctx = draw.getContext('2d');
+const stage = $('stage');
+
+// Houd de backing-store van beide canvassen in sync met de ACTUELE
+// weergavegrootte. Op de telefoon verandert de beeldhoogte zodra de adresbalk
+// in/uitschuift; als de canvas-resolutie niet meebeweegt loopt je vinger uit de
+// pas met de tekening (klassiek "tekent hoger"-effect).
+function ensureCanvasSize() {
+  const r = stage.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.max(1, Math.round(r.width  * dpr));
+  const h = Math.max(1, Math.round(r.height * dpr));
+  let changed = false;
+  for (const c of [scene, draw]) {
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; changed = true; }
+  }
+  // setting width/height resets the context, so (re)apply the dpr transform
+  sctx.setTransform(dpr,0,0,dpr,0,0);
+  dctx.setTransform(dpr,0,0,dpr,0,0);
+  return changed;
+}
+function sizeCanvases() {
+  ensureCanvasSize();
+  renderScene(); renderMarks(); layoutBars(); positionMemoBadge();
+}
+
+// Teken een simpele "onderwater" baan met een zwemmer die meebeweegt met het frame.
+function renderScene() {
+  ensureCanvasSize();
+  const w = scene.clientWidth, h = scene.clientHeight;
+  // water
+  const g = sctx.createLinearGradient(0,0,0,h);
+  g.addColorStop(0,'#0a3b54'); g.addColorStop(1,'#04263a');
+  sctx.fillStyle = g; sctx.fillRect(0,0,w,h);
+  // banenlijnen
+  sctx.strokeStyle = 'rgba(255,255,255,.10)'; sctx.lineWidth = 2;
+  for (let i=1;i<5;i++){ const y=h*i/5; sctx.beginPath(); sctx.moveTo(0,y); sctx.lineTo(w,y); sctx.stroke(); }
+  // lichtreflecties die langzaam bewegen
+  sctx.fillStyle = 'rgba(255,255,255,.04)';
+  for (let i=0;i<6;i++){
+    const x = ((i*180 + frame*1.5) % (w+200)) - 100;
+    sctx.beginPath(); sctx.ellipse(x, h*0.2 + (i%3)*h*0.25, 70, 14, 0, 0, 7); sctx.fill();
+  }
+  // zwemmer: gaat van links naar rechts; armslag op basis van frame
+  const t = frame / TOTAL;
+  const cx = w*0.1 + t*w*0.8, cy = h*0.5 + Math.sin(frame/8)*6;
+  const stroke = Math.sin(frame/6);
+  // romp
+  sctx.save();
+  sctx.translate(cx, cy);
+  sctx.fillStyle = '#0b1f1a';
+  sctx.strokeStyle = '#bfe9ff'; sctx.lineWidth = 3;
+  sctx.beginPath(); sctx.ellipse(0,0,46,16,0,0,7); sctx.fill(); sctx.stroke();
+  // hoofd
+  sctx.beginPath(); sctx.arc(48,0,11,0,7); sctx.fillStyle='#163a31'; sctx.fill(); sctx.stroke();
+  // arm (zwaait)
+  sctx.beginPath(); sctx.moveTo(20,-6);
+  sctx.quadraticCurveTo(40, -34*stroke, 64, -10*stroke);
+  sctx.strokeStyle = '#7fd4ff'; sctx.lineWidth = 5; sctx.stroke();
+  // benen / draaikolk
+  sctx.beginPath(); sctx.moveTo(-44,0);
+  sctx.quadraticCurveTo(-62, 10*stroke, -78, -6*stroke);
+  sctx.strokeStyle = 'rgba(180,235,255,.6)'; sctx.lineWidth = 4; sctx.stroke();
+  sctx.restore();
+}
+
+// ---------- annotatie-datamodel (genormaliseerde 0..1 coords) ----------
+//   marks = [{ frame, type, color, pts:[{x,y}...] | x,y,r | x1,y1,x2,y2, audio? }]
+let marks = [];
+const FRAME_WINDOW = 9;       // ±frames waarbinnen een (niet-vastgezette) mark zichtbaar is
+let tool = 'pen', color = '#ff3b30', pinned = false;
+
+function visibleAt(m, f) {
+  if (m.pinned) return true;
+  return Math.abs(m.frame - f) <= FRAME_WINDOW;
+}
+
+function renderMarks() {
+  if (ensureCanvasSize()) renderScene();   // resync; redraw scene if it was cleared
+  const w = draw.clientWidth, h = draw.clientHeight;
+  dctx.clearRect(0,0,w,h);
+  for (const m of marks) {
+    if (!visibleAt(m, frame)) continue;
+    const fade = m.pinned ? 0.5 : Math.max(0.25, 1 - Math.abs(m.frame-frame)/FRAME_WINDOW);
+    dctx.globalAlpha = (m === liveMark) ? 1 : fade;
+    drawMark(dctx, m, w, h);
+  }
+  dctx.globalAlpha = 1;
+}
+
+function drawMark(ctx, m, w, h) {
+  ctx.strokeStyle = m.color; ctx.fillStyle = m.color;
+  ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  if (m.type === 'pen') {
+    ctx.beginPath();
+    m.pts.forEach((p,i)=> i? ctx.lineTo(p.x*w,p.y*h) : ctx.moveTo(p.x*w,p.y*h));
+    ctx.stroke();
+  } else if (m.type === 'arrow') {
+    const x1=m.x1*w,y1=m.y1*h,x2=m.x2*w,y2=m.y2*h;
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    // pijlpunt aan het BEGIN (x1,y1), wijzend weg van de lijn
+    const a = Math.atan2(y1-y2, x1-x2), L = 16;
+    ctx.beginPath(); ctx.moveTo(x1,y1);
+    ctx.lineTo(x1-L*Math.cos(a-0.4), y1-L*Math.sin(a-0.4));
+    ctx.lineTo(x1-L*Math.cos(a+0.4), y1-L*Math.sin(a+0.4));
+    ctx.closePath(); ctx.fill();
+  }
+}
+
+// ---------- tekenen (Pointer Events: muis + touch + pen in één) ----------
+let liveMark = null;
+const dbg = (t) => { const e=$('dbg'); if(e) e.textContent='build v7 · '+t; };
+function evPos(e) {
+  const r = draw.getBoundingClientRect();
+  return { x: (e.clientX - r.left)/r.width, y: (e.clientY - r.top)/r.height };
+}
+function startDraw(e) {
+  dbg('down @ '+e.clientX.toFixed(0)+','+e.clientY.toFixed(0)+(document.body.classList.contains('trainer')?'':' (kijker-modus!)'));
+  if (!document.body.classList.contains('trainer')) return;
+  e.preventDefault();
+  try { draw.setPointerCapture(e.pointerId); } catch(_) {}
+  if (playing) pause();                 // tekenen pauzeert altijd op dit frame
+  const p = evPos(e);
+  if (tool === 'pen') liveMark = { frame, type:'pen', color, pinned, pts:[p] };
+  else liveMark = { frame, type:'arrow', color, pinned, x1:p.x, y1:p.y, x2:p.x, y2:p.y };
+  marks.push(liveMark);
+  document.body.classList.add('drawing');
+  renderMarks();
+}
+function moveDraw(e) {
+  if (!liveMark) return; e.preventDefault();
+  const p = evPos(e);
+  if (liveMark.type==='pen') liveMark.pts.push(p);
+  else { liveMark.x2=p.x; liveMark.y2=p.y; }
+  renderMarks();
+}
+function endDraw() {
+  if (!liveMark) { dbg('up (niets getekend)'); return; }
+  // negeer per-ongeluk-tikjes
+  if (liveMark.type==='pen' && liveMark.pts.length<2) marks.pop();
+  liveMark = null;
+  dbg('klaar — '+marks.length+' markering(en)');
+  refreshUi();
+}
+draw.addEventListener('pointerdown', startDraw);
+draw.addEventListener('pointermove', moveDraw);
+draw.addEventListener('pointerup', endDraw);
+draw.addEventListener('pointercancel', endDraw);
+
+// ---------- toolbar bediening ----------
+document.querySelectorAll('.tool[data-tool]').forEach(b =>
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.tool[data-tool]').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active'); tool = b.dataset.tool;
+    if (playing) pause();
+  }));
+document.querySelectorAll('.swatch').forEach(b =>
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.swatch').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active'); color = b.dataset.color;
+  }));
+$('pinBtn').addEventListener('click', () => {
+  pinned = !pinned; $('pinBtn').classList.toggle('active', pinned);
+  banner(pinned ? 'Vastzetten AAN — nieuwe markeringen blijven de hele video zichtbaar'
+                : 'Vastzetten uit — markeringen horen bij dit frame');
+});
+$('undoBtn').addEventListener('click', () => {
+  // verwijder de laatst toegevoegde mark van dit (of een nabij) frame
+  for (let i=marks.length-1;i>=0;i--){ if (Math.abs(marks[i].frame-frame)<=FRAME_WINDOW){ marks.splice(i,1); break; } }
+  refreshUi();
+});
+$('clearBtn').addEventListener('click', () => {
+  marks = marks.filter(m => !visibleAt(m, frame));
+  refreshUi();
+});
+
+// ---------- spraakmemo (mock) ----------
+let recTimer=null, recStart=0;
+$('micBtn').addEventListener('click', () => {
+  if (playing) pause();
+  $('recOverlay').classList.add('show');
+  recStart = performance.now();
+  recTimer = setInterval(()=>{ $('recTime').textContent =
+    ((performance.now()-recStart)/1000).toFixed(1).replace('.',',')+'s'; }, 100);
+});
+$('recStop').addEventListener('click', () => {
+  clearInterval(recTimer); $('recOverlay').classList.remove('show');
+  const dur = (performance.now()-recStart)/1000;
+  marks.push({ frame, type:'audio', color:'#34d399', pinned:false, dur });
+  banner('Spraakmemo bewaard op frame '+frame+' ('+dur.toFixed(1).replace('.',',')+'s) — kijker krijgt 🔊');
+  refreshUi();
+});
+$('memoBadge').addEventListener('click', () => {
+  const m = marks.find(x => x.type==='audio' && Math.abs(x.frame-frame)<=FRAME_WINDOW);
+  banner('▶ memo afspelen… "'+ (m?('let op je elleboog hier ('+m.dur.toFixed(1).replace('.',',')+'s)'):'') +'" — mockup, geen echt geluid');
+});
+
+function positionMemoBadge() {
+  const m = marks.find(x => x.type==='audio' && Math.abs(x.frame-frame)<=FRAME_WINDOW);
+  const badge = $('memoBadge');
+  if (m) { badge.classList.add('show');
+    badge.style.left='50%'; badge.style.transform='translateX(-50%)';
+    badge.style.top = '14px'; }
+  else badge.classList.remove('show');
+}
+
+// ---------- trainer toggle ----------
+$('trainerToggle').addEventListener('click', () => {
+  const on = document.body.classList.toggle('trainer');
+  banner(on ? 'Trainer-modus AAN — alleen jij ziet de werkbalk'
+            : 'Kijker-modus — dit ziet de zwemmer (geen werkbalk, markeringen blijven)');
+  sizeCanvases();
+});
+
+// ---------- afspelen / frame-stepping ----------
+function setFrame(f) {
+  frame = Math.max(0, Math.min(TOTAL, Math.round(f)));
+  renderScene(); renderMarks(); updateReadout(); updateTimeline(); positionMemoBadge();
+}
+function step(d){ pause(); setFrame(frame + d); }
+function pause(){ playing=false; $('playBtn').textContent='▶'; }
+function play(){
+  playing=true; $('playBtn').textContent='⏸';
+  let last = performance.now();
+  function loop(now){
+    if (!playing) return;
+    if (now-last >= 1000/FPS){ last=now; if (frame>=TOTAL){ pause(); return; } setFrame(frame+1); }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+}
+function togglePlay(){ playing ? pause() : play(); }
+
+$('back10').addEventListener('click', e=>{e.stopPropagation(); step(-10);});
+$('back1').addEventListener('click',  e=>{e.stopPropagation(); step(-1);});
+$('fwd1').addEventListener('click',   e=>{e.stopPropagation(); step(1);});
+$('fwd10').addEventListener('click',  e=>{e.stopPropagation(); step(10);});
+$('resetBtn').addEventListener('click', e=>{e.stopPropagation(); pause(); setFrame(0); play();});
+$('playBtn').addEventListener('click', e=>{e.stopPropagation(); togglePlay();});
+document.querySelectorAll('.sidebtns').forEach(el=>el.addEventListener('click', e=>e.stopPropagation()));
+
+// tik op het beeld = play/pause (maar niet als je net aan het tekenen bent)
+stage.addEventListener('click', e=>{
+  if (e.target.closest('.sidebtns, #timeline, #toolbar, #trainerToggle, #memoBadge, #recOverlay')) return;
+  if (document.body.classList.contains('trainer')) return;  // in trainer-modus is het beeld om te tekenen
+  togglePlay();
+});
+
+// ---------- timeline ----------
+const tl=$('timeline');
+function tlFromEvent(e){
+  const r=tl.getBoundingClientRect(); const p=e.touches?e.touches[0]:e;
+  const x=Math.max(0,Math.min(1,(p.clientX-r.left)/r.width));
+  pause(); setFrame(x*TOTAL);
+}
+let scrubbing=false;
+tl.addEventListener('mousedown', e=>{scrubbing=true; tlFromEvent(e);});
+window.addEventListener('mousemove', e=>{ if(scrubbing) tlFromEvent(e); });
+window.addEventListener('mouseup', ()=>scrubbing=false);
+tl.addEventListener('touchstart', e=>{e.preventDefault(); tlFromEvent(e);}, {passive:false});
+tl.addEventListener('touchmove',  e=>{e.preventDefault(); tlFromEvent(e);}, {passive:false});
+
+function updateTimeline(){
+  const pct = frame/TOTAL*100;
+  $('tlfill').style.width = pct+'%';
+  $('tlhandle').style.left = pct+'%';
+  // stipjes
+  tl.querySelectorAll('.tldot').forEach(d=>d.remove());
+  const seen=new Set();
+  for (const m of marks){
+    const key=m.frame+'|'+(m.type==='audio'?'a':'d');
+    if (seen.has(key)) continue; seen.add(key);
+    const dot=document.createElement('div');
+    dot.className='tldot'+(m.type==='audio'?' audio':'');
+    dot.style.left=(m.frame/TOTAL*100)+'%';
+    tl.appendChild(dot);
+  }
+}
+
+// ---------- readout / ui ----------
+function fmt(s){ const m=Math.floor(s/60); const r=s-m*60; return m+':'+(r<10?'0':'')+r.toFixed(2); }
+function updateReadout(){
+  $('readout').textContent = fmt(frame/FPS)+' / '+fmt(TOTAL/FPS)+' · frame '+frame+' / '+TOTAL;
+}
+function refreshUi(){
+  renderMarks(); updateTimeline(); positionMemoBadge();
+  const drawn = marks.filter(m=>m.type!=='audio').length, audio = marks.filter(m=>m.type==='audio').length;
+  $('markCount').textContent = drawn+' tekening'+(drawn===1?'':'en')+(audio?(' · '+audio+' memo'+(audio===1?'':'s')):'');
+  document.body.classList.remove('drawing');
+}
+let bannerTimer=null;
+function banner(t){ const b=$('banner'); b.textContent=t; b.style.opacity='1';
+  clearTimeout(bannerTimer); bannerTimer=setTimeout(()=>b.style.opacity='0.0',3200); }
+
+// keyboard (desktop)
+window.addEventListener('keydown', e=>{
+  if (e.key==='ArrowRight'){ step(e.shiftKey?10:1); e.preventDefault(); }
+  else if (e.key==='ArrowLeft'){ step(e.shiftKey?-10:-1); e.preventDefault(); }
+  else if (e.key===' '){ togglePlay(); e.preventDefault(); }
+});
+
+// ---------- letterbox-kolommen zoals viewer.html ----------
+function layoutBars(){
+  const sw=stage.clientWidth, sh=stage.clientHeight; if(!sw||!sh) return;
+  const MIN=72; document.documentElement.style.setProperty('--bar', MIN+'px');
+  document.documentElement.style.setProperty('--vpad','0px');
+}
+
+window.addEventListener('resize', sizeCanvases);
+window.addEventListener('orientationchange', () => setTimeout(sizeCanvases, 250));
+// the mobile address bar showing/hiding fires these, not 'resize'
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', sizeCanvases);
+  window.visualViewport.addEventListener('scroll', sizeCanvases);
+}
+sizeCanvases(); setFrame(0); refreshUi();
+banner('Mockup · trainer-modus aan — pak een gereedschap en teken op het beeld');
+</script>
+</body>
+</html>
