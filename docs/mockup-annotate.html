@@ -225,7 +225,7 @@
 
   <button id="memoBadge">🔊 memo</button>
   <div id="readout"></div>
-  <div id="dbg">build v4 · wacht op invoer…</div>
+  <div id="dbg">build v5 · wacht op invoer…</div>
 
   <div id="timeline">
     <div id="tlbar"></div>
@@ -252,20 +252,32 @@ const scene = $('scene'), sctx = scene.getContext('2d');
 const draw  = $('draw'),  dctx = draw.getContext('2d');
 const stage = $('stage');
 
-function sizeCanvases() {
+// Houd de backing-store van beide canvassen in sync met de ACTUELE
+// weergavegrootte. Op de telefoon verandert de beeldhoogte zodra de adresbalk
+// in/uitschuift; als de canvas-resolutie niet meebeweegt loopt je vinger uit de
+// pas met de tekening (klassiek "tekent hoger"-effect).
+function ensureCanvasSize() {
   const r = stage.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.max(1, Math.round(r.width  * dpr));
+  const h = Math.max(1, Math.round(r.height * dpr));
+  let changed = false;
   for (const c of [scene, draw]) {
-    c.width  = Math.round(r.width  * dpr);
-    c.height = Math.round(r.height * dpr);
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; changed = true; }
   }
+  // setting width/height resets the context, so (re)apply the dpr transform
   sctx.setTransform(dpr,0,0,dpr,0,0);
   dctx.setTransform(dpr,0,0,dpr,0,0);
+  return changed;
+}
+function sizeCanvases() {
+  ensureCanvasSize();
   renderScene(); renderMarks(); layoutBars(); positionMemoBadge();
 }
 
 // Teken een simpele "onderwater" baan met een zwemmer die meebeweegt met het frame.
 function renderScene() {
+  ensureCanvasSize();
   const w = scene.clientWidth, h = scene.clientHeight;
   // water
   const g = sctx.createLinearGradient(0,0,0,h);
@@ -315,6 +327,7 @@ function visibleAt(m, f) {
 }
 
 function renderMarks() {
+  if (ensureCanvasSize()) renderScene();   // resync; redraw scene if it was cleared
   const w = draw.clientWidth, h = draw.clientHeight;
   dctx.clearRect(0,0,w,h);
   for (const m of marks) {
@@ -348,7 +361,7 @@ function drawMark(ctx, m, w, h) {
 
 // ---------- tekenen (Pointer Events: muis + touch + pen in één) ----------
 let liveMark = null;
-const dbg = (t) => { const e=$('dbg'); if(e) e.textContent='build v4 · '+t; };
+const dbg = (t) => { const e=$('dbg'); if(e) e.textContent='build v5 · '+t; };
 function evPos(e) {
   const r = draw.getBoundingClientRect();
   return { x: (e.clientX - r.left)/r.width, y: (e.clientY - r.top)/r.height };
@@ -549,6 +562,12 @@ function layoutBars(){
 }
 
 window.addEventListener('resize', sizeCanvases);
+window.addEventListener('orientationchange', () => setTimeout(sizeCanvases, 250));
+// the mobile address bar showing/hiding fires these, not 'resize'
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', sizeCanvases);
+  window.visualViewport.addEventListener('scroll', sizeCanvases);
+}
 sizeCanvases(); setFrame(0); refreshUi();
 banner('Mockup · trainer-modus aan — pak een gereedschap en teken op het beeld');
 </script>
