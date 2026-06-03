@@ -146,6 +146,12 @@ jobs:
           TAG="composite-${{ inputs.swim_id }}"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$SWIM_DIR/composite.mp4" --clobber
+            # Uploading an asset to an existing release does NOT fire a release
+            # event, so the Pages mirror (docs/videos/<tag>.mp4 — what the frame
+            # viewer plays) would stay on the old video. Editing the release
+            # fires 'edited', which re-runs pages.yml and refreshes the mirror.
+            gh release edit "$TAG" \
+              --notes "Composite updated $(date -u '+%Y-%m-%d %H:%M UTC'). Open frame by frame: https://ryanifa.github.io/eoSwimming/viewer.html?r=$TAG"
           else
             gh release create "$TAG" "$SWIM_DIR/composite.mp4" \
               --title "Composite — swim ${{ inputs.swim_id }}" \
