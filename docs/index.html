@@ -266,6 +266,7 @@ let pathSweep = null;  // parsed lap-NN-pathsweep.json
 let pathDepth = null;  // parsed lap-NN-pathdepth.json
 let lapsData = [];     // per-lap windows: {lap,start,end,strokeRate,strokesL,strokesR}
 let lapsFromSweep = false;
+let overallPace = null; // calculated seconds per 100m over the whole test (fixed)
 
 const PHASE_COLOR = { catch: '#ff4040', pull: '#4ea1ff', recovery: '#9aa7a3', none: '#9aa7a3' };
 
@@ -616,12 +617,12 @@ function drawOverlay() {
     }
   }
 
-  // live, video-synced metrics on top: stroke rate + hand speed
-  if (showLiveOn() && inRange) {
-    const sr = strokeRateAt(dataT), hs = handSpeedAt(dataT);
+  // top readout: calculated speed as a fixed /100m indication, stroke rate live
+  if (showLiveOn()) {
     const live = [];
-    if (hs != null) live.push({ color: '#9fe6d8', text: 'Snelheid    ' + hs.toFixed(2) + ' m/s' });
-    if (sr != null) live.push({ color: '#9fe6d8', text: 'Slagfreq.   ' + Math.round(sr) + ' /min' });
+    if (overallPace != null) live.push({ color: '#9fe6d8', text: 'Snelheid    ' + fmtPace(overallPace) + '/100m' });
+    else if (inRange) { const hs = handSpeedAt(dataT); if (hs != null) live.push({ color: '#9fe6d8', text: 'Snelheid    ' + hs.toFixed(2) + ' m/s' }); }
+    if (inRange) { const sr = strokeRateAt(dataT); if (sr != null) live.push({ color: '#9fe6d8', text: 'Slagfreq.   ' + Math.round(sr) + ' /min' }); }
     rows.unshift(...live);
   }
 
@@ -1219,7 +1220,7 @@ function renderSplits() {
   if (!tbody) return;
   tbody.innerHTML = '';
   const L = lapsData;
-  if (!L.length) { if (hint) hint.style.display = ''; return; }
+  if (!L.length) { overallPace = null; if (hint) hint.style.display = ''; return; }
   if (hint) hint.style.display = 'none';
   const poolLen = parseFloat($('poolLen').value) || 25;
   // lap duration: start-to-next-start (covers the turn); last lap uses its span
@@ -1244,6 +1245,7 @@ function renderSplits() {
       cur = null;
     }
   }
+  overallPace = cum > 0 ? totTime * 100 / cum : null;   // fixed indication for the overlay
   for (const r of rows) {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${r.dist} m</td><td>${fmtPace(r.time)}</td>` +
