@@ -890,9 +890,9 @@ def render_overlay(swim_dir: Path, fps: int = FRAME_RATE, keep_frames: bool = Fa
     duration_ms = swim.get("duration") or 0
     pace_s = (duration_ms / 1000 / distance * 100) if (distance and duration_ms) else None
     avg_sr = swim.get("avgStrokeRate")
-    if minimal:
-        print(f"  overlay mode: speed + stroke rate only"
-              + (f" (speed {fmt_pace(pace_s)}/100m)" if pace_s else " (no swim.json pace)"))
+    print(f"  OVERLAY_MODE={os.environ.get('OVERLAY_MODE')!r} -> "
+          f"{'SPEED + STROKE RATE ONLY' if minimal else 'FULL overlay (chart + panels)'}"
+          + (f" · speed {fmt_pace(pace_s)}/100m" if (minimal and pace_s) else ""))
 
     payload = {"times": times, "active": active, "sweep": sweep, "depth": depth,
                "views": views, "show_path": show_path, "show_left": show_left,
