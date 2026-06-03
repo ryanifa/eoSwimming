@@ -1107,7 +1107,9 @@ if (qv) {
     const aid = new URLSearchParams(location.search).get('a');
     const n = new URLSearchParams(location.hash.replace(/^#/, '')).get('n');
     if (aid) {
-      fetch('annotations/' + encodeURIComponent(aid) + '.json', { cache: 'no-store' })
+      // cache-bust: GitHub Pages' CDN can otherwise serve a stale copy of the
+      // JSON (e.g. after re-publishing to the same id), showing old annotations.
+      fetch('annotations/' + encodeURIComponent(aid) + '.json?v=' + Date.now(), { cache: 'no-store' })
         .then(r => { if (!r.ok) throw 0; return r.json(); })
         .then(obj => { deserialize(obj); reportLoaded(); })
         .catch(() => toast('⚠️ Kon annotaties niet laden (' + aid + '). Net gepubliceerd? Wacht ~1–2 min en ververs.'));
