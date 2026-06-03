@@ -212,7 +212,7 @@
     <input type="number" id="poolLen" value="25" min="1" step="1" style="width:64px;margin-left:6px;">
   </label>
   <table id="splitsTable">
-    <thead><tr><th>Afstand</th><th>Tijd</th><th>Snelheid</th><th>Tempo /100m</th><th>Slagfreq.</th></tr></thead>
+    <thead><tr><th>Afstand</th><th>Tijd</th><th>Snelheid /100m</th><th>Slagfreq.</th></tr></thead>
     <tbody></tbody>
   </table>
   <span class="empty" id="splitsHint">Sleep pathsweep- of pathdepth-bestanden (één per baan) om splits te berekenen.</span>
@@ -1205,6 +1205,14 @@ function fmtClock(s) {
   return m ? `${m}:${r.toFixed(1).padStart(4, '0')}` : `${r.toFixed(1)}s`;
 }
 
+// pace as minutes per 100m, e.g. 110 s -> "1.50" (1 min 50 s, whole seconds)
+function fmtPace(s) {
+  if (!isFinite(s) || s <= 0) return '—';
+  const total = Math.round(s);
+  const m = Math.floor(total / 60), sec = total % 60;
+  return m + '.' + String(sec).padStart(2, '0');
+}
+
 function renderSplits() {
   const tbody = document.querySelector('#splitsTable tbody');
   const hint = $('splitsHint');
@@ -1230,26 +1238,25 @@ function renderSplits() {
     if (cur.dist >= 100 - 1e-6 || last) {
       cum += cur.dist; totTime += cur.time;
       totRateW += cur.rateW; totW += cur.w;
-      const spd = cur.time > 0 ? cur.dist / cur.time : 0;
-      const pace = spd > 0 ? 100 / spd : NaN;
+      const pace = cur.dist > 0 ? cur.time * 100 / cur.dist : NaN;   // seconds per 100m
       const sr = cur.w ? cur.rateW / cur.w : null;
-      rows.push({ dist: cum, time: cur.time, spd, pace, sr });
+      rows.push({ dist: cum, time: cur.time, pace, sr });
       cur = null;
     }
   }
   for (const r of rows) {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${r.dist} m</td><td>${fmtClock(r.time)}</td>` +
-      `<td>${r.spd.toFixed(2)} m/s</td><td>${fmtClock(r.pace)}</td>` +
+    tr.innerHTML = `<td>${r.dist} m</td><td>${fmtPace(r.time)}</td>` +
+      `<td>${fmtPace(r.pace)}/100m</td>` +
       `<td>${r.sr != null ? Math.round(r.sr) + ' /min' : '—'}</td>`;
     tbody.appendChild(tr);
   }
   if (rows.length > 1) {
-    const spd = totTime > 0 ? cum / totTime : 0;
+    const pace = cum > 0 ? totTime * 100 / cum : NaN;
     const tr = document.createElement('tr');
     tr.className = 'total';
-    tr.innerHTML = `<td>Totaal ${cum} m</td><td>${fmtClock(totTime)}</td>` +
-      `<td>${spd.toFixed(2)} m/s</td><td>${fmtClock(spd > 0 ? 100 / spd : NaN)}</td>` +
+    tr.innerHTML = `<td>Totaal ${cum} m</td><td>${fmtPace(totTime)}</td>` +
+      `<td>${fmtPace(pace)}/100m</td>` +
       `<td>${totW ? Math.round(totRateW / totW) + ' /min' : '—'}</td>`;
     tbody.appendChild(tr);
   }
