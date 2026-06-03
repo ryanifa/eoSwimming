@@ -1,9 +1,13 @@
 name: Composite video with overlay (by swim ID)
-run-name: "Composite → swim ${{ inputs.swim_id }} (offset ${{ inputs.swim_start_seconds }}s, ${{ inputs.playback_speed }}×)"
+run-name: "${{ inputs.title }} · swim ${{ inputs.swim_id }} @ ${{ inputs.swim_start_seconds }}s"
 
 on:
   workflow_dispatch:
     inputs:
+      title:
+        description: "Label for this run — shows in the run name so you can find it back later (e.g. 'Jan 50m vrij')"
+        required: true
+        default: ""
       swim_id:
         description: "Swim ID to render (run 'Fetch swim by date' first to find it)"
         required: true
@@ -33,10 +37,13 @@ on:
           - both
           - left
           - right
-      playback_speed:
-        description: "Playback speed of the final video (0.5 = slow motion, 1 = normal). Hand-path panels are always shown when the swim has path data."
-        required: true
-        default: "1"
+      overlay_content:
+        description: "What to draw in the overlay. full = chart + hand-path panels + readout. speed_and_strokerate = ONLY speed (fixed, minutes/100m) and live stroke rate."
+        type: choice
+        default: full
+        options:
+          - full
+          - speed_and_strokerate
 
 jobs:
   composite:
@@ -101,6 +108,7 @@ jobs:
           SHOW_FORCES: ${{ inputs.show_forces }}
           SHOW_LEFT: ${{ inputs.sides != 'right' }}
           SHOW_RIGHT: ${{ inputs.sides != 'left' }}
+          OVERLAY_MODE: ${{ inputs.overlay_content }}
         run: python render_overlay.py "$SWIM_DIR" --fps 60 --layout "${{ inputs.layout }}"
 
       - name: Composite
@@ -117,7 +125,6 @@ jobs:
             --out "$SWIM_DIR/composite.mp4" \
             --swim-start ${{ inputs.swim_start_seconds }} \
             --overlay-scale $SCALE \
-            --speed ${{ inputs.playback_speed }} \
             --fps "$FPS"
 
       - uses: actions/upload-artifact@v4

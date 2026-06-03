@@ -214,6 +214,14 @@ def load_lapforcetime(swim_dir: Path) -> dict:
     return _loads((swim_dir / "lapforcetime.json").read_text())
 
 
+def load_swim(swim_dir: Path) -> dict:
+    p = swim_dir / "swim.json"
+    if not p.exists():
+        return {}
+    raw = _loads(p.read_text())
+    return raw[0] if isinstance(raw, list) and raw else raw
+
+
 def load_paths(swim_dir: Path, kind: str):
     """Merge all lap-NN-<kind>.json stroke lists (times are absolute)."""
     files = sorted(swim_dir.glob(f"lap-*-{kind}.json"))
@@ -569,6 +577,60 @@ def draw_metrics(cv, now_ms, w, h, active, in_range, show_left, show_right):
         cv.text(px + 12, py + lineH * (i + 2), text, fmono, rgba(color, 1.0), anchor="ls")
 
 
+def fmt_pace(s) -> str:
+    """Seconds per 100m as minutes.seconds, e.g. 110 -> '1.50'."""
+    if not s or s <= 0 or math.isinf(s):
+        return "—"
+    total = int(round(s))
+    return f"{total // 60}.{total % 60:02d}"
+
+
+def stroke_rate_at(now_ms):
+    """Live stroke rate (strokes/min) from same-hand stroke-to-stroke timing."""
+    f = G.get("sweep") or G.get("depth")
+    if not f:
+        return None
+    best = None
+    for side in ("strokesLeft", "strokesRight"):
+        arr = sorted(s["time"][0] for s in (f.get(side) or []) if s.get("time"))
+        idx = -1
+        for i, t in enumerate(arr):
+            if t <= now_ms:
+                idx = i
+            else:
+                break
+        if idx > 0:
+            rate = 60000.0 / (arr[idx] - arr[idx - 1])
+            if best is None or arr[idx] > best[0]:
+                best = (arr[idx], rate)
+    return best[1] if best else None
+
+
+def draw_minimal(cv, now_ms, w, h, in_range):
+    """Minimal overlay: only the (fixed) speed and the live stroke rate."""
+    pace = G.get("pace_s")
+    sr = stroke_rate_at(now_ms)
+    if sr is None:
+        sr = G.get("avg_stroke_rate")
+    rows = [
+        ("Snelheid", f"{fmt_pace(pace)}/100m" if pace else "—"),
+        ("Slagfreq.", f"{int(round(sr))} /min" if sr else "—"),
+    ]
+    lineH = max(30, h * 0.075)
+    pad = lineH * 0.55
+    bw = w * 0.34
+    bh = pad * 2 + lineH * len(rows)
+    bx, by = 24, 24
+    cv.rrect(bx, by, bw, bh, 12, fill=rgba("#00352f", 0.74),
+             stroke=rgba("#ffffff", 0.4), stroke_w=1.5)
+    flabel = font(FONT_SANS_BOLD, round(lineH * 0.40))
+    fvalue = font(FONT_SANS_BOLD, round(lineH * 0.62))
+    for i, (lab, val) in enumerate(rows):
+        yy = by + pad + lineH * (i + 0.72)
+        cv.text(bx + pad, yy, lab, flabel, rgba("#9fe6d8", 1.0), anchor="ls")
+        cv.text(bx + bw - pad, yy, val, fvalue, rgba("#ffffff", 1.0), anchor="rs")
+
+
 # Instantaneous force-direction compass for one path-view plane, synced to the
 # video. Same convention as the sync tool (docs/index.html): the view's two
 # in-plane force components map to screen x (right) and y (down); the right hand
@@ -735,10 +797,13 @@ def render_frame(args):
     in_range = times[0] <= now_ms <= times[-1]
 
     cv = Canvas(w, h)
-    draw_chart(cv, now_ms, w, h, active, show_left, show_right)
-    draw_metrics(cv, now_ms, w, h, active, in_range, show_left, show_right)
-    if G["show_path"]:
-        draw_path_panel(cv, now_ms, w, h, show_left, show_right)
+    if G.get("minimal"):
+        draw_minimal(cv, now_ms, w, h, in_range)
+    else:
+        draw_chart(cv, now_ms, w, h, active, show_left, show_right)
+        draw_metrics(cv, now_ms, w, h, active, in_range, show_left, show_right)
+        if G["show_path"]:
+            draw_path_panel(cv, now_ms, w, h, show_left, show_right)
 
     cv.img.save(frames_dir / f"frame_{frame_idx:06d}.png")
 
@@ -757,7 +822,10 @@ def encode_prores(frames_dir: Path, out_path: Path, fps: int) -> None:
 
 
 def render_overlay(swim_dir: Path, fps: int = FRAME_RATE, keep_frames: bool = False,
-                   layout: int = 1) -> Path:
+                   layout: int = 1, minimal: bool | None = None) -> Path:
+    if minimal is None:
+        minimal = (os.environ.get("OVERLAY_MODE") or "full").strip().lower() in (
+            "minimal", "speed_and_strokerate", "speed_strokerate", "speed")
     data = load_lapforcetime(swim_dir)
     times = data.get("time") or []
     if not times:
@@ -816,10 +884,21 @@ def render_overlay(swim_dir: Path, fps: int = FRAME_RATE, keep_frames: bool = Fa
     }
     max_total = max([1.0] + (_l.get("total") or []) + (_r.get("total") or []))
 
+    # fixed speed indication (minutes/100m) and avg stroke rate from swim.json
+    swim = load_swim(swim_dir)
+    distance = swim.get("distance") or 0
+    duration_ms = swim.get("duration") or 0
+    pace_s = (duration_ms / 1000 / distance * 100) if (distance and duration_ms) else None
+    avg_sr = swim.get("avgStrokeRate")
+    if minimal:
+        print(f"  overlay mode: speed + stroke rate only"
+              + (f" (speed {fmt_pace(pace_s)}/100m)" if pace_s else " (no swim.json pace)"))
+
     payload = {"times": times, "active": active, "sweep": sweep, "depth": depth,
                "views": views, "show_path": show_path, "show_left": show_left,
                "show_right": show_right, "layout": layout,
-               "forces": forces, "max_total": max_total}
+               "forces": forces, "max_total": max_total,
+               "minimal": minimal, "pace_s": pace_s, "avg_stroke_rate": avg_sr}
     work = [(i, start_ms + i * 1000 / fps, frames_dir) for i in range(total_frames)]
 
     workers = max(1, cpu_count())
@@ -845,8 +924,11 @@ def main() -> int:
     parser.add_argument("--layout", default="default",
                         help="'default'/'1' = paths right + chart bottom + readout top-left; "
                              "'mirrored'/'2' = 180-deg flip: paths left + chart top + readout bottom-right")
+    parser.add_argument("--minimal", action="store_true",
+                        help="Draw only the speed + stroke-rate readout (overrides OVERLAY_MODE)")
     args = parser.parse_args()
     layout = 2 if str(args.layout).strip().lower() in ("2", "mirrored", "mirror") else 1
+    minimal = True if args.minimal else None   # None -> fall back to OVERLAY_MODE env
 
     if not shutil.which("ffmpeg"):
         print("ffmpeg not found in PATH", file=sys.stderr)
@@ -868,7 +950,8 @@ def main() -> int:
     for swim_dir in targets:
         print(f"==> {swim_dir.name}")
         try:
-            render_overlay(swim_dir, fps=args.fps, keep_frames=args.keep_frames, layout=layout)
+            render_overlay(swim_dir, fps=args.fps, keep_frames=args.keep_frames,
+                           layout=layout, minimal=minimal)
         except Exception as exc:
             print(f"  failed: {exc}")
     return 0
