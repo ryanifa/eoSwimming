@@ -650,6 +650,7 @@ if (qv) {
   let tool = 'pen', color = COLORS[0], pinned = false, liveMark = null;
   let prevTime = 0, holdUntil = 0;   // auto play/pause state
   const HOLD_MS = 2200;          // base hold on a drawing/short-note frame
+  const EARLY_MEMO = 1.0;        // memos before this (s) auto-play only after the start
   const tl = $('timeline'), noteCap = $('noteCap');
 
   // edit mode: ?edit=1 on our own URL, or anywhere in the href so it still
@@ -1144,10 +1145,13 @@ if (qv) {
       prevTime = t; return;
     }
     if (!video.paused && !memoPlaying) {
-      const crossed = marks.filter(m => !m.pin && prevTime < m.t && t >= m.t);
+      // A memo recorded in the first second would otherwise auto-play the moment
+      // the film starts; defer its trigger to EARLY_MEMO so it plays just after.
+      const trig = m => (m.k === 'memo' && m.t < EARLY_MEMO) ? EARLY_MEMO : m.t;
+      const crossed = marks.filter(m => !m.pin && prevTime < trig(m) && t >= trig(m));
       if (crossed.length) {
-        const t0 = Math.min(...crossed.map(m => m.t));
-        const group = marks.filter(m => !m.pin && Math.abs(m.t - t0) <= 0.05);
+        const t0 = Math.min(...crossed.map(trig));
+        const group = marks.filter(m => !m.pin && Math.abs(trig(m) - t0) <= 0.05);
         const memo = group.find(m => m.k === 'memo');
         const note = group.find(m => m.k === 'note');
         video.pause();
