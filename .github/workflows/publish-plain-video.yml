@@ -69,6 +69,12 @@ jobs:
           REPO="${{ github.repository }}"
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             gh release upload "$TAG" composite.mp4 --clobber --repo "$REPO"
+            # Uploading composite.mp4 to an existing release fires no release
+            # event, so the Pages mirror (docs/videos/<tag>.mp4 — what the viewer
+            # plays inline on iPhone) wouldn't be created/refreshed. Editing the
+            # release fires 'edited', which re-runs pages.yml and mirrors it.
+            gh release edit "$TAG" --repo "$REPO" \
+              --notes "Updated $(date -u '+%Y-%m-%d %H:%M UTC'). Open frame by frame: https://ryanifa.github.io/eoSwimming/viewer.html?r=$TAG"
           else
             gh release create "$TAG" composite.mp4 \
               --repo "$REPO" \
