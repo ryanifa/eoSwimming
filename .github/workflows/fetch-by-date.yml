@@ -1,9 +1,13 @@
 name: Fetch swim by date
-run-name: "Fetch swim by date → ${{ inputs.custom_date || inputs.date }}${{ inputs.swim_id && format(' (id {0})', inputs.swim_id) || '' }}"
+run-name: "${{ inputs.note != '' && format('{0} — ', inputs.note) || '' }}Fetch ${{ inputs.custom_date != '' && inputs.custom_date || inputs.date }}${{ inputs.swim_id != '' && format(' · id {0}', inputs.swim_id) || '' }}"
 
 on:
   workflow_dispatch:
     inputs:
+      note:
+        description: "Label for the run title so you can find it back later (e.g. the actual date '2026-05-20' or a swimmer name). Shown first in the run name."
+        required: false
+        default: ""
       date:
         description: "Which day to list. Pick 'custom date below' to type an older date."
         type: choice
