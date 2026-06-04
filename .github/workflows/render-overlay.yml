@@ -1,9 +1,13 @@
 name: Render video overlay (latest swim)
-run-name: "Render overlay (latest swim, ${{ inputs.fps }} fps)"
+run-name: "${{ inputs.note != '' && format('{0} — ', inputs.note) || '' }}Render overlay (${{ inputs.fps }} fps)"
 
 on:
   workflow_dispatch:
     inputs:
+      note:
+        description: "Label for the run title so you can find it back later. Shown first in the run name."
+        required: false
+        default: ""
       fps:
         description: "Frame rate of the overlay (default 60)"
         required: false

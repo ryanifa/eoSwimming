@@ -1,7 +1,7 @@
 name: Publish a plain video to the viewer (no data)
 
 # Distinct title per run so triggered runs are easy to tell apart in the list.
-run-name: "Plain video → ${{ inputs.tag }}"
+run-name: "${{ inputs.note != '' && format('{0} — ', inputs.note) || '' }}Plain video → ${{ inputs.tag }}"
 
 # For a video that has no swim data — you just want to watch it frame by
 # frame in the viewer and share it. Downloads the video, applies +faststart
@@ -13,6 +13,10 @@ run-name: "Plain video → ${{ inputs.tag }}"
 on:
   workflow_dispatch:
     inputs:
+      note:
+        description: "Label for the run title so you can find it back later. Shown first in the run name."
+        required: false
+        default: ""
       video_url:
         description: "Direct download URL for the video (transfer.sh, public Dropbox/Drive direct link, GitHub Release asset, etc.)"
         required: true

@@ -1,9 +1,13 @@
 name: Rotate & trim video
-run-name: "Rotate & trim (rotate ${{ inputs.rotate }}, ${{ inputs.start_seconds }}–${{ inputs.end_seconds }}s)"
+run-name: "${{ inputs.note != '' && format('{0} — ', inputs.note) || '' }}Rotate & trim (rotate ${{ inputs.rotate }}, ${{ inputs.start_seconds }}–${{ inputs.end_seconds }}s)"
 
 on:
   workflow_dispatch:
     inputs:
+      note:
+        description: "Label for the run title so you can find it back later. Shown first in the run name."
+        required: false
+        default: ""
       video_url:
         description: "Direct download URL for the source video (transfer.sh, public Dropbox/Drive direct link, GitHub Release asset, etc.)"
         required: true

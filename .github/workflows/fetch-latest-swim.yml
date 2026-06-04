@@ -1,7 +1,13 @@
 name: Fetch latest swim
+run-name: "${{ inputs.note != '' && format('{0} — ', inputs.note) || '' }}Fetch latest swim"
 
 on:
   workflow_dispatch:
+    inputs:
+      note:
+        description: "Label for the run title so you can find it back later. Shown first in the run name."
+        required: false
+        default: ""
 
 jobs:
   fetch:
