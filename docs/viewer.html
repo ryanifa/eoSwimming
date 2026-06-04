@@ -53,6 +53,22 @@
   }
   .sidebtns button:active { background: #1f6bff; border-color: #1f6bff; }
 
+  /* playback-speed dropdown — only useful (and only shown) for plain videos
+     without annotations, where there's no auto-pause driving playback. */
+  #speedSel { display: none; }
+  body.has-video:not(.has-annot):not(.trainer) #speedSel { display: block; }
+  .sidebtns #speedSel {
+    -webkit-appearance: none; appearance: none;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    width: 100%; max-width: 112px; min-width: 0;
+    background: rgba(0,0,0,.62); color: #fff;
+    border: 2px solid rgba(255,255,255,.92); border-radius: 14px;
+    font-size: 16px; font-weight: 800; text-align: center; text-align-last: center;
+    padding: 13px 4px; cursor: pointer;
+    box-shadow: 0 2px 12px rgba(0,0,0,.55);
+  }
+  .sidebtns #speedSel option { color: #000; }
+
   /* While annotation auto-pause holds the film, the transport controls are
      locked so manual play/step can't fight the hold or the playing memo. */
   body.annot-lock .sidebtns button {
@@ -410,6 +426,12 @@
   <div class="sidebtns right">
     <button id="fwd1"  title="Forward 1 frame (→)">+1</button>
     <button id="playBtn" title="Play / pause">▶</button>
+    <select id="speedSel" title="Afspeelsnelheid">
+      <option value="1">1×</option>
+      <option value="0.75">0.75×</option>
+      <option value="0.5">0.5×</option>
+      <option value="0.25">0.25×</option>
+    </select>
     <button id="fwd10" title="Forward 10 frames (Shift+→)">+10</button>
   </div>
 
@@ -462,6 +484,7 @@ function loadSrc(src, name, fallback) {
   showMsg('');
   pendingFallback = fallback || null;
   hasVideo = true;
+  document.body.classList.add('has-video');
   emptyhint.style.display = 'none';
   video.src = src;
   video.load();              // iOS needs an explicit load to start fetching
@@ -538,6 +561,13 @@ const playBtn = $('playBtn');
 playBtn.addEventListener('click', () => { if (hasVideo) togglePlay(); });
 video.addEventListener('play', () => playBtn.textContent = '⏸');
 video.addEventListener('pause', () => playBtn.textContent = '▶');
+
+// playback speed (plain videos): keep it applied across (re)loads/seeks
+const speedSel = $('speedSel');
+function applyPlaybackRate() { try { video.playbackRate = parseFloat(speedSel.value) || 1; } catch (_) {} }
+speedSel.addEventListener('change', e => { e.stopPropagation(); applyPlaybackRate(); });
+video.addEventListener('loadedmetadata', applyPlaybackRate);
+video.addEventListener('play', applyPlaybackRate);
 function restart() {
   if (annotLock || !hasVideo) return;
   try { video.currentTime = 0; } catch (_) {}
