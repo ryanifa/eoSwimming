@@ -88,6 +88,23 @@
   #vmsg.show { display: flex; }
   #vmsg code { color: #ffd9a0; }
 
+  /* "Tik om te starten" — shown after rotating so the first tap unlocks audio,
+     letting voice memos auto-play later without an interruption. */
+  #startOverlay {
+    position: absolute; inset: 0; z-index: 7; display: none;
+    align-items: center; justify-content: center; background: rgba(4,17,13,.5);
+  }
+  #startOverlay.show { display: flex; }
+  #startBtn {
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    background: #1f6bff; color: #fff; border: 0; border-radius: 18px;
+    font-size: 22px; font-weight: 800; line-height: 1.1;
+    padding: 26px 40px; cursor: pointer; box-shadow: 0 4px 22px rgba(0,0,0,.55);
+  }
+  #startBtn span { font-size: 18px; font-weight: 700; }
+  #startBtn:active { background: #4286ff; }
+
   /* "Rotate your phone" prompt — only on a phone held in portrait. */
   #rotate { display: none; }
   @media (orientation: portrait) and (pointer: coarse) {
@@ -385,6 +402,7 @@
   <div id="build">build __BUILD_VERSION__</div>
   <div id="emptyhint">Tap to choose a video — or open a <code>?r=&lt;release-tag&gt;</code> share link</div>
   <div id="vmsg"></div>
+  <div id="startOverlay"><button id="startBtn">▶<span>Tik om te starten</span></button></div>
 </div>
 
 <!-- hidden helpers: file picking + (auto-detected) frame rate -->
@@ -549,8 +567,9 @@ const onOrient = () => {
   if (portraitMQ.matches && window.matchMedia('(pointer: coarse)').matches) {
     location.reload();
   } else {
-    // rotated to landscape: re-measure and play from the beginning
-    setTimeout(() => { layoutBars(); restart(); }, 250);
+    // rotated to landscape: re-measure, then let the viewer tap to start so
+    // that first tap unlocks audio (memos can then auto-play uninterrupted)
+    setTimeout(() => { layoutBars(); showStart(); }, 250);
   }
 };
 if (portraitMQ.addEventListener) portraitMQ.addEventListener('change', onOrient);
@@ -562,8 +581,21 @@ $('flRefresh').addEventListener('click', () => location.reload());
 $('forceLandscapeBtn').addEventListener('click', () => {
   document.body.classList.add('force-landscape');
   // recompute after the rotated layout settles (twice, for slower devices)
-  setTimeout(() => { layoutBars(); restart(); }, 100);
+  setTimeout(() => { layoutBars(); showStart(); }, 100);
   setTimeout(layoutBars, 450);
+});
+
+// "Tik om te starten" overlay: shown after rotating instead of auto-playing,
+// so the viewer's deliberate tap unlocks audio before the first memo.
+function showStart() {
+  if (!hasVideo || document.body.classList.contains('trainer')) return;
+  $('startOverlay').classList.add('show');
+}
+function hideStart() { $('startOverlay').classList.remove('show'); }
+$('startOverlay').addEventListener('click', e => {
+  e.stopPropagation();          // this tap is "start", not the stage tap-to-pause
+  hideStart();
+  restart();                    // play from the beginning (the tap primes audio)
 });
 
 window.addEventListener('keydown', e => {
