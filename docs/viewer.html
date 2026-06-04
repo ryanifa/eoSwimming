@@ -213,10 +213,13 @@
   }
   #noteCap.show { display: block; }
 
-  /* voice-memo play badge (viewer taps to replay) */
-  #memoBadge {
+  /* voice-memo play badge (viewer taps to replay) + skip button */
+  #memoBar {
     position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
-    z-index: 4; display: none;
+    z-index: 4; display: flex; gap: 10px; align-items: flex-start;
+  }
+  #memoBadge {
+    display: none;
     -webkit-tap-highlight-color: transparent; touch-action: manipulation;
     background: rgba(0,0,0,.7); color: #38bdf8; border: 2px solid #38bdf8;
     border-radius: 999px; font-size: 16px; font-weight: 700;
@@ -225,6 +228,15 @@
   #memoBadge.show { display: block; }
   #memoBadge.playing { background: #38bdf8; color: #04110d; }
   #memoBadge.await { animation: pulse 1s ease-in-out infinite; }
+  #skipMemo {
+    display: none;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    background: rgba(0,0,0,.7); color: #fff; border: 2px solid #fff;
+    border-radius: 999px; font-size: 16px; font-weight: 800;
+    padding: 7px 14px; cursor: pointer; white-space: nowrap;
+  }
+  #skipMemo.show { display: block; }
+  #skipMemo:active { background: #fff; color: #04110d; }
 
   /* compact recording bar — floats over the video so the frame stays visible */
   #recBar {
@@ -361,7 +373,10 @@
   <button id="flRefresh" title="Refresh">↻</button>
 
   <div id="noteCap"></div>
-  <button id="memoBadge">🔊 memo</button>
+  <div id="memoBar">
+    <button id="memoBadge">🔊 memo</button>
+    <button id="skipMemo">SKIP MEMO ⏭</button>
+  </div>
   <div id="timeline"><div id="tlbar"></div><div id="tlfill"></div><div id="tlhandle"></div></div>
   <div id="toast"></div>
   <div id="noteInput">
@@ -883,7 +898,7 @@ if (qv) {
   // reuse one <audio> element and prime it (play a silent clip) on the first
   // tap, so memos can later auto-play during the annotation pause.
   const SILENT_WAV = 'data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA';
-  let memoAudio = null, audioPrimed = false, pendingMemo = null;
+  let memoAudio = null, audioPrimed = false, pendingMemo = null, currentMemoFinish = null;
   function getAudio() { if (!memoAudio) { memoAudio = new Audio(); memoAudio.preload = 'auto'; } return memoAudio; }
   function primeAudio() {
     if (audioPrimed) return; audioPrimed = true;
@@ -949,15 +964,19 @@ if (qv) {
     a.muted = false;
     a.src = 'data:' + (m.mime || 'audio/webm') + ';base64,' + m.au;
     memoBadge.classList.add('playing');
+    $('skipMemo').classList.add('show');           // offer to skip while it plays
     let done = false;
     const finish = () => {                          // run exactly once, however we get here
       if (done) return; done = true;
       clearTimeout(wd);
+      currentMemoFinish = null;
       memoBadge.classList.remove('playing');
+      $('skipMemo').classList.remove('show');
       a.onended = null; a.onerror = null;
       try { a.pause(); a.removeAttribute('src'); a.load(); } catch (_) {}  // free the media session
       if (onDone) onDone();
     };
+    currentMemoFinish = finish;                     // SKIP MEMO button calls this
     a.onended = finish;
     a.onerror = finish;
     // Mobile browsers don't always fire 'ended' for data-URI audio, which left
@@ -974,6 +993,11 @@ if (qv) {
     e.stopPropagation();
     if (memoBadge.classList.contains('playing')) return;   // already playing (avoid double-trigger)
     playMemo(nearestMemo(video.currentTime || 0));
+  });
+  // SKIP MEMO: stop the playing memo and let the film carry on
+  $('skipMemo').addEventListener('click', e => {
+    e.stopPropagation();
+    if (currentMemoFinish) currentMemoFinish();
   });
 
   // ---------- timeline (dots + scrub) ----------
