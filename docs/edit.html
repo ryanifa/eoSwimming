@@ -25,7 +25,7 @@
   .drop input { display: none; }
 
   .stage {
-    position: relative; width: 100%; height: 58vh; min-height: 280px;
+    position: relative; width: 100%; height: 56vh; min-height: 260px;
     background: #000; border-radius: 12px; overflow: hidden;
     display: flex; align-items: center; justify-content: center;
   }
@@ -33,14 +33,17 @@
 
   .timeline-wrap { margin: 14px 0 6px; }
   #tl {
-    position: relative; height: 46px; background: #11231f; border: 1px solid #2c4540;
-    border-radius: 10px; cursor: pointer; touch-action: none; user-select: none;
+    position: relative; height: 48px; background: #11231f; border: 1px solid #2c4540;
+    border-radius: 10px; cursor: pointer; touch-action: none; user-select: none; overflow: hidden;
   }
+  .cutband { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(
+               45deg, rgba(255,80,80,.45), rgba(255,80,80,.45) 7px, rgba(255,80,80,.25) 7px, rgba(255,80,80,.25) 14px);
+             border-left: 1px solid #ff5050; border-right: 1px solid #ff5050; }
   #tlSel { position: absolute; top: 0; bottom: 0; background: rgba(31,107,255,.22);
            border-left: 2px solid #1f6bff; border-right: 2px solid #1f6bff; }
-  #tlPlay { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #fff; margin-left: -1px; }
+  #tlPlay { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #fff; margin-left: -1px; z-index: 3; }
   .handle {
-    position: absolute; top: -4px; bottom: -4px; width: 16px; margin-left: -8px;
+    position: absolute; top: -4px; bottom: -4px; width: 16px; margin-left: -8px; z-index: 4;
     background: #1f6bff; border-radius: 6px; cursor: ew-resize; touch-action: none;
     box-shadow: 0 1px 6px rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center;
   }
@@ -56,10 +59,16 @@
   }
   button:active { background: #1f6bff; }
   button.primary { background: #1f6bff; color: #fff; border-color: #1f6bff; }
+  button.danger { background: #3a1a1a; color: #ffb4b4; border-color: #5a2a2a; }
   button.rot.active { background: #ffb02e; color: #1a1200; border-color: #7a4d00; font-weight: 800; }
-  button.mode.active { background: #1f6bff; color: #fff; border-color: #1f6bff; font-weight: 800; }
   button:disabled { opacity: .5; cursor: not-allowed; }
   .label { color: #8aa0a0; font-size: 13px; }
+
+  #cuts { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; background: #2a1414;
+          border: 1px solid #5a2a2a; color: #ffd0d0; border-radius: 999px;
+          padding: 5px 6px 5px 12px; font-family: monospace; font-size: 13px; }
+  .chip button { background: none; border: 0; color: #ff9a9a; font-size: 16px; padding: 0 4px; cursor: pointer; }
 
   #progWrap { display: none; margin: 12px 0; }
   #progWrap.show { display: block; }
@@ -83,9 +92,9 @@
   <span class="build">build __BUILD_VERSION__</span>
 </div>
 <p class="muted">
-  Kies een video, sleep de <b>blauwe handvatten</b> om begin en einde te kiezen (of gebruik
-  “begin/eind = nu”), kies een rotatie, en maak de bewerkte video. Alles gebeurt in je browser —
-  er wordt niets geüpload. Werkt het best op desktop en met korte clips.
+  Markeer stukken om te <b>verwijderen</b> (of "alleen dit houden"); de speler slaat ze meteen over —
+  zo zie je het resultaat <b>direct</b>, zonder te renderen. Voeg zoveel stukken toe als je wilt, kies een
+  rotatie, en maak pas op het eind de video. Alles gebeurt in je browser; er wordt niets geüpload.
 </p>
 
 <label class="drop" id="drop">
@@ -98,30 +107,32 @@
 </div>
 
 <div class="row">
-  <button id="playBtn" disabled>▶ Afspelen</button>
-  <button id="previewSel" disabled title="Speel alleen de selectie af">▶ Selectie</button>
-  <span class="label" id="curLabel" style="font-family:monospace;">0:00,00</span>
+  <button id="playBtn" disabled>▶ Resultaat afspelen</button>
+  <span class="label" style="font-family:monospace;"><span id="curLabel">0:00,00</span>
+    · resultaat <span id="resLabel">0:00,00</span></span>
 </div>
 
 <div class="timeline-wrap">
   <div id="tl">
+    <div id="tlCuts"></div>
     <div id="tlSel"></div>
     <div class="handle" id="hStart" style="left:0%"></div>
     <div class="handle" id="hEnd" style="left:100%"></div>
     <div id="tlPlay" style="left:0%"></div>
   </div>
-  <div class="times"><span id="tStart">begin 0:00,00</span><span id="tEnd">eind 0:00,00</span></div>
+  <div class="times"><span id="tStart">selectie 0:00,00</span><span id="tEnd">→ 0:00,00</span></div>
 </div>
 
 <div class="row">
   <button id="setStart" disabled>⤓ Begin = nu</button>
   <button id="setEnd" disabled>Eind = nu ⤒</button>
+  <button id="addCut" class="danger" disabled>✂︎ Selectie verwijderen</button>
+  <button id="keepOnly" disabled>Alleen selectie houden</button>
 </div>
 
+<div id="cuts"></div>
 <div class="row">
-  <span class="label">Met selectie:</span>
-  <button class="mode active" data-mode="keep" disabled>Dit stuk behouden</button>
-  <button class="mode" data-mode="remove" disabled>Dit stuk verwijderen</button>
+  <button id="clearCuts" disabled>↺ Herstel alles</button>
 </div>
 
 <div class="row">
@@ -133,7 +144,7 @@
 </div>
 
 <div class="row">
-  <button class="primary" id="makeBtn" disabled>✂️ Maak bewerkte video</button>
+  <button class="primary" id="makeBtn" disabled>🎬 Maak bewerkte video</button>
 </div>
 
 <div id="progWrap">
@@ -154,13 +165,15 @@ import { fetchFile, toBlobURL } from "https://unpkg.com/@ffmpeg/util@0.12.1/dist
 
 const $ = id => document.getElementById(id);
 const video = $('video'), stage = $('stage'), tl = $('tl');
-const hStart = $('hStart'), hEnd = $('hEnd'), tlSel = $('tlSel'), tlPlay = $('tlPlay');
+const hStart = $('hStart'), hEnd = $('hEnd'), tlSel = $('tlSel'), tlPlay = $('tlPlay'), tlCuts = $('tlCuts');
 
-let dur = 0, startT = 0, endT = 0, rotate = 'none', mode = 'keep';
-let fileObj = null, fileName = 'input.mp4', previewing = false;
+let dur = 0, startT = 0, endT = 0, rotate = 'none';
+let fileObj = null, fileName = 'input.mp4', dragging = false;
+let cuts = [];                                       // sorted, merged [a,b] ranges to remove
 
 const ROT_FILTER = { none: null, '180': 'hflip,vflip', '90_cw': 'transpose=1', '90_ccw': 'transpose=2' };
 const ROT_DEG = { none: 0, '90_cw': 90, '90_ccw': -90, '180': 180 };
+const EPS = 0.04;
 
 function fmt(s) {
   if (!isFinite(s)) s = 0;
@@ -178,6 +191,7 @@ drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) l
 function loadFile(f) {
   fileObj = f;
   fileName = 'input.' + (f.name.split('.').pop() || 'mp4').toLowerCase();
+  cuts = [];
   video.src = URL.createObjectURL(f);
   video.load();
 }
@@ -186,60 +200,110 @@ video.addEventListener('loadedmetadata', () => {
   dur = video.duration || 0;
   startT = 0; endT = dur;
   document.querySelectorAll('button').forEach(b => { if (!b.classList.contains('dl')) b.disabled = false; });
-  updateTimeline(); applyRotPreview();
+  renderAll(); applyRotPreview();
   $('drop').querySelector('b').textContent = '✓ ' + fileObj.name;
 });
 
-// ---------- transport ----------
-$('playBtn').addEventListener('click', () => { previewing = false; video.paused ? video.play() : video.pause(); });
-video.addEventListener('play', () => $('playBtn').textContent = '⏸ Pauze');
-video.addEventListener('pause', () => $('playBtn').textContent = '▶ Afspelen');
-$('previewSel').addEventListener('click', () => {
-  previewing = true; video.currentTime = startT;
-  const p = video.play(); if (p && p.catch) p.catch(() => {});
-});
-video.addEventListener('timeupdate', () => {
-  $('curLabel').textContent = fmt(video.currentTime);
-  if (dur) tlPlay.style.left = (video.currentTime / dur * 100) + '%';
-  if (previewing && video.currentTime >= endT) { video.pause(); previewing = false; }
-});
+// ---------- cut list (the edit decision list) ----------
+function mergeCuts() {
+  cuts.sort((a, b) => a[0] - b[0]);
+  const out = [];
+  for (const c of cuts) {
+    const last = out[out.length - 1];
+    if (last && c[0] <= last[1] + EPS) last[1] = Math.max(last[1], c[1]);
+    else out.push([Math.max(0, c[0]), Math.min(dur, c[1])]);
+  }
+  cuts = out.filter(c => c[1] - c[0] > EPS);
+}
+function addCut(a, b) {
+  if (b - a <= EPS) return;
+  cuts.push([a, b]); mergeCuts(); renderAll();
+}
+function keptSegments() {
+  const segs = []; let pos = 0;
+  for (const [a, b] of cuts) { if (a - pos > EPS) segs.push([pos, a]); pos = Math.max(pos, b); }
+  if (dur - pos > EPS) segs.push([pos, dur]);
+  return segs;
+}
+function resultDuration() { return keptSegments().reduce((s, [a, b]) => s + (b - a), 0); }
 
-// ---------- timeline + handles ----------
-function updateTimeline() {
+function renderCuts() {
+  tlCuts.innerHTML = '';
+  for (const [a, b] of cuts) {
+    const d = document.createElement('div');
+    d.className = 'cutband';
+    d.style.left = (a / dur * 100) + '%'; d.style.width = ((b - a) / dur * 100) + '%';
+    tlCuts.appendChild(d);
+  }
+  const list = $('cuts'); list.innerHTML = '';
+  cuts.forEach(([a, b], i) => {
+    const chip = document.createElement('span'); chip.className = 'chip';
+    chip.innerHTML = `weg ${fmt(a)}–${fmt(b)} <button title="herstel">✕</button>`;
+    chip.querySelector('button').addEventListener('click', () => { cuts.splice(i, 1); renderAll(); });
+    list.appendChild(chip);
+  });
+}
+function renderSel() {
   const a = dur ? startT / dur * 100 : 0, b = dur ? endT / dur * 100 : 100;
   hStart.style.left = a + '%'; hEnd.style.left = b + '%';
   tlSel.style.left = a + '%'; tlSel.style.width = (b - a) + '%';
-  $('tStart').textContent = 'begin ' + fmt(startT);
-  $('tEnd').textContent = 'eind ' + fmt(endT);
+  $('tStart').textContent = 'selectie ' + fmt(startT);
+  $('tEnd').textContent = '→ ' + fmt(endT);
 }
+function renderAll() {
+  renderCuts(); renderSel();
+  $('resLabel').textContent = fmt(resultDuration());
+}
+
+// ---------- transport (preview skips the cut ranges live) ----------
+$('playBtn').addEventListener('click', () => { video.paused ? video.play() : video.pause(); });
+video.addEventListener('play', () => { $('playBtn').textContent = '⏸ Pauze'; });
+video.addEventListener('pause', () => { $('playBtn').textContent = '▶ Resultaat afspelen'; });
+video.addEventListener('timeupdate', () => {
+  $('curLabel').textContent = fmt(video.currentTime);
+  if (dur) tlPlay.style.left = (video.currentTime / dur * 100) + '%';
+  if (video.paused || dragging) return;
+  for (const [a, b] of cuts) {                        // skip deleted ranges while playing
+    if (video.currentTime >= a - EPS && video.currentTime < b - EPS) {
+      if (b >= dur - EPS) { video.pause(); video.currentTime = Math.max(0, a); }
+      else video.currentTime = b;
+      break;
+    }
+  }
+});
+
+// ---------- timeline + selection handles ----------
 function xToTime(clientX) {
   const r = tl.getBoundingClientRect();
   return Math.max(0, Math.min(1, (clientX - r.left) / r.width)) * dur;
 }
 function dragHandle(handle, isStart) {
   handle.addEventListener('pointerdown', e => {
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault(); e.stopPropagation(); dragging = true;
     handle.setPointerCapture(e.pointerId);
     const move = ev => {
-      let t = xToTime(ev.clientX);
-      if (isStart) startT = Math.min(t, endT - 0.05);
-      else endT = Math.max(t, startT + 0.05);
-      startT = Math.max(0, startT); endT = Math.min(dur, endT);
-      video.currentTime = isStart ? startT : endT;       // scrub preview
-      updateTimeline();
+      const t = xToTime(ev.clientX);
+      if (isStart) startT = Math.max(0, Math.min(t, endT - 0.05));
+      else endT = Math.min(dur, Math.max(t, startT + 0.05));
+      video.currentTime = isStart ? startT : endT;
+      renderSel();
     };
-    const up = ev => { handle.releasePointerCapture(e.pointerId); handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); };
+    const up = () => { dragging = false; handle.releasePointerCapture(e.pointerId);
+      handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); };
     handle.addEventListener('pointermove', move);
     handle.addEventListener('pointerup', up);
   });
 }
 dragHandle(hStart, true); dragHandle(hEnd, false);
-tl.addEventListener('pointerdown', e => {            // click track to seek
+tl.addEventListener('pointerdown', e => {
   if (e.target === hStart || e.target === hEnd) return;
   if (dur) video.currentTime = xToTime(e.clientX);
 });
-$('setStart').addEventListener('click', () => { startT = Math.min(video.currentTime, endT - 0.05); updateTimeline(); });
-$('setEnd').addEventListener('click', () => { endT = Math.max(video.currentTime, startT + 0.05); updateTimeline(); });
+$('setStart').addEventListener('click', () => { startT = Math.min(video.currentTime, endT - 0.05); renderSel(); });
+$('setEnd').addEventListener('click', () => { endT = Math.max(video.currentTime, startT + 0.05); renderSel(); });
+$('addCut').addEventListener('click', () => addCut(startT, endT));
+$('keepOnly').addEventListener('click', () => { addCut(0, startT); addCut(endT, dur); });
+$('clearCuts').addEventListener('click', () => { cuts = []; renderAll(); });
 
 // ---------- rotation + preview ----------
 document.querySelectorAll('.rot').forEach(b => b.addEventListener('click', () => {
@@ -247,14 +311,10 @@ document.querySelectorAll('.rot').forEach(b => b.addEventListener('click', () =>
   document.querySelectorAll('.rot').forEach(x => x.classList.toggle('active', x === b));
   applyRotPreview();
 }));
-document.querySelectorAll('.mode').forEach(b => b.addEventListener('click', () => {
-  mode = b.dataset.mode;
-  document.querySelectorAll('.mode').forEach(x => x.classList.toggle('active', x === b));
-}));
 function applyRotPreview() {
   const deg = ROT_DEG[rotate];
   let scale = 1;
-  if (deg % 180 !== 0) {                              // 90°: fit the rotated box into the stage
+  if (deg % 180 !== 0) {
     const w = video.offsetWidth, h = video.offsetHeight;
     if (w && h) scale = Math.min(stage.clientWidth / h, stage.clientHeight / w, 8);
   }
@@ -262,7 +322,7 @@ function applyRotPreview() {
 }
 window.addEventListener('resize', applyRotPreview);
 
-// ---------- ffmpeg ----------
+// ---------- ffmpeg render (only at the end) ----------
 let ffmpeg = null;
 async function getFFmpeg() {
   if (ffmpeg) return ffmpeg;
@@ -271,7 +331,6 @@ async function getFFmpeg() {
   ffmpeg.on('progress', ({ progress }) => {
     const pct = Math.max(0, Math.min(100, Math.round(progress * 100)));
     $('progFill').style.width = pct + '%';
-    setStatus('Verwerken… ' + pct + '%');
   });
   const base = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
   await ffmpeg.load({
@@ -284,7 +343,6 @@ function setStatus(s) { $('status').textContent = s; }
 
 const ENC = ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '23',
              '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart'];
-// trim [ss, ss+len] from the source (input-seek = reliable) and rotate, to outName
 async function encodeSegment(ff, outName, ss, len, vf) {
   const args = ['-ss', ss.toFixed(3), '-i', fileName, '-t', len.toFixed(3)];
   if (vf) args.push('-vf', vf);
@@ -293,10 +351,8 @@ async function encodeSegment(ff, outName, ss, len, vf) {
 
 $('makeBtn').addEventListener('click', async () => {
   if (!fileObj) return;
-  if (endT - startT < 0.1) { setStatus('Selectie is te kort.'); return; }
-  if (mode === 'remove' && startT <= 0.05 && endT >= dur - 0.05) {
-    setStatus('Met "verwijderen" zou er niets overblijven — kies een kleiner stuk.'); return;
-  }
+  const segs = keptSegments();
+  if (!segs.length) { setStatus('Er blijft niets over — herstel een paar stukken.'); return; }
   $('progWrap').classList.add('show'); $('progFill').style.width = '0%';
   $('makeBtn').disabled = true; $('result').classList.remove('show');
   const vf = ROT_FILTER[rotate];
@@ -305,24 +361,20 @@ $('makeBtn').addEventListener('click', async () => {
     setStatus('Bestand inladen…');
     await ff.writeFile(fileName, await fetchFile(fileObj));
 
-    if (mode === 'keep') {
-      setStatus('Knippen + verwerken…');
-      await encodeSegment(ff, 'out.mp4', startT, endT - startT, vf);
-    } else {
-      // remove the selection: keep [0,start] + [end,dur], joined
-      const parts = [];
-      if (startT > 0.05) { setStatus('Deel 1 verwerken…'); await encodeSegment(ff, 'p0.mp4', 0, startT, vf); parts.push('p0.mp4'); }
-      if (endT < dur - 0.05) { setStatus('Deel 2 verwerken…'); await encodeSegment(ff, 'p1.mp4', endT, dur - endT, vf); parts.push('p1.mp4'); }
-      if (parts.length === 1) {
-        await ff.exec(['-i', parts[0], '-c', 'copy', '-movflags', '+faststart', 'out.mp4']);
-      } else {
-        setStatus('Delen samenvoegen…');
-        await ff.writeFile('list.txt', new TextEncoder().encode(parts.map(p => `file ${p}`).join('\n')));
-        await ff.exec(['-f', 'concat', '-safe', '0', '-i', 'list.txt', '-c', 'copy', '-movflags', '+faststart', 'out.mp4']);
-      }
-      for (const p of parts) { try { await ff.deleteFile(p); } catch (_) {} }
+    const parts = [];
+    for (let i = 0; i < segs.length; i++) {
+      setStatus(`Stuk ${i + 1}/${segs.length} verwerken…`);
+      const name = `p${i}.mp4`;
+      await encodeSegment(ff, name, segs[i][0], segs[i][1] - segs[i][0], vf);
+      parts.push(name);
     }
-
+    if (parts.length === 1) {
+      await ff.exec(['-i', parts[0], '-c', 'copy', '-movflags', '+faststart', 'out.mp4']);
+    } else {
+      setStatus('Stukken samenvoegen…');
+      await ff.writeFile('list.txt', new TextEncoder().encode(parts.map(p => `file ${p}`).join('\n')));
+      await ff.exec(['-f', 'concat', '-safe', '0', '-i', 'list.txt', '-c', 'copy', '-movflags', '+faststart', 'out.mp4']);
+    }
     const data = await ff.readFile('out.mp4');
     const blob = new Blob([data.buffer], { type: 'video/mp4' });
     const url = URL.createObjectURL(blob);
@@ -331,6 +383,7 @@ $('makeBtn').addEventListener('click', async () => {
     $('dlLink').href = url; $('dlLink').download = outName;
     $('result').classList.add('show');
     setStatus('Klaar ✓  (' + (blob.size / 1048576).toFixed(1).replace('.', ',') + ' MB)');
+    for (const p of parts) { try { await ff.deleteFile(p); } catch (_) {} }
     try { await ff.deleteFile(fileName); await ff.deleteFile('out.mp4'); } catch (_) {}
   } catch (err) {
     setStatus('Mislukt: ' + (err && err.message ? err.message : err));
