@@ -57,6 +57,7 @@
   button:active { background: #1f6bff; }
   button.primary { background: #1f6bff; color: #fff; border-color: #1f6bff; }
   button.rot.active { background: #ffb02e; color: #1a1200; border-color: #7a4d00; font-weight: 800; }
+  button.mode.active { background: #1f6bff; color: #fff; border-color: #1f6bff; font-weight: 800; }
   button:disabled { opacity: .5; cursor: not-allowed; }
   .label { color: #8aa0a0; font-size: 13px; }
 
@@ -118,6 +119,12 @@
 </div>
 
 <div class="row">
+  <span class="label">Met selectie:</span>
+  <button class="mode active" data-mode="keep" disabled>Dit stuk behouden</button>
+  <button class="mode" data-mode="remove" disabled>Dit stuk verwijderen</button>
+</div>
+
+<div class="row">
   <span class="label">Rotatie:</span>
   <button class="rot active" data-rot="none" disabled>0°</button>
   <button class="rot" data-rot="90_cw" disabled>90° ↻</button>
@@ -149,7 +156,7 @@ const $ = id => document.getElementById(id);
 const video = $('video'), stage = $('stage'), tl = $('tl');
 const hStart = $('hStart'), hEnd = $('hEnd'), tlSel = $('tlSel'), tlPlay = $('tlPlay');
 
-let dur = 0, startT = 0, endT = 0, rotate = 'none';
+let dur = 0, startT = 0, endT = 0, rotate = 'none', mode = 'keep';
 let fileObj = null, fileName = 'input.mp4', previewing = false;
 
 const ROT_FILTER = { none: null, '180': 'hflip,vflip', '90_cw': 'transpose=1', '90_ccw': 'transpose=2' };
@@ -240,6 +247,10 @@ document.querySelectorAll('.rot').forEach(b => b.addEventListener('click', () =>
   document.querySelectorAll('.rot').forEach(x => x.classList.toggle('active', x === b));
   applyRotPreview();
 }));
+document.querySelectorAll('.mode').forEach(b => b.addEventListener('click', () => {
+  mode = b.dataset.mode;
+  document.querySelectorAll('.mode').forEach(x => x.classList.toggle('active', x === b));
+}));
 function applyRotPreview() {
   const deg = ROT_DEG[rotate];
   let scale = 1;
@@ -271,22 +282,47 @@ async function getFFmpeg() {
 }
 function setStatus(s) { $('status').textContent = s; }
 
+const ENC = ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '23',
+             '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart'];
+// trim [ss, ss+len] from the source (input-seek = reliable) and rotate, to outName
+async function encodeSegment(ff, outName, ss, len, vf) {
+  const args = ['-ss', ss.toFixed(3), '-i', fileName, '-t', len.toFixed(3)];
+  if (vf) args.push('-vf', vf);
+  await ff.exec([...args, ...ENC, outName]);
+}
+
 $('makeBtn').addEventListener('click', async () => {
   if (!fileObj) return;
   if (endT - startT < 0.1) { setStatus('Selectie is te kort.'); return; }
+  if (mode === 'remove' && startT <= 0.05 && endT >= dur - 0.05) {
+    setStatus('Met "verwijderen" zou er niets overblijven — kies een kleiner stuk.'); return;
+  }
   $('progWrap').classList.add('show'); $('progFill').style.width = '0%';
   $('makeBtn').disabled = true; $('result').classList.remove('show');
+  const vf = ROT_FILTER[rotate];
   try {
     const ff = await getFFmpeg();
     setStatus('Bestand inladen…');
     await ff.writeFile(fileName, await fetchFile(fileObj));
-    const args = ['-i', fileName, '-ss', String(startT.toFixed(3)), '-t', String((endT - startT).toFixed(3))];
-    const vf = ROT_FILTER[rotate];
-    if (vf) args.push('-vf', vf);
-    args.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '23',
-              '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', 'out.mp4');
-    setStatus('Verwerken… 0%');
-    await ff.exec(args);
+
+    if (mode === 'keep') {
+      setStatus('Knippen + verwerken…');
+      await encodeSegment(ff, 'out.mp4', startT, endT - startT, vf);
+    } else {
+      // remove the selection: keep [0,start] + [end,dur], joined
+      const parts = [];
+      if (startT > 0.05) { setStatus('Deel 1 verwerken…'); await encodeSegment(ff, 'p0.mp4', 0, startT, vf); parts.push('p0.mp4'); }
+      if (endT < dur - 0.05) { setStatus('Deel 2 verwerken…'); await encodeSegment(ff, 'p1.mp4', endT, dur - endT, vf); parts.push('p1.mp4'); }
+      if (parts.length === 1) {
+        await ff.exec(['-i', parts[0], '-c', 'copy', '-movflags', '+faststart', 'out.mp4']);
+      } else {
+        setStatus('Delen samenvoegen…');
+        await ff.writeFile('list.txt', new TextEncoder().encode(parts.map(p => `file ${p}`).join('\n')));
+        await ff.exec(['-f', 'concat', '-safe', '0', '-i', 'list.txt', '-c', 'copy', '-movflags', '+faststart', 'out.mp4']);
+      }
+      for (const p of parts) { try { await ff.deleteFile(p); } catch (_) {} }
+    }
+
     const data = await ff.readFile('out.mp4');
     const blob = new Blob([data.buffer], { type: 'video/mp4' });
     const url = URL.createObjectURL(blob);
