@@ -31,28 +31,31 @@
   }
   .stage video { max-width: 100%; max-height: 100%; display: block; transform-origin: center center; }
 
-  .timeline-wrap { margin: 14px 0 6px; }
+  .timeline-wrap { margin: 16px 0 6px; }
   #tl {
-    position: relative; height: 56px; background: #11231f; border: 1px solid #2c4540;
-    border-radius: 10px; cursor: pointer; touch-action: none; user-select: none; overflow: hidden;
+    position: relative; height: 58px; background: #11231f; border: 1px solid #2c4540;
+    border-radius: 10px; cursor: pointer; touch-action: none; user-select: none; overflow: visible;
   }
+  #tlClip { position: absolute; inset: 0; border-radius: 10px; overflow: hidden; }
   .cutband { position: absolute; top: 0; bottom: 16px; background: repeating-linear-gradient(
                45deg, rgba(255,80,80,.5), rgba(255,80,80,.5) 7px, rgba(255,80,80,.28) 7px, rgba(255,80,80,.28) 14px);
              border-left: 1px solid #ff5050; border-right: 1px solid #ff5050; }
   .rotband { position: absolute; bottom: 0; height: 16px; background: rgba(255,176,46,.85);
              border-left: 1px solid #7a4d00; border-right: 1px solid #7a4d00; color: #1a1200;
              font-size: 10px; font-weight: 800; text-align: center; line-height: 16px; overflow: hidden; white-space: nowrap; }
-  #tlSel { position: absolute; top: 0; bottom: 16px; background: rgba(31,107,255,.22);
+  #tlSel { position: absolute; top: 0; bottom: 16px; background: rgba(31,107,255,.20);
            border-left: 2px solid #1f6bff; border-right: 2px solid #1f6bff; }
-  #tlPlay { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #fff; margin-left: -1px; z-index: 3; }
+  #tlSel.cut { background: rgba(255,80,80,.22); border-color: #ff5050; }
+  #tlPlay { position: absolute; top: -3px; bottom: -3px; width: 3px; background: #fff; margin-left: -1px; z-index: 3; border-radius: 2px; }
   .handle {
-    position: absolute; top: -4px; bottom: 12px; width: 16px; margin-left: -8px; z-index: 4;
-    background: #1f6bff; border-radius: 6px; cursor: ew-resize; touch-action: none;
-    box-shadow: 0 1px 6px rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center;
+    position: absolute; top: -6px; bottom: 8px; width: 26px; margin-left: -13px; z-index: 5;
+    background: #1f6bff; border: 1px solid #0c3aa0; border-radius: 8px; cursor: ew-resize; touch-action: none;
+    box-shadow: 0 2px 10px rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center;
   }
-  .handle::after { content: ""; width: 2px; height: 50%; background: rgba(255,255,255,.85); }
+  .handle::after { content: "⋮⋮"; letter-spacing: -2px; color: #fff; font-size: 15px; font-weight: 900; line-height: 1; }
+  .handle:active { background: #4286ff; }
   .times { display: flex; justify-content: space-between; font-family: monospace;
-           font-size: 13px; color: #9fe6d8; margin-top: 6px; }
+           font-size: 13px; color: #9fe6d8; margin-top: 8px; }
 
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
   button {
@@ -63,13 +66,15 @@
   button:active { background: #1f6bff; }
   button.primary { background: #1f6bff; color: #fff; border-color: #1f6bff; }
   button.danger { background: #3a1a1a; color: #ffb4b4; border-color: #5a2a2a; }
+  button.danger.on { background: #ff5050; color: #1a0606; border-color: #ff8080; font-weight: 800; }
   button.rot { background: #2a2110; color: #ffcf7a; border-color: #7a4d00; font-weight: 800; }
+  button.rot.on { background: #ffb02e; color: #1a1200; }
   button:disabled { opacity: .5; cursor: not-allowed; }
   .label { color: #8aa0a0; font-size: 13px; }
 
   .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
   .chip { display: inline-flex; align-items: center; gap: 8px; border-radius: 999px;
-          padding: 5px 6px 5px 12px; font-family: monospace; font-size: 13px; }
+          padding: 5px 6px 5px 12px; font-family: monospace; font-size: 13px; cursor: pointer; }
   .chip.cut { background: #2a1414; border: 1px solid #5a2a2a; color: #ffd0d0; }
   .chip.rotc { background: #2a2110; border: 1px solid #7a4d00; color: #ffcf7a; }
   .chip button { background: none; border: 0; font-size: 16px; padding: 0 4px; cursor: pointer; color: inherit; }
@@ -96,10 +101,10 @@
   <span class="build">build __BUILD_VERSION__</span>
 </div>
 <p class="muted">
-  Markeer een stuk met de handvatten en pas er een bewerking op toe: <b>verwijderen</b> of een
-  <b>rotatie</b> — beide gelden alleen voor het geselecteerde stuk. De speler toont het resultaat
-  <b>direct</b> (overgeslagen knips, geroteerde stukken), zonder te renderen. Maak pas op het eind
-  de video. Alles gebeurt in je browser; er wordt niets geüpload.
+  Sleep de handvatten om een stuk te selecteren en pas er een bewerking op toe: <b>verwijderen</b>
+  of een <b>rotatie</b> — alleen op dat stuk. Je kunt de selectie daarna nog <b>groter/kleiner slepen</b>;
+  de bewerking gaat mee. Klik <b>➕ Volgende stuk</b> om het vast te leggen en een nieuw stuk te kiezen.
+  De speler toont het resultaat <b>direct</b>. Maak pas op het eind de video. Niets wordt geüpload.
 </p>
 
 <label class="drop" id="drop">
@@ -112,42 +117,46 @@
 </div>
 
 <div class="row">
-  <button id="playBtn" disabled>▶ Resultaat afspelen</button>
+  <button id="fromStart" disabled>⏮ Vanaf begin</button>
+  <button id="playBtn" disabled>▶ Afspelen</button>
   <span class="label" style="font-family:monospace;"><span id="curLabel">0:00,00</span>
     · resultaat <span id="resLabel">0:00,00</span></span>
 </div>
 
 <div class="timeline-wrap">
   <div id="tl">
-    <div id="tlCuts"></div>
-    <div id="tlRots"></div>
-    <div id="tlSel"></div>
+    <div id="tlClip">
+      <div id="tlCuts"></div>
+      <div id="tlRots"></div>
+      <div id="tlSel"></div>
+    </div>
     <div class="handle" id="hStart" style="left:0%"></div>
     <div class="handle" id="hEnd" style="left:100%"></div>
     <div id="tlPlay" style="left:0%"></div>
   </div>
-  <div class="times"><span id="tStart">selectie 0:00,00</span><span id="tEnd">→ 0:00,00</span></div>
+  <div class="times"><span id="tStart">selectie 0:00,00</span><span id="selInfo"></span><span id="tEnd">→ 0:00,00</span></div>
 </div>
 
 <div class="row">
   <button id="setStart" disabled>⤓ Begin = nu</button>
   <button id="setEnd" disabled>Eind = nu ⤒</button>
-  <button id="addCut" class="danger" disabled>✂︎ Selectie verwijderen</button>
-  <button id="keepOnly" disabled>Alleen selectie houden</button>
 </div>
 
 <div class="row">
-  <span class="label">Rotatie op selectie:</span>
+  <span class="label">Op selectie:</span>
+  <button id="cutBtn" class="danger" disabled>✂︎ Verwijderen</button>
   <button class="rot" data-rot="90_cw" disabled>90° ↻</button>
   <button class="rot" data-rot="90_ccw" disabled>90° ↺</button>
   <button class="rot" data-rot="180" disabled>180°</button>
-  <button class="rot" data-rot="none" disabled>0° (terug)</button>
+  <button class="rot" data-rot="none" disabled>0°</button>
+</div>
+
+<div class="row">
+  <button id="nextBtn" disabled>➕ Volgende stuk</button>
+  <button id="clearAll" disabled>↺ Herstel alles</button>
 </div>
 
 <div class="chips" id="chips"></div>
-<div class="row">
-  <button id="clearAll" disabled>↺ Herstel alles</button>
-</div>
 
 <div class="row">
   <button class="primary" id="makeBtn" disabled>🎬 Maak bewerkte video</button>
@@ -173,10 +182,10 @@ const $ = id => document.getElementById(id);
 const video = $('video'), stage = $('stage'), tl = $('tl');
 const hStart = $('hStart'), hEnd = $('hEnd'), tlSel = $('tlSel'), tlPlay = $('tlPlay');
 
-let dur = 0, startT = 0, endT = 0;
+let dur = 0;
 let fileObj = null, fileName = 'input.mp4', dragging = false, lastRot = null;
-let cuts = [];                 // [a,b] ranges to remove (sorted, merged)
-let rotRanges = [];            // {a,b,rot} — later entries win on overlap
+let sel = { a: 0, b: 0, cut: false, rot: 'none' };   // the active, editable piece
+let committed = [];                                   // frozen pieces {a,b,cut,rot}
 
 const ROT_FILTER = { none: null, '180': 'hflip,vflip', '90_cw': 'transpose=1', '90_ccw': 'transpose=2' };
 const ROT_DEG = { none: 0, '90_cw': 90, '90_ccw': -90, '180': 180 };
@@ -188,6 +197,8 @@ function fmt(s) {
   const m = Math.floor(s / 60), r = s - m * 60;
   return m + ':' + (r < 10 ? '0' : '') + r.toFixed(2).replace('.', ',');
 }
+function hasOps(r) { return r.cut || r.rot !== 'none'; }
+function regions() { return hasOps(sel) ? [...committed, sel] : [...committed]; }
 
 // ---------- file loading ----------
 const drop = $('drop');
@@ -199,93 +210,100 @@ drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) l
 function loadFile(f) {
   fileObj = f;
   fileName = 'input.' + (f.name.split('.').pop() || 'mp4').toLowerCase();
-  cuts = []; rotRanges = []; lastRot = null;
+  committed = []; lastRot = null;
   video.src = URL.createObjectURL(f);
   video.load();
 }
-
 video.addEventListener('loadedmetadata', () => {
   dur = video.duration || 0;
-  startT = 0; endT = dur;
+  sel = { a: 0, b: dur, cut: false, rot: 'none' };
   document.querySelectorAll('button').forEach(b => { if (!b.classList.contains('dl')) b.disabled = false; });
   renderAll(); applyRotPreview(rotAt(0));
   $('drop').querySelector('b').textContent = '✓ ' + fileObj.name;
 });
 
-// ---------- cut list ----------
-function mergeCuts() {
-  cuts.sort((a, b) => a[0] - b[0]);
+// ---------- derive cuts / rotation from regions ----------
+function mergedCuts() {
+  const cs = regions().filter(r => r.cut).map(r => [r.a, r.b]).sort((a, b) => a[0] - b[0]);
   const out = [];
-  for (const c of cuts) {
-    const last = out[out.length - 1];
-    if (last && c[0] <= last[1] + EPS) last[1] = Math.max(last[1], c[1]);
+  for (const c of cs) {
+    const l = out[out.length - 1];
+    if (l && c[0] <= l[1] + EPS) l[1] = Math.max(l[1], c[1]);
     else out.push([Math.max(0, c[0]), Math.min(dur, c[1])]);
   }
-  cuts = out.filter(c => c[1] - c[0] > EPS);
+  return out.filter(c => c[1] - c[0] > EPS);
 }
-function addCut(a, b) { if (b - a <= EPS) return; cuts.push([a, b]); mergeCuts(); renderAll(); }
 function keptSegments() {
   const segs = []; let pos = 0;
-  for (const [a, b] of cuts) { if (a - pos > EPS) segs.push([pos, a]); pos = Math.max(pos, b); }
+  for (const [a, b] of mergedCuts()) { if (a - pos > EPS) segs.push([pos, a]); pos = Math.max(pos, b); }
   if (dur - pos > EPS) segs.push([pos, dur]);
   return segs;
 }
-function resultDuration() { return keptSegments().reduce((s, [a, b]) => s + (b - a), 0); }
-
-// ---------- rotation ranges (per piece) ----------
 function rotAt(t) {
-  for (let i = rotRanges.length - 1; i >= 0; i--) {
-    const r = rotRanges[i];
-    if (t >= r.a - EPS && t < r.b - EPS) return r.rot;
-  }
+  const rs = regions().filter(r => !r.cut && r.rot !== 'none');
+  for (let i = rs.length - 1; i >= 0; i--) if (t >= rs[i].a - EPS && t < rs[i].b - EPS) return rs[i].rot;
   return 'none';
 }
-function addRot(a, b, rot) { if (b - a <= EPS) return; rotRanges.push({ a, b, rot }); renderAll(); refreshPreviewRot(true); }
+function resultDuration() { return keptSegments().reduce((s, [a, b]) => s + (b - a), 0); }
 
-// ---------- rendering of the timeline + chips ----------
-function pct(t) { return (t / dur * 100) + '%'; }
+// ---------- render timeline + chips + button states ----------
+function pctW(a, b) { return ((b - a) / dur * 100) + '%'; }
 function renderAll() {
   const cutsEl = $('tlCuts'); cutsEl.innerHTML = '';
-  for (const [a, b] of cuts) {
-    const d = document.createElement('div'); d.className = 'cutband';
-    d.style.left = pct(a); d.style.width = ((b - a) / dur * 100) + '%'; cutsEl.appendChild(d);
-  }
   const rotsEl = $('tlRots'); rotsEl.innerHTML = '';
-  for (const r of rotRanges) {
-    if (r.rot === 'none') continue;
-    const d = document.createElement('div'); d.className = 'rotband';
-    d.style.left = pct(r.a); d.style.width = ((r.b - r.a) / dur * 100) + '%';
-    d.textContent = ROT_LBL[r.rot]; rotsEl.appendChild(d);
+  for (const r of committed) {
+    if (r.cut) {
+      const d = document.createElement('div'); d.className = 'cutband';
+      d.style.left = (r.a / dur * 100) + '%'; d.style.width = pctW(r.a, r.b); cutsEl.appendChild(d);
+    } else if (r.rot !== 'none') {
+      const d = document.createElement('div'); d.className = 'rotband';
+      d.style.left = (r.a / dur * 100) + '%'; d.style.width = pctW(r.a, r.b);
+      d.textContent = ROT_LBL[r.rot]; rotsEl.appendChild(d);
+    }
   }
   renderSel();
-  // chips
+  // chips for committed pieces (click to edit, ✕ to remove)
   const chips = $('chips'); chips.innerHTML = '';
-  cuts.forEach(([a, b], i) => {
-    const c = document.createElement('span'); c.className = 'chip cut';
-    c.innerHTML = `weg ${fmt(a)}–${fmt(b)} <button title="herstel">✕</button>`;
-    c.querySelector('button').addEventListener('click', () => { cuts.splice(i, 1); renderAll(); });
+  committed.forEach((r) => {
+    const c = document.createElement('span');
+    c.className = 'chip ' + (r.cut ? 'cut' : 'rotc');
+    const lbl = r.cut ? 'weg' : ROT_LBL[r.rot];
+    c.innerHTML = `${lbl} ${fmt(r.a)}–${fmt(r.b)} <button title="herstel">✕</button>`;
+    c.addEventListener('click', e => { if (e.target.tagName !== 'BUTTON') editRegion(r); });
+    c.querySelector('button').addEventListener('click', e => { e.stopPropagation(); committed = committed.filter(x => x !== r); renderAll(); refreshPreviewRot(true); });
     chips.appendChild(c);
   });
-  rotRanges.forEach((r, i) => {
-    const c = document.createElement('span'); c.className = 'chip rotc';
-    c.innerHTML = `${ROT_LBL[r.rot]} ${fmt(r.a)}–${fmt(r.b)} <button title="herstel">✕</button>`;
-    c.querySelector('button').addEventListener('click', () => { rotRanges.splice(i, 1); renderAll(); refreshPreviewRot(true); });
-    chips.appendChild(c);
-  });
+  // active op button states
+  $('cutBtn').classList.toggle('on', sel.cut);
+  document.querySelectorAll('.rot').forEach(b => b.classList.toggle('on', !sel.cut && sel.rot === b.dataset.rot));
   $('resLabel').textContent = fmt(resultDuration());
 }
 function renderSel() {
-  const a = dur ? startT / dur * 100 : 0, b = dur ? endT / dur * 100 : 100;
+  const a = dur ? sel.a / dur * 100 : 0, b = dur ? sel.b / dur * 100 : 100;
   hStart.style.left = a + '%'; hEnd.style.left = b + '%';
   tlSel.style.left = a + '%'; tlSel.style.width = (b - a) + '%';
-  $('tStart').textContent = 'selectie ' + fmt(startT);
-  $('tEnd').textContent = '→ ' + fmt(endT);
+  tlSel.classList.toggle('cut', sel.cut);
+  $('tStart').textContent = 'selectie ' + fmt(sel.a);
+  $('tEnd').textContent = '→ ' + fmt(sel.b);
+  $('selInfo').textContent = sel.cut ? 'wordt verwijderd' : (sel.rot !== 'none' ? ROT_LBL[sel.rot] : '');
 }
 
-// ---------- transport (preview skips cuts + rotates per piece, live) ----------
+function editRegion(r) {                              // pull a frozen piece back to active for editing
+  if (hasOps(sel)) committed.push(sel);
+  committed = committed.filter(x => x !== r);
+  sel = r;
+  renderAll(); refreshPreviewRot(true);
+}
+
+// ---------- transport (live preview: skip cuts, rotate per piece) ----------
 $('playBtn').addEventListener('click', () => { video.paused ? video.play() : video.pause(); });
+$('fromStart').addEventListener('click', () => {
+  const segs = keptSegments();
+  video.currentTime = segs.length ? segs[0][0] : 0;
+  const p = video.play(); if (p && p.catch) p.catch(() => {});
+});
 video.addEventListener('play', () => { $('playBtn').textContent = '⏸ Pauze'; });
-video.addEventListener('pause', () => { $('playBtn').textContent = '▶ Resultaat afspelen'; });
+video.addEventListener('pause', () => { $('playBtn').textContent = '▶ Afspelen'; });
 function refreshPreviewRot(force) {
   const r = rotAt(video.currentTime || 0);
   if (force || r !== lastRot) { lastRot = r; applyRotPreview(r); }
@@ -295,7 +313,7 @@ video.addEventListener('timeupdate', () => {
   if (dur) tlPlay.style.left = (video.currentTime / dur * 100) + '%';
   refreshPreviewRot(false);
   if (video.paused || dragging) return;
-  for (const [a, b] of cuts) {
+  for (const [a, b] of mergedCuts()) {
     if (video.currentTime >= a - EPS && video.currentTime < b - EPS) {
       if (b >= dur - EPS) { video.pause(); video.currentTime = Math.max(0, a); }
       else video.currentTime = b;
@@ -304,7 +322,7 @@ video.addEventListener('timeupdate', () => {
   }
 });
 
-// ---------- timeline + selection handles ----------
+// ---------- timeline + selection handles (handles edit the active piece) ----------
 function xToTime(clientX) {
   const r = tl.getBoundingClientRect();
   return Math.max(0, Math.min(1, (clientX - r.left) / r.width)) * dur;
@@ -315,10 +333,10 @@ function dragHandle(handle, isStart) {
     handle.setPointerCapture(e.pointerId);
     const move = ev => {
       const t = xToTime(ev.clientX);
-      if (isStart) startT = Math.max(0, Math.min(t, endT - 0.05));
-      else endT = Math.min(dur, Math.max(t, startT + 0.05));
-      video.currentTime = isStart ? startT : endT;
-      renderSel();
+      if (isStart) sel.a = Math.max(0, Math.min(t, sel.b - 0.05));
+      else sel.b = Math.min(dur, Math.max(t, sel.a + 0.05));
+      video.currentTime = isStart ? sel.a : sel.b;
+      renderAll();
     };
     const up = () => { dragging = false; handle.releasePointerCapture(e.pointerId);
       handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); };
@@ -331,14 +349,23 @@ tl.addEventListener('pointerdown', e => {
   if (e.target === hStart || e.target === hEnd) return;
   if (dur) video.currentTime = xToTime(e.clientX);
 });
-$('setStart').addEventListener('click', () => { startT = Math.min(video.currentTime, endT - 0.05); renderSel(); });
-$('setEnd').addEventListener('click', () => { endT = Math.max(video.currentTime, startT + 0.05); renderSel(); });
-$('addCut').addEventListener('click', () => addCut(startT, endT));
-$('keepOnly').addEventListener('click', () => { addCut(0, startT); addCut(endT, dur); });
-$('clearAll').addEventListener('click', () => { cuts = []; rotRanges = []; renderAll(); refreshPreviewRot(true); });
+$('setStart').addEventListener('click', () => { sel.a = Math.min(video.currentTime, sel.b - 0.05); renderAll(); });
+$('setEnd').addEventListener('click', () => { sel.b = Math.max(video.currentTime, sel.a + 0.05); renderAll(); });
 
-// ---------- rotation buttons act on the selection ----------
-document.querySelectorAll('.rot').forEach(b => b.addEventListener('click', () => addRot(startT, endT, b.dataset.rot)));
+// ---------- ops on the active selection ----------
+$('cutBtn').addEventListener('click', () => { sel.cut = !sel.cut; if (sel.cut) sel.rot = 'none'; renderAll(); refreshPreviewRot(true); });
+document.querySelectorAll('.rot').forEach(b => b.addEventListener('click', () => {
+  sel.rot = b.dataset.rot; if (sel.rot !== 'none') sel.cut = false; renderAll(); refreshPreviewRot(true);
+}));
+$('nextBtn').addEventListener('click', () => {
+  if (hasOps(sel)) committed.push(sel);
+  sel = { a: sel.a, b: sel.b, cut: false, rot: 'none' };   // fresh piece, handles stay put
+  renderAll(); refreshPreviewRot(true);
+});
+$('clearAll').addEventListener('click', () => {
+  committed = []; sel = { a: 0, b: dur, cut: false, rot: 'none' }; renderAll(); refreshPreviewRot(true);
+});
+
 function applyRotPreview(rot) {
   const deg = ROT_DEG[rot] || 0;
   let scale = 1;
@@ -368,11 +395,10 @@ async function getFFmpeg() {
 }
 function setStatus(s) { $('status').textContent = s; }
 
-// split kept segments further at rotation-range edges, so each part has one rotation
 function renderSegments() {
   const kept = keptSegments();
   const edges = [];
-  rotRanges.forEach(r => { edges.push(r.a, r.b); });
+  regions().filter(r => !r.cut && r.rot !== 'none').forEach(r => { edges.push(r.a, r.b); });
   const out = [];
   for (const [a, b] of kept) {
     const pts = [a, b, ...edges.filter(x => x > a + EPS && x < b - EPS)].sort((x, y) => x - y);
@@ -388,7 +414,6 @@ $('makeBtn').addEventListener('click', async () => {
   if (!fileObj) return;
   const segs = renderSegments();
   if (!segs.length) { setStatus('Er blijft niets over — herstel een paar stukken.'); return; }
-  // common output canvas that fits every piece's orientation (pad the rest)
   const W = video.videoWidth || 1920, H = video.videoHeight || 1080;
   let TW = 0, TH = 0;
   for (const sg of segs) {
@@ -409,16 +434,14 @@ $('makeBtn').addEventListener('click', async () => {
     const ff = await getFFmpeg();
     setStatus('Bestand inladen…');
     await ff.writeFile(fileName, await fetchFile(fileObj));
-
     const parts = [];
     for (let i = 0; i < segs.length; i++) {
       setStatus(`Stuk ${i + 1}/${segs.length} verwerken…`);
       const name = `p${i}.mp4`;
-      const args = ['-ss', segs[i].s.toFixed(3), '-i', fileName, '-t', (segs[i].e - segs[i].s).toFixed(3),
+      await ff.exec(['-ss', segs[i].s.toFixed(3), '-i', fileName, '-t', (segs[i].e - segs[i].s).toFixed(3),
         '-vf', segVf(segs[i].rot),
         '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '23',
-        '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', name];
-      await ff.exec(args);
+        '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', name]);
       parts.push(name);
     }
     if (parts.length === 1) {
