@@ -33,17 +33,20 @@
 
   .timeline-wrap { margin: 14px 0 6px; }
   #tl {
-    position: relative; height: 48px; background: #11231f; border: 1px solid #2c4540;
+    position: relative; height: 56px; background: #11231f; border: 1px solid #2c4540;
     border-radius: 10px; cursor: pointer; touch-action: none; user-select: none; overflow: hidden;
   }
-  .cutband { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(
-               45deg, rgba(255,80,80,.45), rgba(255,80,80,.45) 7px, rgba(255,80,80,.25) 7px, rgba(255,80,80,.25) 14px);
+  .cutband { position: absolute; top: 0; bottom: 16px; background: repeating-linear-gradient(
+               45deg, rgba(255,80,80,.5), rgba(255,80,80,.5) 7px, rgba(255,80,80,.28) 7px, rgba(255,80,80,.28) 14px);
              border-left: 1px solid #ff5050; border-right: 1px solid #ff5050; }
-  #tlSel { position: absolute; top: 0; bottom: 0; background: rgba(31,107,255,.22);
+  .rotband { position: absolute; bottom: 0; height: 16px; background: rgba(255,176,46,.85);
+             border-left: 1px solid #7a4d00; border-right: 1px solid #7a4d00; color: #1a1200;
+             font-size: 10px; font-weight: 800; text-align: center; line-height: 16px; overflow: hidden; white-space: nowrap; }
+  #tlSel { position: absolute; top: 0; bottom: 16px; background: rgba(31,107,255,.22);
            border-left: 2px solid #1f6bff; border-right: 2px solid #1f6bff; }
   #tlPlay { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #fff; margin-left: -1px; z-index: 3; }
   .handle {
-    position: absolute; top: -4px; bottom: -4px; width: 16px; margin-left: -8px; z-index: 4;
+    position: absolute; top: -4px; bottom: 12px; width: 16px; margin-left: -8px; z-index: 4;
     background: #1f6bff; border-radius: 6px; cursor: ew-resize; touch-action: none;
     box-shadow: 0 1px 6px rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center;
   }
@@ -60,15 +63,16 @@
   button:active { background: #1f6bff; }
   button.primary { background: #1f6bff; color: #fff; border-color: #1f6bff; }
   button.danger { background: #3a1a1a; color: #ffb4b4; border-color: #5a2a2a; }
-  button.rot.active { background: #ffb02e; color: #1a1200; border-color: #7a4d00; font-weight: 800; }
+  button.rot { background: #2a2110; color: #ffcf7a; border-color: #7a4d00; font-weight: 800; }
   button:disabled { opacity: .5; cursor: not-allowed; }
   .label { color: #8aa0a0; font-size: 13px; }
 
-  #cuts { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
-  .chip { display: inline-flex; align-items: center; gap: 8px; background: #2a1414;
-          border: 1px solid #5a2a2a; color: #ffd0d0; border-radius: 999px;
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; border-radius: 999px;
           padding: 5px 6px 5px 12px; font-family: monospace; font-size: 13px; }
-  .chip button { background: none; border: 0; color: #ff9a9a; font-size: 16px; padding: 0 4px; cursor: pointer; }
+  .chip.cut { background: #2a1414; border: 1px solid #5a2a2a; color: #ffd0d0; }
+  .chip.rotc { background: #2a2110; border: 1px solid #7a4d00; color: #ffcf7a; }
+  .chip button { background: none; border: 0; font-size: 16px; padding: 0 4px; cursor: pointer; color: inherit; }
 
   #progWrap { display: none; margin: 12px 0; }
   #progWrap.show { display: block; }
@@ -92,9 +96,10 @@
   <span class="build">build __BUILD_VERSION__</span>
 </div>
 <p class="muted">
-  Markeer stukken om te <b>verwijderen</b> (of "alleen dit houden"); de speler slaat ze meteen over —
-  zo zie je het resultaat <b>direct</b>, zonder te renderen. Voeg zoveel stukken toe als je wilt, kies een
-  rotatie, en maak pas op het eind de video. Alles gebeurt in je browser; er wordt niets geüpload.
+  Markeer een stuk met de handvatten en pas er een bewerking op toe: <b>verwijderen</b> of een
+  <b>rotatie</b> — beide gelden alleen voor het geselecteerde stuk. De speler toont het resultaat
+  <b>direct</b> (overgeslagen knips, geroteerde stukken), zonder te renderen. Maak pas op het eind
+  de video. Alles gebeurt in je browser; er wordt niets geüpload.
 </p>
 
 <label class="drop" id="drop">
@@ -115,6 +120,7 @@
 <div class="timeline-wrap">
   <div id="tl">
     <div id="tlCuts"></div>
+    <div id="tlRots"></div>
     <div id="tlSel"></div>
     <div class="handle" id="hStart" style="left:0%"></div>
     <div class="handle" id="hEnd" style="left:100%"></div>
@@ -130,17 +136,17 @@
   <button id="keepOnly" disabled>Alleen selectie houden</button>
 </div>
 
-<div id="cuts"></div>
 <div class="row">
-  <button id="clearCuts" disabled>↺ Herstel alles</button>
-</div>
-
-<div class="row">
-  <span class="label">Rotatie:</span>
-  <button class="rot active" data-rot="none" disabled>0°</button>
+  <span class="label">Rotatie op selectie:</span>
   <button class="rot" data-rot="90_cw" disabled>90° ↻</button>
   <button class="rot" data-rot="90_ccw" disabled>90° ↺</button>
   <button class="rot" data-rot="180" disabled>180°</button>
+  <button class="rot" data-rot="none" disabled>0° (terug)</button>
+</div>
+
+<div class="chips" id="chips"></div>
+<div class="row">
+  <button id="clearAll" disabled>↺ Herstel alles</button>
 </div>
 
 <div class="row">
@@ -165,14 +171,16 @@ import { fetchFile, toBlobURL } from "https://unpkg.com/@ffmpeg/util@0.12.1/dist
 
 const $ = id => document.getElementById(id);
 const video = $('video'), stage = $('stage'), tl = $('tl');
-const hStart = $('hStart'), hEnd = $('hEnd'), tlSel = $('tlSel'), tlPlay = $('tlPlay'), tlCuts = $('tlCuts');
+const hStart = $('hStart'), hEnd = $('hEnd'), tlSel = $('tlSel'), tlPlay = $('tlPlay');
 
-let dur = 0, startT = 0, endT = 0, rotate = 'none';
-let fileObj = null, fileName = 'input.mp4', dragging = false;
-let cuts = [];                                       // sorted, merged [a,b] ranges to remove
+let dur = 0, startT = 0, endT = 0;
+let fileObj = null, fileName = 'input.mp4', dragging = false, lastRot = null;
+let cuts = [];                 // [a,b] ranges to remove (sorted, merged)
+let rotRanges = [];            // {a,b,rot} — later entries win on overlap
 
 const ROT_FILTER = { none: null, '180': 'hflip,vflip', '90_cw': 'transpose=1', '90_ccw': 'transpose=2' };
 const ROT_DEG = { none: 0, '90_cw': 90, '90_ccw': -90, '180': 180 };
+const ROT_LBL = { none: '0°', '90_cw': '90°↻', '90_ccw': '90°↺', '180': '180°' };
 const EPS = 0.04;
 
 function fmt(s) {
@@ -191,7 +199,7 @@ drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) l
 function loadFile(f) {
   fileObj = f;
   fileName = 'input.' + (f.name.split('.').pop() || 'mp4').toLowerCase();
-  cuts = [];
+  cuts = []; rotRanges = []; lastRot = null;
   video.src = URL.createObjectURL(f);
   video.load();
 }
@@ -200,11 +208,11 @@ video.addEventListener('loadedmetadata', () => {
   dur = video.duration || 0;
   startT = 0; endT = dur;
   document.querySelectorAll('button').forEach(b => { if (!b.classList.contains('dl')) b.disabled = false; });
-  renderAll(); applyRotPreview();
+  renderAll(); applyRotPreview(rotAt(0));
   $('drop').querySelector('b').textContent = '✓ ' + fileObj.name;
 });
 
-// ---------- cut list (the edit decision list) ----------
+// ---------- cut list ----------
 function mergeCuts() {
   cuts.sort((a, b) => a[0] - b[0]);
   const out = [];
@@ -215,10 +223,7 @@ function mergeCuts() {
   }
   cuts = out.filter(c => c[1] - c[0] > EPS);
 }
-function addCut(a, b) {
-  if (b - a <= EPS) return;
-  cuts.push([a, b]); mergeCuts(); renderAll();
-}
+function addCut(a, b) { if (b - a <= EPS) return; cuts.push([a, b]); mergeCuts(); renderAll(); }
 function keptSegments() {
   const segs = []; let pos = 0;
   for (const [a, b] of cuts) { if (a - pos > EPS) segs.push([pos, a]); pos = Math.max(pos, b); }
@@ -227,21 +232,47 @@ function keptSegments() {
 }
 function resultDuration() { return keptSegments().reduce((s, [a, b]) => s + (b - a), 0); }
 
-function renderCuts() {
-  tlCuts.innerHTML = '';
-  for (const [a, b] of cuts) {
-    const d = document.createElement('div');
-    d.className = 'cutband';
-    d.style.left = (a / dur * 100) + '%'; d.style.width = ((b - a) / dur * 100) + '%';
-    tlCuts.appendChild(d);
+// ---------- rotation ranges (per piece) ----------
+function rotAt(t) {
+  for (let i = rotRanges.length - 1; i >= 0; i--) {
+    const r = rotRanges[i];
+    if (t >= r.a - EPS && t < r.b - EPS) return r.rot;
   }
-  const list = $('cuts'); list.innerHTML = '';
+  return 'none';
+}
+function addRot(a, b, rot) { if (b - a <= EPS) return; rotRanges.push({ a, b, rot }); renderAll(); refreshPreviewRot(true); }
+
+// ---------- rendering of the timeline + chips ----------
+function pct(t) { return (t / dur * 100) + '%'; }
+function renderAll() {
+  const cutsEl = $('tlCuts'); cutsEl.innerHTML = '';
+  for (const [a, b] of cuts) {
+    const d = document.createElement('div'); d.className = 'cutband';
+    d.style.left = pct(a); d.style.width = ((b - a) / dur * 100) + '%'; cutsEl.appendChild(d);
+  }
+  const rotsEl = $('tlRots'); rotsEl.innerHTML = '';
+  for (const r of rotRanges) {
+    if (r.rot === 'none') continue;
+    const d = document.createElement('div'); d.className = 'rotband';
+    d.style.left = pct(r.a); d.style.width = ((r.b - r.a) / dur * 100) + '%';
+    d.textContent = ROT_LBL[r.rot]; rotsEl.appendChild(d);
+  }
+  renderSel();
+  // chips
+  const chips = $('chips'); chips.innerHTML = '';
   cuts.forEach(([a, b], i) => {
-    const chip = document.createElement('span'); chip.className = 'chip';
-    chip.innerHTML = `weg ${fmt(a)}–${fmt(b)} <button title="herstel">✕</button>`;
-    chip.querySelector('button').addEventListener('click', () => { cuts.splice(i, 1); renderAll(); });
-    list.appendChild(chip);
+    const c = document.createElement('span'); c.className = 'chip cut';
+    c.innerHTML = `weg ${fmt(a)}–${fmt(b)} <button title="herstel">✕</button>`;
+    c.querySelector('button').addEventListener('click', () => { cuts.splice(i, 1); renderAll(); });
+    chips.appendChild(c);
   });
+  rotRanges.forEach((r, i) => {
+    const c = document.createElement('span'); c.className = 'chip rotc';
+    c.innerHTML = `${ROT_LBL[r.rot]} ${fmt(r.a)}–${fmt(r.b)} <button title="herstel">✕</button>`;
+    c.querySelector('button').addEventListener('click', () => { rotRanges.splice(i, 1); renderAll(); refreshPreviewRot(true); });
+    chips.appendChild(c);
+  });
+  $('resLabel').textContent = fmt(resultDuration());
 }
 function renderSel() {
   const a = dur ? startT / dur * 100 : 0, b = dur ? endT / dur * 100 : 100;
@@ -250,20 +281,21 @@ function renderSel() {
   $('tStart').textContent = 'selectie ' + fmt(startT);
   $('tEnd').textContent = '→ ' + fmt(endT);
 }
-function renderAll() {
-  renderCuts(); renderSel();
-  $('resLabel').textContent = fmt(resultDuration());
-}
 
-// ---------- transport (preview skips the cut ranges live) ----------
+// ---------- transport (preview skips cuts + rotates per piece, live) ----------
 $('playBtn').addEventListener('click', () => { video.paused ? video.play() : video.pause(); });
 video.addEventListener('play', () => { $('playBtn').textContent = '⏸ Pauze'; });
 video.addEventListener('pause', () => { $('playBtn').textContent = '▶ Resultaat afspelen'; });
+function refreshPreviewRot(force) {
+  const r = rotAt(video.currentTime || 0);
+  if (force || r !== lastRot) { lastRot = r; applyRotPreview(r); }
+}
 video.addEventListener('timeupdate', () => {
   $('curLabel').textContent = fmt(video.currentTime);
   if (dur) tlPlay.style.left = (video.currentTime / dur * 100) + '%';
+  refreshPreviewRot(false);
   if (video.paused || dragging) return;
-  for (const [a, b] of cuts) {                        // skip deleted ranges while playing
+  for (const [a, b] of cuts) {
     if (video.currentTime >= a - EPS && video.currentTime < b - EPS) {
       if (b >= dur - EPS) { video.pause(); video.currentTime = Math.max(0, a); }
       else video.currentTime = b;
@@ -303,16 +335,12 @@ $('setStart').addEventListener('click', () => { startT = Math.min(video.currentT
 $('setEnd').addEventListener('click', () => { endT = Math.max(video.currentTime, startT + 0.05); renderSel(); });
 $('addCut').addEventListener('click', () => addCut(startT, endT));
 $('keepOnly').addEventListener('click', () => { addCut(0, startT); addCut(endT, dur); });
-$('clearCuts').addEventListener('click', () => { cuts = []; renderAll(); });
+$('clearAll').addEventListener('click', () => { cuts = []; rotRanges = []; renderAll(); refreshPreviewRot(true); });
 
-// ---------- rotation + preview ----------
-document.querySelectorAll('.rot').forEach(b => b.addEventListener('click', () => {
-  rotate = b.dataset.rot;
-  document.querySelectorAll('.rot').forEach(x => x.classList.toggle('active', x === b));
-  applyRotPreview();
-}));
-function applyRotPreview() {
-  const deg = ROT_DEG[rotate];
+// ---------- rotation buttons act on the selection ----------
+document.querySelectorAll('.rot').forEach(b => b.addEventListener('click', () => addRot(startT, endT, b.dataset.rot)));
+function applyRotPreview(rot) {
+  const deg = ROT_DEG[rot] || 0;
   let scale = 1;
   if (deg % 180 !== 0) {
     const w = video.offsetWidth, h = video.offsetHeight;
@@ -320,7 +348,7 @@ function applyRotPreview() {
   }
   video.style.transform = `rotate(${deg}deg) scale(${scale})`;
 }
-window.addEventListener('resize', applyRotPreview);
+window.addEventListener('resize', () => applyRotPreview(lastRot || 'none'));
 
 // ---------- ffmpeg render (only at the end) ----------
 let ffmpeg = null;
@@ -329,8 +357,7 @@ async function getFFmpeg() {
   setStatus('Engine laden… (eenmalig, ~25 MB)');
   ffmpeg = new FFmpeg();
   ffmpeg.on('progress', ({ progress }) => {
-    const pct = Math.max(0, Math.min(100, Math.round(progress * 100)));
-    $('progFill').style.width = pct + '%';
+    $('progFill').style.width = Math.max(0, Math.min(100, Math.round(progress * 100))) + '%';
   });
   const base = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
   await ffmpeg.load({
@@ -341,21 +368,43 @@ async function getFFmpeg() {
 }
 function setStatus(s) { $('status').textContent = s; }
 
-const ENC = ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '23',
-             '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart'];
-async function encodeSegment(ff, outName, ss, len, vf) {
-  const args = ['-ss', ss.toFixed(3), '-i', fileName, '-t', len.toFixed(3)];
-  if (vf) args.push('-vf', vf);
-  await ff.exec([...args, ...ENC, outName]);
+// split kept segments further at rotation-range edges, so each part has one rotation
+function renderSegments() {
+  const kept = keptSegments();
+  const edges = [];
+  rotRanges.forEach(r => { edges.push(r.a, r.b); });
+  const out = [];
+  for (const [a, b] of kept) {
+    const pts = [a, b, ...edges.filter(x => x > a + EPS && x < b - EPS)].sort((x, y) => x - y);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const s = pts[i], e = pts[i + 1];
+      if (e - s > EPS) out.push({ s, e, rot: rotAt((s + e) / 2) });
+    }
+  }
+  return out;
 }
 
 $('makeBtn').addEventListener('click', async () => {
   if (!fileObj) return;
-  const segs = keptSegments();
+  const segs = renderSegments();
   if (!segs.length) { setStatus('Er blijft niets over — herstel een paar stukken.'); return; }
+  // common output canvas that fits every piece's orientation (pad the rest)
+  const W = video.videoWidth || 1920, H = video.videoHeight || 1080;
+  let TW = 0, TH = 0;
+  for (const sg of segs) {
+    const [w, h] = (sg.rot === '90_cw' || sg.rot === '90_ccw') ? [H, W] : [W, H];
+    TW = Math.max(TW, w); TH = Math.max(TH, h);
+  }
+  TW += TW % 2; TH += TH % 2;
+  const segVf = rot => {
+    const f = []; const rf = ROT_FILTER[rot]; if (rf) f.push(rf);
+    f.push(`scale=${TW}:${TH}:force_original_aspect_ratio=decrease`,
+           `pad=${TW}:${TH}:(ow-iw)/2:(oh-ih)/2`, 'setsar=1');
+    return f.join(',');
+  };
+
   $('progWrap').classList.add('show'); $('progFill').style.width = '0%';
   $('makeBtn').disabled = true; $('result').classList.remove('show');
-  const vf = ROT_FILTER[rotate];
   try {
     const ff = await getFFmpeg();
     setStatus('Bestand inladen…');
@@ -365,7 +414,11 @@ $('makeBtn').addEventListener('click', async () => {
     for (let i = 0; i < segs.length; i++) {
       setStatus(`Stuk ${i + 1}/${segs.length} verwerken…`);
       const name = `p${i}.mp4`;
-      await encodeSegment(ff, name, segs[i][0], segs[i][1] - segs[i][0], vf);
+      const args = ['-ss', segs[i].s.toFixed(3), '-i', fileName, '-t', (segs[i].e - segs[i].s).toFixed(3),
+        '-vf', segVf(segs[i].rot),
+        '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '23',
+        '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', name];
+      await ff.exec(args);
       parts.push(name);
     }
     if (parts.length === 1) {
