@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trim &amp; rotate — eo Swim</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px; background: #08120f; color: #eaeaea;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .top { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .top a { color: #4ea1ff; font-size: 14px; text-decoration: none; }
+  .muted { color: #8aa0a0; font-size: 13px; line-height: 1.5; }
+  .build { margin-left: auto; font-size: 12px; color: #6f8a86; }
+
+  .drop {
+    display: block; border: 2px dashed #2c4540; border-radius: 12px;
+    padding: 20px; text-align: center; cursor: pointer; background: #0e1a17;
+    color: #cfe9ff; margin-bottom: 14px;
+  }
+  .drop.over { border-color: #1f6bff; background: #122a25; }
+  .drop input { display: none; }
+
+  .stage {
+    position: relative; width: 100%; height: 58vh; min-height: 280px;
+    background: #000; border-radius: 12px; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .stage video { max-width: 100%; max-height: 100%; display: block; transform-origin: center center; }
+
+  .timeline-wrap { margin: 14px 0 6px; }
+  #tl {
+    position: relative; height: 46px; background: #11231f; border: 1px solid #2c4540;
+    border-radius: 10px; cursor: pointer; touch-action: none; user-select: none;
+  }
+  #tlSel { position: absolute; top: 0; bottom: 0; background: rgba(31,107,255,.22);
+           border-left: 2px solid #1f6bff; border-right: 2px solid #1f6bff; }
+  #tlPlay { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #fff; margin-left: -1px; }
+  .handle {
+    position: absolute; top: -4px; bottom: -4px; width: 16px; margin-left: -8px;
+    background: #1f6bff; border-radius: 6px; cursor: ew-resize; touch-action: none;
+    box-shadow: 0 1px 6px rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center;
+  }
+  .handle::after { content: ""; width: 2px; height: 50%; background: rgba(255,255,255,.85); }
+  .times { display: flex; justify-content: space-between; font-family: monospace;
+           font-size: 13px; color: #9fe6d8; margin-top: 6px; }
+
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+  button {
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    background: #16241f; color: #cfe9ff; border: 1px solid #284038; border-radius: 10px;
+    font-size: 14px; font-weight: 600; padding: 10px 14px; cursor: pointer;
+  }
+  button:active { background: #1f6bff; }
+  button.primary { background: #1f6bff; color: #fff; border-color: #1f6bff; }
+  button.rot.active { background: #ffb02e; color: #1a1200; border-color: #7a4d00; font-weight: 800; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .label { color: #8aa0a0; font-size: 13px; }
+
+  #progWrap { display: none; margin: 12px 0; }
+  #progWrap.show { display: block; }
+  #progBar { height: 10px; background: #11231f; border: 1px solid #2c4540; border-radius: 6px; overflow: hidden; }
+  #progFill { height: 100%; width: 0; background: #1f6bff; transition: width .15s; }
+  #status { font-size: 13px; color: #9fe6d8; margin-top: 6px; min-height: 18px; }
+
+  #result { display: none; margin-top: 14px; }
+  #result.show { display: block; }
+  #result video { width: 100%; max-height: 50vh; background: #000; border-radius: 10px; }
+  .dl { display: inline-block; margin-top: 10px; background: #34d399; color: #04110d;
+        border-radius: 10px; padding: 11px 16px; font-weight: 800; text-decoration: none; }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <h1>Trim &amp; rotate</h1>
+  <a href="index.html">← Sync tool</a>
+  <a href="viewer.html">Frame viewer →</a>
+  <span class="build">build __BUILD_VERSION__</span>
+</div>
+<p class="muted">
+  Kies een video, sleep de <b>blauwe handvatten</b> om begin en einde te kiezen (of gebruik
+  “begin/eind = nu”), kies een rotatie, en maak de bewerkte video. Alles gebeurt in je browser —
+  er wordt niets geüpload. Werkt het best op desktop en met korte clips.
+</p>
+
+<label class="drop" id="drop">
+  <input type="file" id="file" accept="video/*,.mp4,.mov,.webm,.m4v">
+  <b>Kies of sleep een videobestand</b><br><span class="muted">mp4 · mov · webm</span>
+</label>
+
+<div class="stage" id="stage">
+  <video id="video" playsinline muted></video>
+</div>
+
+<div class="row">
+  <button id="playBtn" disabled>▶ Afspelen</button>
+  <button id="previewSel" disabled title="Speel alleen de selectie af">▶ Selectie</button>
+  <span class="label" id="curLabel" style="font-family:monospace;">0:00,00</span>
+</div>
+
+<div class="timeline-wrap">
+  <div id="tl">
+    <div id="tlSel"></div>
+    <div class="handle" id="hStart" style="left:0%"></div>
+    <div class="handle" id="hEnd" style="left:100%"></div>
+    <div id="tlPlay" style="left:0%"></div>
+  </div>
+  <div class="times"><span id="tStart">begin 0:00,00</span><span id="tEnd">eind 0:00,00</span></div>
+</div>
+
+<div class="row">
+  <button id="setStart" disabled>⤓ Begin = nu</button>
+  <button id="setEnd" disabled>Eind = nu ⤒</button>
+</div>
+
+<div class="row">
+  <span class="label">Rotatie:</span>
+  <button class="rot active" data-rot="none" disabled>0°</button>
+  <button class="rot" data-rot="90_cw" disabled>90° ↻</button>
+  <button class="rot" data-rot="90_ccw" disabled>90° ↺</button>
+  <button class="rot" data-rot="180" disabled>180°</button>
+</div>
+
+<div class="row">
+  <button class="primary" id="makeBtn" disabled>✂️ Maak bewerkte video</button>
+</div>
+
+<div id="progWrap">
+  <div id="progBar"><div id="progFill"></div></div>
+  <div id="status"></div>
+</div>
+
+<div id="result">
+  <video id="outVideo" controls playsinline></video>
+  <div><a class="dl" id="dlLink" download>⬇ Download bewerkte video</a></div>
+  <p class="muted">Tip: deze video kun je daarna via de <b>Publish a plain video</b>- of
+    <b>Composite</b>-workflow in de frame viewer zetten.</p>
+</div>
+
+<script type="module">
+import { FFmpeg } from "https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js";
+import { fetchFile, toBlobURL } from "https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js";
+
+const $ = id => document.getElementById(id);
+const video = $('video'), stage = $('stage'), tl = $('tl');
+const hStart = $('hStart'), hEnd = $('hEnd'), tlSel = $('tlSel'), tlPlay = $('tlPlay');
+
+let dur = 0, startT = 0, endT = 0, rotate = 'none';
+let fileObj = null, fileName = 'input.mp4', previewing = false;
+
+const ROT_FILTER = { none: null, '180': 'hflip,vflip', '90_cw': 'transpose=1', '90_ccw': 'transpose=2' };
+const ROT_DEG = { none: 0, '90_cw': 90, '90_ccw': -90, '180': 180 };
+
+function fmt(s) {
+  if (!isFinite(s)) s = 0;
+  const m = Math.floor(s / 60), r = s - m * 60;
+  return m + ':' + (r < 10 ? '0' : '') + r.toFixed(2).replace('.', ',');
+}
+
+// ---------- file loading ----------
+const drop = $('drop');
+$('file').addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+['dragover', 'dragenter'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
+
+function loadFile(f) {
+  fileObj = f;
+  fileName = 'input.' + (f.name.split('.').pop() || 'mp4').toLowerCase();
+  video.src = URL.createObjectURL(f);
+  video.load();
+}
+
+video.addEventListener('loadedmetadata', () => {
+  dur = video.duration || 0;
+  startT = 0; endT = dur;
+  document.querySelectorAll('button').forEach(b => { if (!b.classList.contains('dl')) b.disabled = false; });
+  updateTimeline(); applyRotPreview();
+  $('drop').querySelector('b').textContent = '✓ ' + fileObj.name;
+});
+
+// ---------- transport ----------
+$('playBtn').addEventListener('click', () => { previewing = false; video.paused ? video.play() : video.pause(); });
+video.addEventListener('play', () => $('playBtn').textContent = '⏸ Pauze');
+video.addEventListener('pause', () => $('playBtn').textContent = '▶ Afspelen');
+$('previewSel').addEventListener('click', () => {
+  previewing = true; video.currentTime = startT;
+  const p = video.play(); if (p && p.catch) p.catch(() => {});
+});
+video.addEventListener('timeupdate', () => {
+  $('curLabel').textContent = fmt(video.currentTime);
+  if (dur) tlPlay.style.left = (video.currentTime / dur * 100) + '%';
+  if (previewing && video.currentTime >= endT) { video.pause(); previewing = false; }
+});
+
+// ---------- timeline + handles ----------
+function updateTimeline() {
+  const a = dur ? startT / dur * 100 : 0, b = dur ? endT / dur * 100 : 100;
+  hStart.style.left = a + '%'; hEnd.style.left = b + '%';
+  tlSel.style.left = a + '%'; tlSel.style.width = (b - a) + '%';
+  $('tStart').textContent = 'begin ' + fmt(startT);
+  $('tEnd').textContent = 'eind ' + fmt(endT);
+}
+function xToTime(clientX) {
+  const r = tl.getBoundingClientRect();
+  return Math.max(0, Math.min(1, (clientX - r.left) / r.width)) * dur;
+}
+function dragHandle(handle, isStart) {
+  handle.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation();
+    handle.setPointerCapture(e.pointerId);
+    const move = ev => {
+      let t = xToTime(ev.clientX);
+      if (isStart) startT = Math.min(t, endT - 0.05);
+      else endT = Math.max(t, startT + 0.05);
+      startT = Math.max(0, startT); endT = Math.min(dur, endT);
+      video.currentTime = isStart ? startT : endT;       // scrub preview
+      updateTimeline();
+    };
+    const up = ev => { handle.releasePointerCapture(e.pointerId); handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+  });
+}
+dragHandle(hStart, true); dragHandle(hEnd, false);
+tl.addEventListener('pointerdown', e => {            // click track to seek
+  if (e.target === hStart || e.target === hEnd) return;
+  if (dur) video.currentTime = xToTime(e.clientX);
+});
+$('setStart').addEventListener('click', () => { startT = Math.min(video.currentTime, endT - 0.05); updateTimeline(); });
+$('setEnd').addEventListener('click', () => { endT = Math.max(video.currentTime, startT + 0.05); updateTimeline(); });
+
+// ---------- rotation + preview ----------
+document.querySelectorAll('.rot').forEach(b => b.addEventListener('click', () => {
+  rotate = b.dataset.rot;
+  document.querySelectorAll('.rot').forEach(x => x.classList.toggle('active', x === b));
+  applyRotPreview();
+}));
+function applyRotPreview() {
+  const deg = ROT_DEG[rotate];
+  let scale = 1;
+  if (deg % 180 !== 0) {                              // 90°: fit the rotated box into the stage
+    const w = video.offsetWidth, h = video.offsetHeight;
+    if (w && h) scale = Math.min(stage.clientWidth / h, stage.clientHeight / w, 8);
+  }
+  video.style.transform = `rotate(${deg}deg) scale(${scale})`;
+}
+window.addEventListener('resize', applyRotPreview);
+
+// ---------- ffmpeg ----------
+let ffmpeg = null;
+async function getFFmpeg() {
+  if (ffmpeg) return ffmpeg;
+  setStatus('Engine laden… (eenmalig, ~25 MB)');
+  ffmpeg = new FFmpeg();
+  ffmpeg.on('progress', ({ progress }) => {
+    const pct = Math.max(0, Math.min(100, Math.round(progress * 100)));
+    $('progFill').style.width = pct + '%';
+    setStatus('Verwerken… ' + pct + '%');
+  });
+  const base = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+  await ffmpeg.load({
+    coreURL: await toBlobURL(`${base}/ffmpeg-core.js`, 'text/javascript'),
+    wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, 'application/wasm'),
+  });
+  return ffmpeg;
+}
+function setStatus(s) { $('status').textContent = s; }
+
+$('makeBtn').addEventListener('click', async () => {
+  if (!fileObj) return;
+  if (endT - startT < 0.1) { setStatus('Selectie is te kort.'); return; }
+  $('progWrap').classList.add('show'); $('progFill').style.width = '0%';
+  $('makeBtn').disabled = true; $('result').classList.remove('show');
+  try {
+    const ff = await getFFmpeg();
+    setStatus('Bestand inladen…');
+    await ff.writeFile(fileName, await fetchFile(fileObj));
+    const args = ['-i', fileName, '-ss', String(startT.toFixed(3)), '-t', String((endT - startT).toFixed(3))];
+    const vf = ROT_FILTER[rotate];
+    if (vf) args.push('-vf', vf);
+    args.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '23',
+              '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', 'out.mp4');
+    setStatus('Verwerken… 0%');
+    await ff.exec(args);
+    const data = await ff.readFile('out.mp4');
+    const blob = new Blob([data.buffer], { type: 'video/mp4' });
+    const url = URL.createObjectURL(blob);
+    $('outVideo').src = url;
+    const outName = (fileObj.name.replace(/\.[^.]+$/, '') || 'video') + '-edited.mp4';
+    $('dlLink').href = url; $('dlLink').download = outName;
+    $('result').classList.add('show');
+    setStatus('Klaar ✓  (' + (blob.size / 1048576).toFixed(1).replace('.', ',') + ' MB)');
+    try { await ff.deleteFile(fileName); await ff.deleteFile('out.mp4'); } catch (_) {}
+  } catch (err) {
+    setStatus('Mislukt: ' + (err && err.message ? err.message : err));
+  } finally {
+    $('makeBtn').disabled = false;
+  }
+});
+</script>
+</body>
+</html>
