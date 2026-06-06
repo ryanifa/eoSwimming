@@ -379,6 +379,18 @@ window.addEventListener('resize', () => applyRotPreview(lastRot || 'none'));
 
 // ---------- ffmpeg render (only at the end) ----------
 let ffmpeg = null;
+// GitHub Pages can't load a cross-origin Worker script directly. Fetch the
+// ffmpeg worker, rewrite its relative imports to absolute (module imports may
+// be cross-origin), and hand it over as a same-origin blob via classWorkerURL.
+async function blobModuleURL(url) {
+  const txt = await (await fetch(url)).text();
+  const dir = url.slice(0, url.lastIndexOf('/') + 1);
+  const abs = (m, p, rel, q) => p + new URL(rel, dir).href + q;
+  const fixed = txt
+    .replace(/(from\s*["'])(\.\.?\/[^"']+)(["'])/g, abs)
+    .replace(/(import\s*\(\s*["'])(\.\.?\/[^"']+)(["']\s*\))/g, abs);
+  return URL.createObjectURL(new Blob([fixed], { type: 'text/javascript' }));
+}
 async function getFFmpeg() {
   if (ffmpeg) return ffmpeg;
   setStatus('Engine laden… (eenmalig, ~25 MB)');
@@ -386,10 +398,12 @@ async function getFFmpeg() {
   ffmpeg.on('progress', ({ progress }) => {
     $('progFill').style.width = Math.max(0, Math.min(100, Math.round(progress * 100))) + '%';
   });
-  const base = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+  const FF = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm';
+  const CORE = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
   await ffmpeg.load({
-    coreURL: await toBlobURL(`${base}/ffmpeg-core.js`, 'text/javascript'),
-    wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, 'application/wasm'),
+    classWorkerURL: await blobModuleURL(`${FF}/worker.js`),
+    coreURL: await toBlobURL(`${CORE}/ffmpeg-core.js`, 'text/javascript'),
+    wasmURL: await toBlobURL(`${CORE}/ffmpeg-core.wasm`, 'application/wasm'),
   });
   return ffmpeg;
 }
