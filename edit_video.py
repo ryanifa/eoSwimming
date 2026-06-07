@@ -108,6 +108,11 @@ def main() -> int:
     for _, _, rot in segs:
         w, h = (H, W) if rot in ("90_cw", "90_ccw") else (W, H)
         TW, TH = max(TW, w), max(TH, h)
+    # cap to 1080p so the result stays under GitHub Pages' 100 MB serving limit
+    big = max(TW, TH)
+    if big > 1920:
+        TW = int(TW * 1920 / big)
+        TH = int(TH * 1920 / big)
     TW += TW % 2
     TH += TH % 2
 
@@ -142,6 +147,19 @@ def main() -> int:
         subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "concat.txt",
                         "-c", "copy", "-movflags", "+faststart", args.out.name],
                        check=True, cwd=str(workdir))
+
+    # keep the result under GitHub Pages' 100 MB per-file serving limit
+    MAX = 99_000_000
+    for crf in (26, 30, 34):
+        if args.out.stat().st_size <= MAX:
+            break
+        print(f"  result {args.out.stat().st_size} bytes > 100 MB — shrinking (crf={crf})")
+        tmp = args.out.with_suffix(".fit.mp4")
+        subprocess.run(["ffmpeg", "-y", "-i", str(args.out), "-vf", "scale='min(1920,iw)':-2",
+                        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "fast", "-crf", str(crf),
+                        "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(tmp)], check=True)
+        tmp.replace(args.out)
+
     print(f"wrote {args.out}")
     return 0
 

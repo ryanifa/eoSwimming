@@ -45,16 +45,24 @@ jobs:
           ffprobe -v error -show_entries format=duration,size:stream=width,height,codec_name \
             -of default=noprint_wrappers=1 input.mp4 || true
 
-      - name: Remux to a mobile-friendly composite.mp4
+      - name: Remux to a mobile-friendly composite.mp4 (kept under Pages' 100 MB limit)
         run: |
-          # Re-encode to H.264/AAC yuv420p with the index up front. Re-encoding
-          # (rather than -c copy) guarantees the result plays inline on iPhone
-          # even if the source used an unsupported codec/profile.
-          ffmpeg -y -i input.mp4 \
-            -c:v libx264 -pix_fmt yuv420p -preset fast -crf 20 \
-            -c:a aac -b:a 192k \
-            -movflags +faststart \
-            composite.mp4
+          set -e
+          # Re-encode to H.264/AAC yuv420p with the index up front so it plays
+          # inline on iPhone. Downscale to max 1080p and raise CRF until the
+          # file fits under GitHub Pages' 100 MB per-file serving limit — files
+          # over that aren't served, so the viewer link would otherwise break.
+          MAX=99000000
+          for crf in 20 23 26 29 32; do
+            ffmpeg -y -i input.mp4 \
+              -vf "scale='min(1920,iw)':-2" \
+              -c:v libx264 -pix_fmt yuv420p -preset fast -crf "$crf" \
+              -c:a aac -b:a 160k -movflags +faststart composite.mp4
+            SZ=$(stat -c%s composite.mp4)
+            echo "crf=$crf -> $SZ bytes"
+            [ "$SZ" -le "$MAX" ] && break
+            echo "still over ~100 MB, retrying with a higher CRF…"
+          done
           ls -lh composite.mp4
 
       - name: Publish to a Release
