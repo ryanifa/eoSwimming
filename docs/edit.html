@@ -124,7 +124,7 @@
 </div>
 
 <div class="row">
-  <button id="fromStart" disabled>⏮ Vanaf begin</button>
+  <button id="fromStart" disabled>⏮ Naar begin</button>
   <button id="playBtn" disabled>▶ Afspelen</button>
   <span class="label" style="font-family:monospace;"><span id="curLabel">0:00,00</span>
     · resultaat <span id="resLabel">0:00,00</span></span>
@@ -356,9 +356,8 @@ function editRegion(r) {                              // pull a frozen piece bac
 // ---------- transport (live preview: skip cuts, rotate per piece) ----------
 $('playBtn').addEventListener('click', () => { video.paused ? video.play() : video.pause(); });
 $('fromStart').addEventListener('click', () => {
-  const segs = keptSegments();
-  video.currentTime = segs.length ? segs[0][0] : 0;
-  const p = video.play(); if (p && p.catch) p.catch(() => {});
+  video.pause();                 // pause at the very start so the first piece is selectable
+  video.currentTime = 0;
 });
 video.addEventListener('play', () => { $('playBtn').textContent = '⏸ Pauze'; });
 video.addEventListener('pause', () => { $('playBtn').textContent = '▶ Afspelen'; });
