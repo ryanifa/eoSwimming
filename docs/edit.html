@@ -247,14 +247,28 @@ function loadFile(f) {
   video.src = URL.createObjectURL(f);
   video.load();
 }
-$('loadUrl').addEventListener('click', () => {
+$('loadUrl').addEventListener('click', loadFromUrl);
+$('urlInput').addEventListener('keydown', e => { if (e.key === 'Enter') loadFromUrl(); });
+function loadFromUrl() {
   const u = $('urlInput').value.trim();
   if (!u) return;
   fileObj = null; srcUrl = u; srcLabel = u.split('/').pop() || u;
   fileName = 'input.' + ((srcLabel.split('.').pop() || 'mp4').split('?')[0].toLowerCase());
   committed = []; lastRot = null;
-  video.crossOrigin = 'anonymous';
+  // no crossOrigin: plain playback of a cross-origin video doesn't need CORS,
+  // and setting it would require CORS headers that release downloads don't send.
+  video.removeAttribute('crossorigin');
+  $('drop').querySelector('b').textContent = '⏳ Laden van URL…';
   video.src = u; video.load();
+}
+video.addEventListener('error', () => {
+  if (!srcUrl) return;
+  const codes = { 1: 'afgebroken', 2: 'netwerkfout', 3: 'kan niet decoderen (codec?)', 4: 'bron niet ondersteund/onbereikbaar' };
+  const c = video.error ? video.error.code : 0;
+  $('drop').querySelector('b').textContent = '⚠️ Kon de URL niet laden — ' + (codes[c] || 'onbekend');
+  $('progWrap').classList.add('show');
+  setStatus('Laden van URL mislukt (' + (codes[c] || c) + '). Controleer of de link een directe video is. '
+    + 'Tip: een HEVC-GoPro speelt niet in elke browser — maar de cloud-render werkt wél met deze URL.');
 });
 video.addEventListener('loadedmetadata', () => {
   dur = video.duration || 0;
