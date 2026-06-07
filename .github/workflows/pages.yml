@@ -10,6 +10,10 @@ on:
     # re-publish whenever a release video is added/changed/removed
     types: [published, edited, deleted]
   workflow_dispatch:
+  # callable as a final step from the publishing workflows: a release created
+  # with GITHUB_TOKEN doesn't fire the 'release' trigger, so they call this
+  # directly to mirror the new video and deploy.
+  workflow_call:
 
 permissions:
   contents: read

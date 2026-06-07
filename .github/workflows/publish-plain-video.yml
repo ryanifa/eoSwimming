@@ -77,12 +77,6 @@ jobs:
           REPO="${{ github.repository }}"
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             gh release upload "$TAG" composite.mp4 --clobber --repo "$REPO"
-            # Uploading composite.mp4 to an existing release fires no release
-            # event, so the Pages mirror (docs/videos/<tag>.mp4 — what the viewer
-            # plays inline on iPhone) wouldn't be created/refreshed. Editing the
-            # release fires 'edited', which re-runs pages.yml and mirrors it.
-            gh release edit "$TAG" --repo "$REPO" \
-              --notes "Updated $(date -u '+%Y-%m-%d %H:%M UTC'). Open frame by frame: https://ryanifa.github.io/eoSwimming/viewer.html?r=$TAG"
           else
             gh release create "$TAG" composite.mp4 \
               --repo "$REPO" \
@@ -97,7 +91,17 @@ jobs:
             echo ""
             echo "[Open this video in the frame viewer]($VIEWER)"
             echo ""
-            echo "(Plays inline on iPhone once the Pages deploy has mirrored this release — usually a minute or two.)"
+            echo "(Plays inline on iPhone once the Pages deploy below has mirrored it.)"
             echo ""
             echo "Direct video: <$ASSET>"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # A release made with GITHUB_TOKEN does not fire the 'release' trigger, so we
+  # call the Pages deploy directly to mirror the new video and publish it.
+  deploy-pages:
+    needs: publish
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml
