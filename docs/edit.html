@@ -356,8 +356,9 @@ function editRegion(r) {                              // pull a frozen piece bac
 // ---------- transport (live preview: skip cuts, rotate per piece) ----------
 $('playBtn').addEventListener('click', () => { video.paused ? video.play() : video.pause(); });
 $('fromStart').addEventListener('click', () => {
-  video.pause();                 // pause at the very start so the first piece is selectable
-  video.currentTime = 0;
+  video.pause();                 // pause at the result's first frame (after a leading cut)
+  const segs = keptSegments();
+  video.currentTime = segs.length ? segs[0][0] : 0;
 });
 video.addEventListener('play', () => { $('playBtn').textContent = '⏸ Pauze'; });
 video.addEventListener('pause', () => { $('playBtn').textContent = '▶ Afspelen'; });
