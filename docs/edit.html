@@ -267,8 +267,9 @@ video.addEventListener('error', () => {
   const c = video.error ? video.error.code : 0;
   $('drop').querySelector('b').textContent = '⚠️ Kon de URL niet laden — ' + (codes[c] || 'onbekend');
   $('progWrap').classList.add('show');
-  setStatus('Laden van URL mislukt (' + (codes[c] || c) + '). Controleer of de link een directe video is. '
-    + 'Tip: een HEVC-GoPro speelt niet in elke browser — maar de cloud-render werkt wél met deze URL.');
+  setStatus('Laden mislukt (' + (codes[c] || c) + '). Een GoPro-bestand met "GX" in de naam is HEVC/H.265 '
+    + 'en speelt niet in elke browser. Zet hem eerst om naar H.264 via de "Publish a plain video"-workflow, '
+    + 'en laad dan die videos/<tag>.mp4-URL hier. (De cloud-render kan HEVC wel aan.)');
 });
 video.addEventListener('loadedmetadata', () => {
   dur = video.duration || 0;
