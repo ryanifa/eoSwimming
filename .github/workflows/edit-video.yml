@@ -1,0 +1,92 @@
+name: Edit video (trim & rotate from editor)
+run-name: "${{ inputs.note != '' && format('{0} — ', inputs.note) || '' }}Edit video → ${{ inputs.tag }}"
+
+# Server-side render of an edit made in the Trim & rotate editor
+# (https://ryanifa.github.io/eoSwimming/edit.html). Paste the video URL and the
+# "render-opdracht (EDL)" the editor gives you. The result is published as a
+# release asset you can download, and is playable in the frame viewer.
+
+on:
+  workflow_dispatch:
+    inputs:
+      note:
+        description: "Label for the run title so you can find it back later."
+        required: false
+        default: ""
+      video_url:
+        description: "Direct download URL of the SOURCE video (the same one you loaded in the editor)."
+        required: true
+      edl:
+        description: "Render-opdracht (EDL JSON) — copy it from the editor's 'Kopieer render-opdracht' button."
+        required: true
+      tag:
+        description: "Release tag / share name for the result (used in the ?r=<tag> link, e.g. heidi-50m-edit)."
+        required: true
+      title:
+        description: "Release title (optional)."
+        required: false
+        default: ""
+
+jobs:
+  edit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write          # publish the result as a Release asset
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Download source video
+        run: |
+          curl -L --fail --max-time 900 -o source.mp4 "${{ inputs.video_url }}"
+          ls -lh source.mp4
+          ffprobe -v error -show_entries format=duration,size:stream=width,height,codec_name \
+            -of default=noprint_wrappers=1 source.mp4 || true
+
+      - name: Apply edit
+        env:
+          EDL: ${{ inputs.edl }}
+        run: |
+          echo "EDL: $EDL"
+          python3 edit_video.py source.mp4 composite.mp4
+          ls -lh composite.mp4
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edited-${{ inputs.tag }}
+          path: composite.mp4
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish to a Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.tag }}"
+          TITLE="${{ inputs.title }}"
+          [ -n "$TITLE" ] || TITLE="Edited — $TAG"
+          REPO="${{ github.repository }}"
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" composite.mp4 --clobber --repo "$REPO"
+            # Asset upload to an existing release fires no release event, so the
+            # Pages mirror (what the viewer plays inline) wouldn't refresh — nudge it.
+            gh release edit "$TAG" --repo "$REPO" \
+              --notes "Updated $(date -u '+%Y-%m-%d %H:%M UTC'). Open frame by frame: https://ryanifa.github.io/eoSwimming/viewer.html?r=$TAG"
+          else
+            gh release create "$TAG" composite.mp4 \
+              --repo "$REPO" \
+              --title "$TITLE" \
+              --notes "Open frame by frame: https://ryanifa.github.io/eoSwimming/viewer.html?r=$TAG"
+          fi
+          VIEWER="https://ryanifa.github.io/eoSwimming/viewer.html?r=$TAG"
+          ASSET="https://github.com/${{ github.repository }}/releases/download/$TAG/composite.mp4"
+          {
+            echo "### Bewerkte video klaar"
+            echo ""
+            echo "[⬇ Download de video]($ASSET)"
+            echo ""
+            echo "[▶ Open in de frame viewer]($VIEWER)  (speelt inline op iPhone zodra de Pages-deploy de release heeft gespiegeld)"
+          } >> "$GITHUB_STEP_SUMMARY"

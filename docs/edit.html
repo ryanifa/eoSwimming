@@ -112,6 +112,13 @@
   <b>Kies of sleep een videobestand</b><br><span class="muted">mp4 · mov · webm</span>
 </label>
 
+<div class="row" style="margin:-4px 0 14px;">
+  <input id="urlInput" placeholder="…of plak een video-URL (nodig voor cloud-renderen)"
+         style="flex:1 1 240px; min-width:0; background:#0b1714; color:#cfe9ff;
+                border:1px solid #2c4540; border-radius:10px; padding:10px 12px; font-size:14px;">
+  <button id="loadUrl">Laad van URL</button>
+</div>
+
 <div class="stage" id="stage">
   <video id="video" playsinline muted></video>
 </div>
@@ -158,8 +165,25 @@
 
 <div class="chips" id="chips"></div>
 
+<div style="border:1px solid #284038; border-radius:12px; padding:12px; background:#0e1a17; margin:10px 0;">
+  <b>⚡ Sneller: renderen in de cloud</b>
+  <p class="muted" style="margin:6px 0;">In-browser renderen is traag. Laat de workflow het doen:
+    (1) zorg dat je video via een <b>URL</b> bereikbaar is en laad 'm hierboven via die URL,
+    (2) kopieer de render-opdracht, (3) plak die in de workflow samen met dezelfde video-URL en een tag.
+    Je downloadt het resultaat daarna vanuit de run.</p>
+  <div class="row">
+    <button id="copyEdl">📋 Kopieer render-opdracht (EDL)</button>
+    <a class="dl" style="background:#1f6bff; color:#fff; margin-top:0;"
+       href="https://github.com/ryanifa/eoSwimming/actions/workflows/edit-video.yml"
+       target="_blank" rel="noopener">Open Edit-video workflow →</a>
+  </div>
+  <textarea id="edlOut" readonly rows="3"
+    style="width:100%; margin-top:8px; background:#0b1714; color:#9fe6d8; border:1px solid #2c4540;
+           border-radius:8px; font-family:monospace; font-size:12px; padding:8px;"></textarea>
+</div>
+
 <div class="row">
-  <button class="primary" id="makeBtn" disabled>🎬 Maak bewerkte video</button>
+  <button class="primary" id="makeBtn" disabled>🎬 Of maak hem nu in de browser</button>
 </div>
 
 <div id="progWrap">
@@ -183,7 +207,7 @@ const video = $('video'), stage = $('stage'), tl = $('tl');
 const hStart = $('hStart'), hEnd = $('hEnd'), tlSel = $('tlSel'), tlPlay = $('tlPlay');
 
 let dur = 0;
-let fileObj = null, fileName = 'input.mp4', dragging = false, lastRot = null;
+let fileObj = null, srcUrl = '', srcLabel = '', fileName = 'input.mp4', dragging = false, lastRot = null;
 let sel = { a: 0, b: 0, cut: false, rot: 'none' };   // the active, editable piece
 let committed = [];                                   // frozen pieces {a,b,cut,rot}
 
@@ -200,6 +224,15 @@ function fmt(s) {
 function hasOps(r) { return r.cut || r.rot !== 'none'; }
 function regions() { return hasOps(sel) ? [...committed, sel] : [...committed]; }
 
+// the render order for the cloud workflow (same model as the in-browser render)
+function buildEDL() {
+  const rs = regions()
+    .map(r => ({ a: +r.a.toFixed(3), b: +r.b.toFixed(3), op: r.cut ? 'cut' : r.rot }))
+    .filter(r => r.op && r.op !== 'none' && r.b - r.a > EPS);
+  return { regions: rs };
+}
+function updateEdl() { const el = $('edlOut'); if (el) el.value = JSON.stringify(buildEDL()); }
+
 // ---------- file loading ----------
 const drop = $('drop');
 $('file').addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
@@ -208,18 +241,27 @@ $('file').addEventListener('change', e => { if (e.target.files[0]) loadFile(e.ta
 drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
 
 function loadFile(f) {
-  fileObj = f;
+  fileObj = f; srcUrl = ''; srcLabel = f.name;
   fileName = 'input.' + (f.name.split('.').pop() || 'mp4').toLowerCase();
   committed = []; lastRot = null;
   video.src = URL.createObjectURL(f);
   video.load();
 }
+$('loadUrl').addEventListener('click', () => {
+  const u = $('urlInput').value.trim();
+  if (!u) return;
+  fileObj = null; srcUrl = u; srcLabel = u.split('/').pop() || u;
+  fileName = 'input.' + ((srcLabel.split('.').pop() || 'mp4').split('?')[0].toLowerCase());
+  committed = []; lastRot = null;
+  video.crossOrigin = 'anonymous';
+  video.src = u; video.load();
+});
 video.addEventListener('loadedmetadata', () => {
   dur = video.duration || 0;
   sel = { a: 0, b: dur, cut: false, rot: 'none' };
   document.querySelectorAll('button').forEach(b => { if (!b.classList.contains('dl')) b.disabled = false; });
   renderAll(); applyRotPreview(rotAt(0));
-  $('drop').querySelector('b').textContent = '✓ ' + fileObj.name;
+  $('drop').querySelector('b').textContent = '✓ ' + srcLabel;
 });
 
 // ---------- derive cuts / rotation from regions ----------
@@ -277,6 +319,7 @@ function renderAll() {
   $('cutBtn').classList.toggle('on', sel.cut);
   document.querySelectorAll('.rot').forEach(b => b.classList.toggle('on', !sel.cut && sel.rot === b.dataset.rot));
   $('resLabel').textContent = fmt(resultDuration());
+  updateEdl();
 }
 function renderSel() {
   const a = dur ? sel.a / dur * 100 : 0, b = dur ? sel.b / dur * 100 : 100;
@@ -365,6 +408,12 @@ $('nextBtn').addEventListener('click', () => {
 $('clearAll').addEventListener('click', () => {
   committed = []; sel = { a: 0, b: dur, cut: false, rot: 'none' }; renderAll(); refreshPreviewRot(true);
 });
+$('copyEdl').addEventListener('click', async () => {
+  updateEdl();
+  const txt = $('edlOut').value;
+  try { await navigator.clipboard.writeText(txt); setStatus('Render-opdracht gekopieerd ✓ — plak bij de workflow als "edl" (en dezelfde video-URL).'); }
+  catch (_) { $('edlOut').select(); setStatus('Selecteer en kopieer de tekst hieronder.'); }
+});
 
 function applyRotPreview(rot) {
   const deg = ROT_DEG[rot] || 0;
@@ -425,7 +474,7 @@ function renderSegments() {
 }
 
 $('makeBtn').addEventListener('click', async () => {
-  if (!fileObj) return;
+  if (!fileObj && !srcUrl) return;
   const segs = renderSegments();
   if (!segs.length) { setStatus('Er blijft niets over — herstel een paar stukken.'); return; }
   const W = video.videoWidth || 1920, H = video.videoHeight || 1080;
@@ -447,7 +496,7 @@ $('makeBtn').addEventListener('click', async () => {
   try {
     const ff = await getFFmpeg();
     setStatus('Bestand inladen…');
-    await ff.writeFile(fileName, await fetchFile(fileObj));
+    await ff.writeFile(fileName, await fetchFile(fileObj || srcUrl));
     const parts = [];
     for (let i = 0; i < segs.length; i++) {
       setStatus(`Stuk ${i + 1}/${segs.length} verwerken…`);
@@ -469,7 +518,7 @@ $('makeBtn').addEventListener('click', async () => {
     const blob = new Blob([data.buffer], { type: 'video/mp4' });
     const url = URL.createObjectURL(blob);
     $('outVideo').src = url;
-    const outName = (fileObj.name.replace(/\.[^.]+$/, '') || 'video') + '-edited.mp4';
+    const outName = ((srcLabel.split('?')[0].replace(/\.[^.]+$/, '')) || 'video') + '-edited.mp4';
     $('dlLink').href = url; $('dlLink').download = outName;
     $('result').classList.add('show');
     setStatus('Klaar ✓  (' + (blob.size / 1048576).toFixed(1).replace('.', ',') + ' MB)');
