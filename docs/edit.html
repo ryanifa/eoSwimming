@@ -267,9 +267,10 @@ video.addEventListener('error', () => {
   const c = video.error ? video.error.code : 0;
   $('drop').querySelector('b').textContent = '⚠️ Kon de URL niet laden — ' + (codes[c] || 'onbekend');
   $('progWrap').classList.add('show');
-  setStatus('Laden mislukt (' + (codes[c] || c) + '). Een GoPro-bestand met "GX" in de naam is HEVC/H.265 '
-    + 'en speelt niet in elke browser. Zet hem eerst om naar H.264 via de "Publish a plain video"-workflow, '
-    + 'en laad dan die videos/<tag>.mp4-URL hier. (De cloud-render kan HEVC wel aan.)');
+  setStatus('Laden mislukt (' + (codes[c] || c) + '). De link moet RECHTSTREEKS naar een videobestand '
+    + 'wijzen (meestal eindigend op .mp4/.mov) — een deel-pagina van Google Photos of Drive werkt niet, '
+    + 'dat is een webpagina, geen bestand. Een GitHub-release-link werkt goed. '
+    + '(Een GoPro "GX"-bestand is HEVC en speelt niet in elke browser; zet het eerst om via "Publish a plain video".)');
 });
 video.addEventListener('loadedmetadata', () => {
   dur = video.duration || 0;
