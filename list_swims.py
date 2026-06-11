@@ -80,26 +80,43 @@ def search_swims(session: requests.Session, user_id: str, timezone: str, target_
 
     matched: list[dict] = []
     page = 1
-    while True:
+    MAX_PAGES = 50
+    target_iso = target_date.isoformat()
+    while page <= MAX_PAGES:
+        print(f"  fetching page {page}...", flush=True)
         r = session.post(
             f"{API_URL}swim/data/search?pageSize={PAGE_SIZE}&pageNo={page}&locale=en_US",
             json=body,
+            timeout=30,
         )
         r.raise_for_status()
         payload = r.json()
         items = _find_items(payload) or []
+        print(f"    got {len(items)} items", flush=True)
         if not items:
             break
+
+        dates_on_page = []
         for it in items:
             swim_date_str = (it.get("swimDate") or it.get("date") or "")[:10]
-            if swim_date_str == target_date.isoformat():
+            dates_on_page.append(swim_date_str)
+            if swim_date_str == target_iso:
                 matched.append(it)
+
+        # API returns newest first. If the oldest item on this page is already
+        # before our target date, no need to keep paginating.
+        oldest = min(d for d in dates_on_page if d) if dates_on_page else ""
+        if oldest and oldest < target_iso:
+            print(f"  page contains dates older than {target_iso}, stopping pagination", flush=True)
+            break
+
         total_pages = _find_total_pages(payload)
         if total_pages and page >= total_pages:
             break
         if len(items) < PAGE_SIZE:
             break
         page += 1
+    print(f"  total matching: {len(matched)}", flush=True)
     return matched
 
 
