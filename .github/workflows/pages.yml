@@ -66,26 +66,31 @@ jobs:
           MAXFILE=$((99 * 1024 * 1024))     # Pages won't serve files over ~100 MB
           USED=0
           # newest first, so recent videos are the ones that get mirrored
-          gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-            --jq '.[] | [.created_at, .tag_name] | @tsv' | sort -r | \
           while IFS="$(printf '\t')" read -r CREATED TAG; do
-            read -r URL SIZE < <(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
-              --jq '(.assets[] | select(.name=="composite.mp4") | "\(.url) \(.size)")')
-            [ -z "$URL" ] && { echo "skip $TAG (no composite.mp4)"; continue; }
+            [ -n "$TAG" ] || continue
+            LINE=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
+              --jq '.assets[] | select(.name=="composite.mp4") | "\(.url) \(.size)"') || LINE=""
+            if [ -z "$LINE" ]; then echo "skip $TAG (no composite.mp4)"; continue; fi
+            URL=${LINE%% *}; SIZE=${LINE##* }
             if [ "$SIZE" -gt "$MAXFILE" ]; then
               echo "skip $TAG ($((SIZE/1024/1024)) MB > 100 MB, Pages can't serve it)"; continue
             fi
             if [ $((USED + SIZE)) -gt "$BUDGET" ]; then
-              echo "skip $TAG (over the ${BUDGET} byte site budget — older video)"; continue
+              echo "skip $TAG (over the site budget — older video)"; continue
             fi
             echo "::group::mirror $TAG ($((SIZE/1024/1024)) MB)"
-            curl -sL --fail -H "Authorization: Bearer $GH_TOKEN" \
-              -H "Accept: application/octet-stream" "$URL" -o /tmp/in.mp4
-            ffmpeg -y -loglevel error -i /tmp/in.mp4 -c copy -movflags +faststart "docs/videos/$TAG.mp4"
+            if ! curl -sL --fail -H "Authorization: Bearer $GH_TOKEN" \
+                 -H "Accept: application/octet-stream" "$URL" -o /tmp/in.mp4; then
+              echo "download failed for $TAG — skipping"; echo "::endgroup::"; continue
+            fi
+            if ! ffmpeg -y -loglevel error -i /tmp/in.mp4 -c copy -movflags +faststart "docs/videos/$TAG.mp4"; then
+              echo "ffmpeg failed for $TAG — skipping"; rm -f "docs/videos/$TAG.mp4"; echo "::endgroup::"; continue
+            fi
             USED=$((USED + SIZE))
             echo "mirrored — running total $((USED/1024/1024)) MB"
             echo "::endgroup::"
-          done
+          done < <(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+                     --jq '.[] | [.created_at, .tag_name] | @tsv' | sort -r)
           echo "---- published videos ($(du -sh docs/videos 2>/dev/null | cut -f1)) ----"
           ls -lh docs/videos/ || echo "(none)"
 
