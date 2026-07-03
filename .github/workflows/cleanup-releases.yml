@@ -1,0 +1,89 @@
+name: Cleanup old release videos
+run-name: "${{ inputs.note != '' && format('{0} — ', inputs.note) || '' }}Cleanup releases > ${{ inputs.older_than_days }}d${{ inputs.dry_run == 'yes' && ' (dry run)' || ' — DELETE' }}"
+
+# Delete releases (and their tags) older than a chosen number of days, to keep
+# the mirrored video set under the GitHub Pages 1 GB limit. Runs a dry run by
+# default (lists only); set dry_run = no to actually delete. Deleting a release
+# also removes its video from the viewer.
+
+on:
+  workflow_dispatch:
+    inputs:
+      older_than_days:
+        description: "Delete releases older than this many days."
+        required: true
+        default: "30"
+      dry_run:
+        description: "yes = only list what would be deleted (safe). no = actually delete."
+        type: choice
+        default: "yes"
+        options:
+          - "yes"
+          - "no"
+      note:
+        description: "Optional label for the run title."
+        required: false
+        default: ""
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write          # delete releases + tags
+    outputs:
+      deleted: ${{ steps.run.outputs.deleted }}
+    steps:
+      - name: Delete old releases
+        id: run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          DAYS="${{ inputs.older_than_days }}"
+          DRY="${{ inputs.dry_run }}"
+          REPO="${{ github.repository }}"
+          CUTOFF=$(date -u -d "-${DAYS} days" +%s)
+          echo "Now (UTC):    $(date -u)"
+          echo "Cutoff:       older than ${DAYS} days = before $(date -u -d "-${DAYS} days")"
+          echo "Mode:         $([ "$DRY" = no ] && echo 'DELETE' || echo 'dry run (no changes)')"
+          echo "-----------------------------------------------------------"
+          DELETED=0; KEPT=0
+          # process substitution so the counters survive the loop (no pipe subshell)
+          while IFS="$(printf '\t')" read -r DATE TAG; do
+            [ -z "$TAG" ] && continue
+            TS=$(date -u -d "$DATE" +%s)
+            if [ "$TS" -lt "$CUTOFF" ]; then
+              if [ "$DRY" = "no" ]; then
+                echo "DELETE  $TAG   ($DATE)"
+                gh release delete "$TAG" --repo "$REPO" --yes --cleanup-tag
+              else
+                echo "would delete  $TAG   ($DATE)"
+              fi
+              DELETED=$((DELETED + 1))
+            else
+              echo "keep    $TAG   ($DATE)"
+              KEPT=$((KEPT + 1))
+            fi
+          done < <(gh api "repos/$REPO/releases" --paginate \
+                     --jq '.[] | [(.published_at // .created_at), .tag_name] | @tsv')
+          echo "-----------------------------------------------------------"
+          echo "$([ "$DRY" = no ] && echo 'Deleted' || echo 'Would delete') $DELETED release(s); kept $KEPT."
+          echo "deleted=$DELETED" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Cleanup"
+            echo ""
+            echo "- Mode: **$([ "$DRY" = no ] && echo DELETE || echo 'dry run')**"
+            echo "- Older than: **${DAYS} days**"
+            echo "- $([ "$DRY" = no ] && echo Deleted || echo 'Would delete'): **$DELETED**, kept: **$KEPT**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # After a real delete, refresh the Pages site so the removed videos drop out
+  # of the mirror (and the freed budget lets more recent ones in).
+  deploy-pages:
+    needs: cleanup
+    if: ${{ inputs.dry_run == 'no' }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml
