@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Frames → zip — eo Swim</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: #08120f; color: #eaeaea;
+         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .top { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .top a { color: #4ea1ff; font-size: 14px; text-decoration: none; }
+  .muted { color: #8aa0a0; font-size: 13px; line-height: 1.5; }
+  .build { margin-left: auto; font-size: 12px; color: #6f8a86; }
+
+  .drop { display: block; border: 2px dashed #2c4540; border-radius: 12px; padding: 20px;
+          text-align: center; cursor: pointer; background: #0e1a17; color: #cfe9ff; margin-bottom: 12px; }
+  .drop.over { border-color: #1f6bff; background: #122a25; }
+  .drop input { display: none; }
+
+  .stage { position: relative; width: 100%; height: 54vh; min-height: 240px; background: #000;
+           border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+  .stage video { max-width: 100%; max-height: 100%; display: block; }
+
+  #tl { position: relative; height: 46px; background: #11231f; border: 1px solid #2c4540;
+        border-radius: 10px; cursor: pointer; touch-action: none; user-select: none; margin-top: 14px; overflow: hidden; }
+  #tlSel { position: absolute; top: 0; bottom: 0; background: rgba(31,107,255,.2);
+           border-left: 2px solid #1f6bff; border-right: 2px solid #1f6bff; }
+  #tlPlay { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #fff; margin-left: -1px; z-index: 3; }
+  .handle { position: absolute; top: -5px; bottom: 10px; width: 24px; margin-left: -12px; z-index: 4;
+            background: #1f6bff; border: 1px solid #0c3aa0; border-radius: 8px; cursor: ew-resize; touch-action: none;
+            box-shadow: 0 2px 10px rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; }
+  .handle::after { content: "⋮⋮"; letter-spacing: -2px; color: #fff; font-size: 15px; font-weight: 900; }
+  .times { display: flex; justify-content: space-between; font-family: monospace; font-size: 13px; color: #9fe6d8; margin-top: 8px; }
+
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+  label.f { display: inline-flex; align-items: center; gap: 6px; color: #8aa0a0; font-size: 13px; }
+  select, input[type=text] { background: #0b1714; color: #cfe9ff; border: 1px solid #2c4540;
+           border-radius: 8px; padding: 8px 10px; font-size: 14px; }
+  button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; background: #16241f;
+           color: #cfe9ff; border: 1px solid #284038; border-radius: 10px; font-size: 14px; font-weight: 600;
+           padding: 10px 14px; cursor: pointer; }
+  button:active { background: #1f6bff; }
+  button.primary { background: #1f6bff; color: #fff; border-color: #1f6bff; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .est { font-weight: 800; color: #ffd24a; }
+
+  #progWrap { display: none; margin: 12px 0; }
+  #progWrap.show { display: block; }
+  #progBar { height: 10px; background: #11231f; border: 1px solid #2c4540; border-radius: 6px; overflow: hidden; }
+  #progFill { height: 100%; width: 0; background: #1f6bff; transition: width .15s; }
+  #status { font-size: 13px; color: #9fe6d8; margin-top: 6px; min-height: 18px; }
+  .dl { display: inline-block; margin-top: 10px; background: #34d399; color: #04110d;
+        border-radius: 10px; padding: 11px 16px; font-weight: 800; text-decoration: none; }
+  #result { display: none; margin-top: 8px; } #result.show { display: block; }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <h1>Frames → zip</h1>
+  <a href="index.html">← Sync tool</a>
+  <a href="edit.html">Trim &amp; rotate →</a>
+  <span class="build">build __BUILD_VERSION__</span>
+</div>
+<p class="muted">
+  Kies een video, selecteer begin en eind, en haal van dat stuk elke frame (of een aantal per seconde) als
+  foto's op — gedownload als <b>zip</b>. Handig om losse beelden in een AI-chat te analyseren. Alles gebeurt
+  in je browser; er wordt niets geüpload.
+</p>
+
+<label class="drop" id="drop">
+  <input type="file" id="file" accept="video/*,.mp4,.mov,.webm,.m4v">
+  <b>Kies of sleep een videobestand</b><br><span class="muted">mp4 · mov · webm</span>
+</label>
+<div class="row" style="margin:-2px 0 12px;">
+  <input type="text" id="urlInput" placeholder="…of plak een directe video-URL (.mp4/.mov)" style="flex:1 1 240px; min-width:0;">
+  <button id="loadUrl">Laad van URL</button>
+</div>
+
+<div class="stage" id="stage"><video id="video" playsinline muted></video></div>
+
+<div class="row">
+  <button id="playBtn" disabled>▶ Afspelen</button>
+  <button id="previewSel" disabled>▶ Selectie</button>
+  <span class="muted" style="font-family:monospace;"><span id="curLabel">0:00,00</span></span>
+</div>
+
+<div id="tl">
+  <div id="tlSel"></div>
+  <div class="handle" id="hStart" style="left:0%"></div>
+  <div class="handle" id="hEnd" style="left:100%"></div>
+  <div id="tlPlay" style="left:0%"></div>
+</div>
+<div class="times"><span id="tStart">begin 0:00,00</span><span id="tEnd">eind 0:00,00</span></div>
+
+<div class="row">
+  <button id="setStart" disabled>⤓ Begin = nu</button>
+  <button id="setEnd" disabled>Eind = nu ⤒</button>
+</div>
+
+<div class="row">
+  <label class="f">Frames/s
+    <select id="fps">
+      <option value="max">elke frame</option>
+      <option value="30">30</option>
+      <option value="15">15</option>
+      <option value="10" selected>10</option>
+      <option value="5">5</option>
+      <option value="2">2</option>
+      <option value="1">1</option>
+    </select>
+  </label>
+  <label class="f">Max breedte
+    <select id="maxw">
+      <option value="0">origineel</option>
+      <option value="1920">1920</option>
+      <option value="1280" selected>1280</option>
+      <option value="960">960</option>
+      <option value="640">640</option>
+    </select>
+  </label>
+  <label class="f">Kwaliteit
+    <select id="quality">
+      <option value="2">hoog</option>
+      <option value="4" selected>gemiddeld</option>
+      <option value="7">laag (klein)</option>
+    </select>
+  </label>
+  <span class="muted">≈ <span class="est" id="estCount">0</span> foto's</span>
+</div>
+
+<div class="row">
+  <button class="primary" id="makeBtn" disabled>🖼 Maak fotoreeks (zip)</button>
+</div>
+
+<div id="progWrap"><div id="progBar"><div id="progFill"></div></div><div id="status"></div></div>
+<div id="result"><a class="dl" id="dlLink" download>⬇ Download zip</a></div>
+
+<script type="module">
+import { FFmpeg } from "https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js";
+import { fetchFile, toBlobURL } from "https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js";
+
+const $ = id => document.getElementById(id);
+const video = $('video'), tl = $('tl'), hStart = $('hStart'), hEnd = $('hEnd'), tlSel = $('tlSel'), tlPlay = $('tlPlay');
+let dur = 0, startT = 0, endT = 0, fileObj = null, srcUrl = '', srcLabel = '', fileName = 'input.mp4', dragging = false, previewing = false;
+
+function fmt(s) { if (!isFinite(s)) s = 0; const m = Math.floor(s / 60), r = s - m * 60; return m + ':' + (r < 10 ? '0' : '') + r.toFixed(2).replace('.', ','); }
+
+// ---------- loading ----------
+const drop = $('drop');
+$('file').addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+['dragover', 'dragenter'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
+function loadFile(f) {
+  fileObj = f; srcUrl = ''; srcLabel = f.name;
+  fileName = 'input.' + (f.name.split('.').pop() || 'mp4').toLowerCase();
+  video.removeAttribute('crossorigin'); video.src = URL.createObjectURL(f); video.load();
+}
+$('loadUrl').addEventListener('click', loadFromUrl);
+$('urlInput').addEventListener('keydown', e => { if (e.key === 'Enter') loadFromUrl(); });
+function loadFromUrl() {
+  const u = $('urlInput').value.trim(); if (!u) return;
+  fileObj = null; srcUrl = u; srcLabel = u.split('/').pop() || u;
+  fileName = 'input.' + ((srcLabel.split('.').pop() || 'mp4').split('?')[0].toLowerCase());
+  video.removeAttribute('crossorigin');
+  $('drop').querySelector('b').textContent = '⏳ Laden van URL…';
+  video.src = u; video.load();
+}
+video.addEventListener('error', () => {
+  if (!srcUrl) return;
+  $('drop').querySelector('b').textContent = '⚠️ Kon de URL niet laden';
+  $('progWrap').classList.add('show');
+  setStatus('Laden mislukt. De link moet RECHTSTREEKS naar een videobestand wijzen (.mp4/.mov), '
+    + 'niet naar een deel-pagina van Google Photos/Drive. Een GitHub-release-link werkt goed.');
+});
+video.addEventListener('loadedmetadata', () => {
+  dur = video.duration || 0; startT = 0; endT = dur;
+  document.querySelectorAll('button, select').forEach(b => { if (!b.classList.contains('dl')) b.disabled = false; });
+  renderSel(); updateEstimate();
+  $('drop').querySelector('b').textContent = '✓ ' + srcLabel;
+});
+
+// ---------- transport ----------
+$('playBtn').addEventListener('click', () => { previewing = false; video.paused ? video.play() : video.pause(); });
+video.addEventListener('play', () => $('playBtn').textContent = '⏸ Pauze');
+video.addEventListener('pause', () => $('playBtn').textContent = '▶ Afspelen');
+$('previewSel').addEventListener('click', () => { previewing = true; video.currentTime = startT; const p = video.play(); if (p && p.catch) p.catch(() => {}); });
+video.addEventListener('timeupdate', () => {
+  $('curLabel').textContent = fmt(video.currentTime);
+  if (dur) tlPlay.style.left = (video.currentTime / dur * 100) + '%';
+  if (previewing && video.currentTime >= endT) { video.pause(); previewing = false; }
+});
+
+// ---------- timeline + handles ----------
+function renderSel() {
+  const a = dur ? startT / dur * 100 : 0, b = dur ? endT / dur * 100 : 100;
+  hStart.style.left = a + '%'; hEnd.style.left = b + '%'; tlSel.style.left = a + '%'; tlSel.style.width = (b - a) + '%';
+  $('tStart').textContent = 'begin ' + fmt(startT); $('tEnd').textContent = 'eind ' + fmt(endT);
+  updateEstimate();
+}
+function xToTime(clientX) { const r = tl.getBoundingClientRect(); return Math.max(0, Math.min(1, (clientX - r.left) / r.width)) * dur; }
+function dragHandle(handle, isStart) {
+  handle.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation(); dragging = true; handle.setPointerCapture(e.pointerId);
+    const move = ev => { const t = xToTime(ev.clientX);
+      if (isStart) startT = Math.max(0, Math.min(t, endT - 0.05)); else endT = Math.min(dur, Math.max(t, startT + 0.05));
+      video.currentTime = isStart ? startT : endT; renderSel(); };
+    const up = () => { dragging = false; handle.releasePointerCapture(e.pointerId); handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); };
+    handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', up);
+  });
+}
+dragHandle(hStart, true); dragHandle(hEnd, false);
+tl.addEventListener('pointerdown', e => { if (e.target === hStart || e.target === hEnd) return; if (dur) video.currentTime = xToTime(e.clientX); });
+$('setStart').addEventListener('click', () => { startT = Math.min(video.currentTime, endT - 0.05); renderSel(); });
+$('setEnd').addEventListener('click', () => { endT = Math.max(video.currentTime, startT + 0.05); renderSel(); });
+
+function selFps() { const v = $('fps').value; return v === 'max' ? 30 : parseInt(v, 10); }   // 30 = assume for estimate
+function updateEstimate() {
+  const n = Math.max(0, Math.round((endT - startT) * selFps()));
+  $('estCount').textContent = n + ($('fps').value === 'max' ? ' (schatting)' : '');
+  $('estCount').style.color = n > 400 ? '#ff8a8a' : '#ffd24a';
+}
+['fps', 'maxw', 'quality'].forEach(id => $(id).addEventListener('change', updateEstimate));
+
+// ---------- ffmpeg ----------
+let ffmpeg = null;
+async function blobModuleURL(url) {
+  const txt = await (await fetch(url)).text();
+  const dir = url.slice(0, url.lastIndexOf('/') + 1);
+  const abs = (m, p, rel, q) => p + new URL(rel, dir).href + q;
+  const fixed = txt.replace(/(from\s*["'])(\.\.?\/[^"']+)(["'])/g, abs).replace(/(import\s*\(\s*["'])(\.\.?\/[^"']+)(["']\s*\))/g, abs);
+  return URL.createObjectURL(new Blob([fixed], { type: 'text/javascript' }));
+}
+async function getFFmpeg() {
+  if (ffmpeg) return ffmpeg;
+  setStatus('Engine laden… (eenmalig, ~25 MB)');
+  ffmpeg = new FFmpeg();
+  ffmpeg.on('progress', ({ progress }) => { $('progFill').style.width = Math.max(0, Math.min(100, Math.round(progress * 100))) + '%'; });
+  const FF = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm';
+  const CORE = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+  await ffmpeg.load({
+    classWorkerURL: await blobModuleURL(`${FF}/worker.js`),
+    coreURL: await toBlobURL(`${CORE}/ffmpeg-core.js`, 'text/javascript'),
+    wasmURL: await toBlobURL(`${CORE}/ffmpeg-core.wasm`, 'application/wasm'),
+  });
+  return ffmpeg;
+}
+function setStatus(s) { $('status').textContent = s; }
+
+// ---------- zip (store, no dependency) ----------
+const CRC = (() => { const t = []; for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8) { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function makeZip(files) {
+  const enc = new TextEncoder();
+  const u16 = n => [n & 255, (n >> 8) & 255], u32 = n => [n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >>> 24) & 255];
+  const parts = [], central = []; let offset = 0;
+  for (const f of files) {
+    const name = enc.encode(f.name), crc = crc32(f.data), sz = f.data.length;
+    const lh = new Uint8Array([].concat(u32(0x04034b50), u16(20), u16(0), u16(0), u16(0), u16(0), u32(crc), u32(sz), u32(sz), u16(name.length), u16(0)));
+    parts.push(lh, name, f.data); central.push({ name, crc, sz, offset }); offset += lh.length + name.length + sz;
+  }
+  const cdStart = offset; const cd = [];
+  for (const c of central) {
+    const h = new Uint8Array([].concat(u32(0x02014b50), u16(20), u16(20), u16(0), u16(0), u16(0), u16(0), u32(c.crc), u32(c.sz), u32(c.sz), u16(c.name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(c.offset)));
+    cd.push(h, c.name); offset += h.length + c.name.length;
+  }
+  const end = new Uint8Array([].concat(u32(0x06054b50), u16(0), u16(0), u16(central.length), u16(central.length), u32(offset - cdStart), u32(cdStart), u16(0)));
+  return new Blob([...parts, ...cd, end], { type: 'application/zip' });
+}
+
+$('makeBtn').addEventListener('click', async () => {
+  if (!fileObj && !srcUrl) return;
+  if (endT - startT < 0.03) { setStatus('Selectie is te kort.'); return; }
+  $('progWrap').classList.add('show'); $('progFill').style.width = '0%'; $('makeBtn').disabled = true; $('result').classList.remove('show');
+  const fps = $('fps').value, maxw = parseInt($('maxw').value, 10), q = $('quality').value;
+  try {
+    const ff = await getFFmpeg();
+    setStatus('Bestand inladen…');
+    await ff.writeFile(fileName, await fetchFile(fileObj || srcUrl));
+    const vf = [];
+    if (fps !== 'max') vf.push('fps=' + fps);
+    if (maxw) vf.push(`scale='min(${maxw},iw)':-2`);
+    const args = ['-ss', startT.toFixed(3), '-i', fileName, '-t', (endT - startT).toFixed(3)];
+    if (vf.length) args.push('-vf', vf.join(','));
+    args.push('-q:v', q, 'frame_%05d.jpg');
+    setStatus('Frames maken…');
+    await ff.exec(args);
+    setStatus('Beelden verzamelen…');
+    const entries = (await ff.listDir('/')).filter(e => !e.isDir && /^frame_\d+\.jpg$/.test(e.name)).map(e => e.name).sort();
+    if (!entries.length) { setStatus('Geen frames gemaakt — probeer een andere selectie.'); $('makeBtn').disabled = false; return; }
+    const dt = fps === 'max' ? (endT - startT) / entries.length : 1 / parseInt(fps, 10);
+    const files = [];
+    for (let i = 0; i < entries.length; i++) {
+      const data = await ff.readFile(entries[i]);
+      const t = (startT + i * dt).toFixed(2);
+      files.push({ name: `frame_${String(i + 1).padStart(4, '0')}_t${t}s.jpg`, data });
+      await ff.deleteFile(entries[i]);
+    }
+    const base = (srcLabel.split('?')[0].replace(/\.[^.]+$/, '')) || 'video';
+    files.push({ name: '_info.txt', data: new TextEncoder().encode(
+      `bron: ${srcLabel}\nselectie: ${fmt(startT)} – ${fmt(endT)}\nframes/s: ${fps}\nmax breedte: ${maxw || 'origineel'}\naantal foto's: ${entries.length}\n`) });
+    const zip = makeZip(files);
+    const url = URL.createObjectURL(zip);
+    $('dlLink').href = url; $('dlLink').download = `${base}-frames.zip`; $('result').classList.add('show');
+    setStatus(`Klaar ✓  ${entries.length} foto's  (${(zip.size / 1048576).toFixed(1).replace('.', ',')} MB)`);
+    try { await ff.deleteFile(fileName); } catch (_) {}
+  } catch (err) {
+    setStatus('Mislukt: ' + (err && err.message ? err.message : err));
+  } finally { $('makeBtn').disabled = false; }
+});
+</script>
+</body>
+</html>
