@@ -50,6 +50,10 @@
   #progWrap.show { display: block; }
   #progBar { height: 10px; background: #11231f; border: 1px solid #2c4540; border-radius: 6px; overflow: hidden; }
   #progFill { height: 100%; width: 0; background: #1f6bff; transition: width .15s; }
+  #progFill.busy { width: 100% !important; transition: none;
+    background: linear-gradient(90deg, #11231f 0%, #1f6bff 50%, #11231f 100%);
+    background-size: 200% 100%; animation: slide 1.1s linear infinite; }
+  @keyframes slide { from { background-position: 200% 0; } to { background-position: -200% 0; } }
   #status { font-size: 13px; color: #9fe6d8; margin-top: 6px; min-height: 18px; }
   .dl { display: inline-block; margin-top: 10px; background: #34d399; color: #04110d;
         border-radius: 10px; padding: 11px 16px; font-weight: 800; text-decoration: none; }
@@ -236,7 +240,8 @@ async function blobModuleURL(url) {
 }
 async function getFFmpeg() {
   if (ffmpeg) return ffmpeg;
-  setStatus('Engine laden… (eenmalig, ~25 MB)');
+  setStatus('Engine laden… (eenmalig, ~25 MB — de eerste keer kan dit 20–60 s duren)');
+  $('progFill').classList.add('busy');
   ffmpeg = new FFmpeg();
   ffmpeg.on('progress', ({ progress }) => { $('progFill').style.width = Math.max(0, Math.min(100, Math.round(progress * 100))) + '%'; });
   const FF = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm';
@@ -286,11 +291,12 @@ $('makeBtn').addEventListener('click', async () => {
     const args = ['-ss', startT.toFixed(3), '-i', fileName, '-t', (endT - startT).toFixed(3)];
     if (vf.length) args.push('-vf', vf.join(','));
     args.push('-q:v', q, 'frame_%05d.jpg');
-    setStatus('Frames maken…');
+    setStatus('Frames maken…');           // ffmpeg doesn't report % for image output → keep the bar busy
+    $('progFill').classList.add('busy');
     await ff.exec(args);
-    setStatus('Beelden verzamelen…');
     const entries = (await ff.listDir('/')).filter(e => !e.isDir && /^frame_\d+\.jpg$/.test(e.name)).map(e => e.name).sort();
     if (!entries.length) { setStatus('Geen frames gemaakt — probeer een andere selectie.'); $('makeBtn').disabled = false; return; }
+    $('progFill').classList.remove('busy');   // now a determinate bar over the frames
     const dt = fps === 'max' ? (endT - startT) / entries.length : 1 / parseInt(fps, 10);
     const files = [];
     for (let i = 0; i < entries.length; i++) {
@@ -298,6 +304,8 @@ $('makeBtn').addEventListener('click', async () => {
       const t = (startT + i * dt).toFixed(2);
       files.push({ name: `frame_${String(i + 1).padStart(4, '0')}_t${t}s.jpg`, data });
       await ff.deleteFile(entries[i]);
+      $('progFill').style.width = Math.round((i + 1) / entries.length * 100) + '%';
+      if (i % 5 === 0 || i === entries.length - 1) setStatus('Beelden verzamelen… ' + (i + 1) + '/' + entries.length);
     }
     const base = (srcLabel.split('?')[0].replace(/\.[^.]+$/, '')) || 'video';
     files.push({ name: '_info.txt', data: new TextEncoder().encode(
@@ -309,7 +317,7 @@ $('makeBtn').addEventListener('click', async () => {
     try { await ff.deleteFile(fileName); } catch (_) {}
   } catch (err) {
     setStatus('Mislukt: ' + (err && err.message ? err.message : err));
-  } finally { $('makeBtn').disabled = false; }
+  } finally { $('makeBtn').disabled = false; $('progFill').classList.remove('busy'); }
 });
 </script>
 </body>
