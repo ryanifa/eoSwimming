@@ -531,9 +531,10 @@ function togglePlay() {
 }
 stageEl.addEventListener('click', () => {
   if (!hasVideo) { fileInput.click(); return; }
-  // in edit mode the film is a drawing surface — don't toggle play on taps
+  // in edit mode the film is a drawing surface — don't step on taps
   if (document.body.classList.contains('trainer')) return;
-  togglePlay();
+  // a tap pauses and advances one frame (like the +1 button); resume with play
+  frameStep(1);
 });
 
 // ---------- frame stepping ----------
