@@ -230,6 +230,7 @@
     font-size: 16px; line-height: 1.4; padding: 9px 14px; text-align: center;
   }
   #noteCap.show { display: block; }
+  #noteCap.editable { cursor: pointer; border-color: #ff5050; }
 
   /* voice-memo play badge (viewer taps to replay) + skip button */
   #memoBar {
@@ -255,6 +256,14 @@
   }
   #skipMemo.show { display: block; }
   #skipMemo:active { background: #fff; color: #04110d; }
+  #memoDel {
+    display: none;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    background: rgba(0,0,0,.7); color: #ff8a8a; border: 2px solid #ff5050;
+    border-radius: 999px; font-size: 16px; font-weight: 700; padding: 7px 12px; cursor: pointer;
+  }
+  #memoDel.show { display: block; }
+  #memoDel:active { background: #ff5050; color: #1a0606; }
 
   /* compact recording bar — floats over the video so the frame stays visible */
   #recBar {
@@ -394,6 +403,7 @@
   <div id="memoBar">
     <button id="memoBadge">🔊 memo</button>
     <button id="skipMemo">SKIP MEMO ⏭</button>
+    <button id="memoDel" title="Deze memo verwijderen">🗑</button>
   </div>
   <div id="timeline"><div id="tlbar"></div><div id="tlfill"></div><div id="tlhandle"></div></div>
   <div id="toast"></div>
@@ -920,9 +930,22 @@ if (qv) {
   }
   function updateNoteCaption() {
     const m = noteAt(video.currentTime || 0);
-    if (m) { noteCap.textContent = m.text; noteCap.classList.add('show'); }
-    else noteCap.classList.remove('show');
+    const edit = document.body.classList.contains('trainer');
+    if (m) {
+      noteCap.textContent = m.text + (edit ? '   ✕' : '');
+      noteCap.classList.add('show'); noteCap.classList.toggle('editable', edit);
+    } else { noteCap.classList.remove('show'); noteCap.classList.remove('editable'); }
   }
+  // tap the caption in edit mode to delete that note (confirm, so a stray tap is safe)
+  noteCap.addEventListener('click', e => {
+    if (!document.body.classList.contains('trainer')) return;
+    e.stopPropagation();
+    const m = noteAt(video.currentTime || 0);
+    if (!m) return;
+    if (!confirm('Deze notitie verwijderen?')) return;
+    const i = marks.indexOf(m); if (i >= 0) marks.splice(i, 1);
+    updateTimeline(); updateNoteCaption(); toast('Notitie verwijderd.');
+  });
 
   // ---------- voice memos ----------
   let mediaRec = null, chunks = [], recStart = 0, recTimer = null, memoPlaying = false;
@@ -1020,12 +1043,22 @@ if (qv) {
   }
   function updateMemoBadge() {
     const t = video.currentTime || 0;
-    memoBadge.classList.toggle('show', marks.some(m => m.k === 'memo' && (m.pin || Math.abs(m.t - t) <= WINDOW)));
+    const near = marks.some(m => m.k === 'memo' && (m.pin || Math.abs(m.t - t) <= WINDOW));
+    memoBadge.classList.toggle('show', near);
+    $('memoDel').classList.toggle('show', near && document.body.classList.contains('trainer'));
   }
   memoBadge.addEventListener('click', e => {
     e.stopPropagation();
     if (memoBadge.classList.contains('playing')) return;   // already playing (avoid double-trigger)
     playMemo(nearestMemo(video.currentTime || 0));
+  });
+  // delete the nearest memo (edit mode only — the button only shows there)
+  $('memoDel').addEventListener('click', e => {
+    e.stopPropagation();
+    const m = nearestMemo(video.currentTime || 0);
+    if (!m) return;
+    const i = marks.indexOf(m); if (i >= 0) marks.splice(i, 1);
+    updateTimeline(); updateMemoBadge(); toast('Memo verwijderd.');
   });
   // SKIP MEMO: stop the playing memo and let the film carry on
   $('skipMemo').addEventListener('click', e => {
@@ -1050,6 +1083,7 @@ if (qv) {
       }
     }
     document.body.classList.toggle('has-annot', marks.length > 0);
+    if (draftReady) saveDraft();
   }
   function updateTimelineFill() {
     const dur = video.duration || 0, pct = dur ? (video.currentTime / dur * 100) : 0;
@@ -1171,6 +1205,8 @@ if (qv) {
     $('pubPanel').classList.add('show');
   }
   $('publishBtn').addEventListener('click', publish);
+  // opening GitHub to commit = the work is being saved for real; drop the draft
+  $('pubGo').addEventListener('click', () => clearDraft());
   $('pubClose').addEventListener('click', () => $('pubPanel').classList.remove('show'));
   $('pubCopy').addEventListener('click', async () => {
     const el = $('pubUrl'); el.select();
@@ -1184,6 +1220,41 @@ if (qv) {
     const el = $('toast'); el.innerHTML = msg; el.classList.add('show');
     clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 4200);
   }
+
+  // ---------- draft autosave (so a refresh/crash doesn't lose unpublished work) ----------
+  let draftReady = false, draftWarned = false;
+  const DRAFT_KEY = (() => {
+    const p = new URLSearchParams(location.search);
+    return 'eoswim_draft:' + [p.get('r') || '', p.get('a') || '', p.get('f') || '', p.get('v') || ''].join('|');
+  })();
+  function saveDraft() {
+    if (!document.body.classList.contains('can-edit')) return;
+    try {
+      if (!marks.length) { localStorage.removeItem(DRAFT_KEY); return; }
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ at: Date.now(), data: serialize() }));
+    } catch (e) {
+      if (!draftWarned) { draftWarned = true; toast('⚠️ Concept te groot om automatisch te bewaren (audio) — ⇪ publiceer tussentijds.'); }
+    }
+  }
+  function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (_) {} }
+  function maybeRestoreDraft() {
+    if (!document.body.classList.contains('can-edit')) { draftReady = true; return; }
+    let raw = null; try { raw = localStorage.getItem(DRAFT_KEY); } catch (_) {}
+    let d = null; try { d = raw && JSON.parse(raw); } catch (_) {}
+    if (d && d.data && d.data.m && d.data.m.length) {
+      const when = d.at ? new Date(d.at).toLocaleString() : '';
+      if (confirm('Niet-gepubliceerd concept gevonden (' + d.data.m.length + ' item(s)' + (when ? ', ' + when : '') + ').\nTerugzetten? (Annuleren wist het concept.)')) {
+        deserialize(d.data); updateNoteCaption(); updateMemoBadge();
+        toast('Concept teruggezet — vergeet niet te ⇪ publiceren.');
+      } else { clearDraft(); }
+    }
+    updateTimeline();     // reflect state (draftReady still false → don't re-save an unchanged load)
+    draftReady = true;
+  }
+  // warn before losing unpublished work on refresh/close
+  window.addEventListener('beforeunload', e => {
+    if (document.body.classList.contains('can-edit') && marks.length) { e.preventDefault(); e.returnValue = ''; }
+  });
 
   // ---------- load annotations: ?a=<id> from the repo, or #n= inline ----------
   function reportLoaded() {
@@ -1202,10 +1273,14 @@ if (qv) {
       fetch('annotations/' + encodeURIComponent(aid) + '.json?v=' + Date.now(), { cache: 'no-store' })
         .then(r => { if (!r.ok) throw 0; return r.json(); })
         .then(obj => { deserialize(obj); reportLoaded(); })
-        .catch(() => toast('⚠️ Kon annotaties niet laden (' + aid + '). Net gepubliceerd? Wacht ~1–2 min en ververs.'));
+        .catch(() => toast('⚠️ Kon annotaties niet laden (' + aid + '). Net gepubliceerd? Wacht ~1–2 min en ververs.'))
+        .finally(maybeRestoreDraft);
     } else if (n) {
       unpack(n).then(obj => { deserialize(obj); reportLoaded(); })
-               .catch(() => toast('⚠️ Kon de annotaties in deze link niet lezen.'));
+               .catch(() => toast('⚠️ Kon de annotaties in deze link niet lezen.'))
+               .finally(maybeRestoreDraft);
+    } else {
+      maybeRestoreDraft();
     }
   })();
 
