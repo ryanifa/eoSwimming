@@ -298,9 +298,11 @@
              -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 
   /* slim timeline with annotation dots */
-  /* Scrub bar — tall enough to grab and drag easily. Shown for any loaded video. */
-  #timeline { position: absolute; left: 12px; right: 12px; bottom: 24px; height: 34px;
-              z-index: 3; cursor: pointer; display: none; touch-action: none; }
+  /* Scrub bar — tall enough to grab and drag easily. Shown for any loaded video.
+     Inset past the side-button columns (var --bar) so the handle at t=0 isn't
+     hidden behind them, and lifted off the bottom edge so it's easy to reach. */
+  #timeline { position: absolute; left: calc(var(--bar, 78px) + 8px); right: calc(var(--bar, 78px) + 8px);
+              bottom: 46px; height: 36px; z-index: 5; cursor: pointer; display: none; touch-action: none; }
   body.has-video #timeline, body.has-annot #timeline, body.trainer #timeline { display: block; }
   #tlbar { position: absolute; left: 0; right: 0; top: 14px; height: 7px;
            background: rgba(255,255,255,.28); border-radius: 4px; }
