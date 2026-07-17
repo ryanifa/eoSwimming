@@ -1176,7 +1176,8 @@ if (qv) {
   }
   function updateMemoBadge() {
     const t = video.currentTime || 0;
-    const near = marks.some(m => m.k === 'memo' && (m.pin || Math.abs(m.t - t) <= WINDOW));
+    const playing = !!(currentMemoMark && memoAudio && !memoAudio.paused);   // keep controls up during a memo (film may scrub away)
+    const near = playing || marks.some(m => m.k === 'memo' && (m.pin || Math.abs(m.t - t) <= WINDOW));
     const anyMemo = marks.some(m => m.k === 'memo');
     const edit = document.body.classList.contains('trainer');
     memoBadge.classList.toggle('show', near);
@@ -1190,10 +1191,10 @@ if (qv) {
     if (memoBadge.classList.contains('playing')) return;   // already playing (avoid double-trigger)
     playMemo(nearestMemo(video.currentTime || 0));
   });
-  // delete the nearest memo (edit mode only — the button only shows there)
+  // delete the memo (the playing one, or the nearest to the frame)
   $('memoDel').addEventListener('click', e => {
     e.stopPropagation();
-    const m = nearestMemo(video.currentTime || 0);
+    const m = currentMemoMark || nearestMemo(video.currentTime || 0);
     if (!m) return;
     const i = marks.indexOf(m); if (i >= 0) marks.splice(i, 1);
     updateTimeline(); updateMemoBadge(); toast('Memo verwijderd.');
@@ -1227,7 +1228,10 @@ if (qv) {
     if (target == null) { toast(dir < 0 ? 'Geen eerdere memo.' : 'Geen volgende memo.'); return; }
     stopMemoAudio(); holdUntil = 0;
     if (!video.paused) video.pause();
-    video.currentTime = target; prevTime = target;
+    // land a hair BEFORE the memo frame so pressing play crosses it and the
+    // memo triggers (sitting exactly on it wouldn't fire the crossing).
+    const before = Math.max(0, target - 0.08);
+    try { video.currentTime = before; } catch (_) {} prevTime = before;
   }
   $('prevMemo').addEventListener('click', e => { e.stopPropagation(); gotoMemo(-1); });
   $('nextMemo').addEventListener('click', e => { e.stopPropagation(); gotoMemo(1); });
