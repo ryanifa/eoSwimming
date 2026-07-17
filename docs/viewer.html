@@ -298,17 +298,19 @@
              -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 
   /* slim timeline with annotation dots */
-  #timeline { position: absolute; left: 12px; right: 12px; bottom: 30px; height: 16px;
-              z-index: 3; cursor: pointer; display: none; }
-  body.has-annot #timeline, body.trainer #timeline { display: block; }
-  #tlbar { position: absolute; left: 0; right: 0; top: 7px; height: 3px;
-           background: rgba(255,255,255,.25); border-radius: 2px; }
-  #tlfill { position: absolute; left: 0; top: 7px; height: 3px;
-            background: #1f6bff; border-radius: 2px; width: 0; }
-  #tlhandle { position: absolute; top: 2px; width: 13px; height: 13px; margin-left: -6px;
-              border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.6); }
-  .tldot { position: absolute; top: 4px; width: 8px; height: 8px; margin-left: -4px;
-           border-radius: 50%; background: #ffcf33; box-shadow: 0 0 0 1px rgba(0,0,0,.4);
+  /* Scrub bar — tall enough to grab and drag easily. Shown for any loaded video. */
+  #timeline { position: absolute; left: 12px; right: 12px; bottom: 24px; height: 34px;
+              z-index: 3; cursor: pointer; display: none; touch-action: none; }
+  body.has-video #timeline, body.has-annot #timeline, body.trainer #timeline { display: block; }
+  #tlbar { position: absolute; left: 0; right: 0; top: 14px; height: 7px;
+           background: rgba(255,255,255,.28); border-radius: 4px; }
+  #tlfill { position: absolute; left: 0; top: 14px; height: 7px;
+            background: #1f6bff; border-radius: 4px; width: 0; }
+  #tlhandle { position: absolute; top: 6px; width: 24px; height: 24px; margin-left: -12px;
+              border-radius: 50%; background: #fff; border: 2px solid #1f6bff;
+              box-shadow: 0 2px 8px rgba(0,0,0,.7); }
+  .tldot { position: absolute; top: 12px; width: 10px; height: 10px; margin-left: -5px;
+           border-radius: 50%; background: #ffcf33; box-shadow: 0 0 0 1px rgba(0,0,0,.5);
            pointer-events: none; }
   .tldot.audio { background: #34d399; }
   .tldot.memo { background: #38bdf8; }
@@ -1527,7 +1529,7 @@ if (qv) {
   function loop() {
     const active = marks.length || document.body.classList.contains('trainer');
     if (active) { renderAnnotations(); updateNoteCaption(); updateMemoBadge(); autoStop(); }
-    if (active || document.body.classList.contains('has-annot')) updateTimelineFill();
+    if (hasVideo) updateTimelineFill();          // keep the scrub playhead in sync for any video
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
