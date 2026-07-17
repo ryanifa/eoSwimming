@@ -264,6 +264,14 @@
   }
   #memoDel.show { display: block; }
   #memoDel:active { background: #ff5050; color: #1a0606; }
+  #prevMemo, #nextMemo {
+    display: none;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    background: rgba(0,0,0,.7); color: #cfe9ff; border: 2px solid #4a6b8a;
+    border-radius: 999px; font-size: 15px; font-weight: 700; padding: 7px 12px; cursor: pointer; white-space: nowrap;
+  }
+  #prevMemo.show, #nextMemo.show { display: block; }
+  #prevMemo:active, #nextMemo:active { background: #1f6bff; color: #fff; }
 
   /* compact recording bar — floats over the video so the frame stays visible */
   #recBar {
@@ -407,8 +415,10 @@
 
   <div id="noteCap"></div>
   <div id="memoBar">
+    <button id="prevMemo" title="Naar vorige memo">⏮ memo</button>
     <button id="memoBadge">🔊 memo</button>
     <button id="skipMemo">SKIP MEMO ⏭</button>
+    <button id="nextMemo" title="Naar volgende memo">memo ⏭</button>
     <button id="memoDel" title="Deze memo verwijderen">🗑</button>
   </div>
   <div id="timeline"><div id="tlbar"></div><div id="tlfill"></div><div id="tlhandle"></div></div>
@@ -474,6 +484,7 @@ const emptyhint = $('emptyhint');
 const stageEl = $('stage');
 
 let hasVideo = false;
+let annotReset = null;   // set by the annotation layer: stop memo + reset auto-pause state
 
 // Set while annotation auto-pause is in control (holding on a mark / playing a
 // memo). Transport controls bail out and dim until the film resumes itself.
@@ -589,6 +600,7 @@ video.addEventListener('loadedmetadata', applyPlaybackRate);
 video.addEventListener('play', applyPlaybackRate);
 function restart() {
   if (annotLock || !hasVideo) return;
+  if (annotReset) annotReset();          // stop a playing memo + reset annotation playback
   try { video.currentTime = 0; } catch (_) {}
   const p = video.play(); if (p && p.catch) p.catch(() => {});
 }
@@ -962,7 +974,7 @@ if (qv) {
   // reuse one <audio> element and prime it (play a silent clip) on the first
   // tap, so memos can later auto-play during the annotation pause.
   const SILENT_WAV = 'data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA';
-  let memoAudio = null, audioPrimed = false, pendingMemo = null, currentMemoFinish = null;
+  let memoAudio = null, audioPrimed = false, pendingMemo = null, currentMemoFinish = null, memoWatchdog = null;
   function getAudio() { if (!memoAudio) { memoAudio = new Audio(); memoAudio.preload = 'auto'; } return memoAudio; }
   function primeAudio() {
     if (audioPrimed) return; audioPrimed = true;
@@ -1032,7 +1044,7 @@ if (qv) {
     let done = false;
     const finish = () => {                          // run exactly once, however we get here
       if (done) return; done = true;
-      clearTimeout(wd);
+      clearTimeout(memoWatchdog);
       currentMemoFinish = null;
       memoBadge.classList.remove('playing');
       $('skipMemo').classList.remove('show');
@@ -1045,15 +1057,18 @@ if (qv) {
     a.onerror = finish;
     // Mobile browsers don't always fire 'ended' for data-URI audio, which left
     // the film stuck paused — resume after the memo's known length as a backstop.
-    const wd = setTimeout(finish, Math.max(1000, (m.dur || 4) * 1000 + 1200));
+    memoWatchdog = setTimeout(finish, Math.max(1000, (m.dur || 4) * 1000 + 1200));
     const p = a.play();
     if (p && p.catch) p.catch(() => { toast('Tik op de video om geluid aan te zetten, en speel opnieuw af.'); finish(); });
   }
   function updateMemoBadge() {
     const t = video.currentTime || 0;
     const near = marks.some(m => m.k === 'memo' && (m.pin || Math.abs(m.t - t) <= WINDOW));
+    const anyMemo = marks.some(m => m.k === 'memo');
     memoBadge.classList.toggle('show', near);
     $('memoDel').classList.toggle('show', near && document.body.classList.contains('trainer'));
+    $('prevMemo').classList.toggle('show', anyMemo);
+    $('nextMemo').classList.toggle('show', anyMemo);
   }
   memoBadge.addEventListener('click', e => {
     e.stopPropagation();
@@ -1073,6 +1088,34 @@ if (qv) {
     e.stopPropagation();
     if (currentMemoFinish) currentMemoFinish();
   });
+
+  // stop a playing/pending memo without resuming the film (for restart / jumps)
+  function stopMemoAudio() {
+    clearTimeout(memoWatchdog);
+    try { if (memoAudio) { memoAudio.onended = null; memoAudio.onerror = null; memoAudio.pause(); } } catch (_) {}
+    currentMemoFinish = null; memoPlaying = false; pendingMemo = null;
+    memoBadge.classList.remove('playing'); memoBadge.classList.remove('await');
+    $('skipMemo').classList.remove('show');
+    setAnnotLock(false);
+  }
+  // exposed to restart(): stop the memo and rewind the auto-pause state
+  annotReset = function () { stopMemoAudio(); holdUntil = 0; prevTime = 0; };
+
+  // jump to the start of the previous / next memo (paused there)
+  function gotoMemo(dir) {
+    const ts = marks.filter(m => m.k === 'memo').map(m => m.t).sort((a, b) => a - b);
+    if (!ts.length) return;
+    const t = video.currentTime || 0, E = 0.06;
+    let target = null;
+    if (dir < 0) { for (let i = ts.length - 1; i >= 0; i--) if (ts[i] < t - E) { target = ts[i]; break; } }
+    else { for (let i = 0; i < ts.length; i++) if (ts[i] > t + E) { target = ts[i]; break; } }
+    if (target == null) { toast(dir < 0 ? 'Geen eerdere memo.' : 'Geen volgende memo.'); return; }
+    stopMemoAudio(); holdUntil = 0;
+    if (!video.paused) video.pause();
+    video.currentTime = target; prevTime = target;
+  }
+  $('prevMemo').addEventListener('click', e => { e.stopPropagation(); gotoMemo(-1); });
+  $('nextMemo').addEventListener('click', e => { e.stopPropagation(); gotoMemo(1); });
 
   // ---------- timeline (dots + scrub) ----------
   function updateTimeline() {
