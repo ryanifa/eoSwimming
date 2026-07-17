@@ -401,6 +401,8 @@
   <div class="group" id="swatches">
     <button class="swatch active" style="background:#ff3b30" data-color="#ff3b30"></button>
     <button class="swatch"        style="background:#ffcf33" data-color="#ffcf33"></button>
+    <button class="swatch"        style="background:#22c55e" data-color="#22c55e"></button>
+    <button class="swatch"        style="background:#3b82f6" data-color="#3b82f6"></button>
   </div>
   <div class="sep"></div>
   <div class="group">
@@ -771,7 +773,7 @@ if (qv) {
 // notes, and pack everything into the share link's #n= fragment.
 (function () {
   const draw = $('draw'), dctx = draw.getContext('2d');
-  const COLORS = ['#ff3b30', '#ffcf33'];
+  const COLORS = ['#ff3b30', '#ffcf33', '#22c55e', '#3b82f6'];
   const WINDOW = 0.20;          // s: a non-pinned mark shows within ±WINDOW of its time
   let marks = [];               // {t,k:'pen'|'arrow'|'note',color,pin, pts|x1..y2 | text}
   let tool = 'pen', color = COLORS[0], pinned = false, liveMark = null;
