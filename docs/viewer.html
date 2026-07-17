@@ -389,6 +389,12 @@
     <button class="tool" id="undoBtn"  title="Ongedaan maken">⟲</button>
     <button class="tool" id="clearBtn" title="Frame wissen">🗑</button>
   </div>
+  <div class="sep"></div>
+  <div class="group">
+    <button class="tool" id="dlAnnot" title="Annotaties als bestand downloaden (verder op andere pc)">⬇</button>
+    <button class="tool" id="ulAnnot" title="Annotaties uit een bestand laden">⬆</button>
+    <input type="file" id="annotFile" accept=".json,application/json" style="display:none">
+  </div>
   <div class="spacer"></div>
   <button class="tool" id="publishBtn" title="Annotaties opslaan & deellink maken">⇪ publiceer</button>
 </div>
@@ -1001,7 +1007,7 @@ if (qv) {
       marks.push({ t: video.currentTime || 0, k: 'memo', pin: false, color: '#38bdf8', dur, mime: blob.type, au: await blobToB64(blob) });
       updateTimeline(); updateMemoBadge();
       toast('Spraakmemo bewaard (' + dur.toFixed(1).replace('.', ',') + 's).');
-      const p = video.play(); if (p && p.catch) p.catch(() => {});   // carry on playing
+      video.pause();                                  // stay paused after saving a memo
     };
     recStart = performance.now(); mediaRec.start();
     $('recBar').classList.add('show');
@@ -1214,6 +1220,35 @@ if (qv) {
     const el = $('pubUrl'); el.select();
     try { await navigator.clipboard.writeText(el.value); toast('Link gekopieerd.'); }
     catch (_) { try { document.execCommand('copy'); toast('Link gekopieerd.'); } catch (e) {} }
+  });
+
+  // ---------- download / upload annotations as a file (continue on another pc) ----------
+  $('dlAnnot').addEventListener('click', () => {
+    if (!marks.length) { toast('Nog niets om te downloaden.'); return; }
+    const blob = new Blob([JSON.stringify(serialize())], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const d = new Date(), pad = n => String(n).padStart(2, '0');
+    const stamp = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes());
+    const rtag = new URLSearchParams(location.search).get('r') || 'video';
+    const a = document.createElement('a');
+    a.href = url; a.download = 'annotaties-' + rtag + '-' + stamp + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    toast('Annotaties gedownload — open dezelfde video-link op de andere pc en laad dit bestand via ⬆.');
+  });
+  $('ulAnnot').addEventListener('click', () => $('annotFile').click());
+  $('annotFile').addEventListener('change', async e => {
+    const f = e.target.files && e.target.files[0]; e.target.value = '';
+    if (!f) return;
+    if (marks.length && !confirm('Huidige annotaties vervangen door dit bestand?')) return;
+    try {
+      const obj = JSON.parse(await f.text());
+      deserialize(obj); updateTimeline(); updateNoteCaption(); updateMemoBadge();
+      const dr = marks.filter(m => m.k === 'pen' || m.k === 'arrow').length;
+      const nt = marks.filter(m => m.k === 'note').length;
+      const me = marks.filter(m => m.k === 'memo').length;
+      toast('Geladen: <b>' + dr + '</b> tekening(en), <b>' + nt + '</b> notitie(s), <b>' + me + "</b> memo('s).");
+    } catch (_) { toast('⚠️ Kon dit bestand niet lezen (geen geldig annotatie-bestand).'); }
   });
 
   // ---------- toast ----------
