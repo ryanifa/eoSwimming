@@ -272,6 +272,14 @@
   }
   #prevMemo.show, #nextMemo.show { display: block; }
   #prevMemo:active, #nextMemo:active { background: #1f6bff; color: #fff; }
+  #replaceMemo {
+    display: none;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    background: rgba(0,0,0,.7); color: #1a1200; background-color: #ffb02e; border: 2px solid #7a4d00;
+    border-radius: 999px; font-size: 15px; font-weight: 800; padding: 7px 12px; cursor: pointer; white-space: nowrap;
+  }
+  #replaceMemo.show { display: block; }
+  #replaceMemo:active { background-color: #ffc560; }
 
   /* compact recording bar — floats over the video so the frame stays visible */
   #recBar {
@@ -418,6 +426,7 @@
     <button id="prevMemo" title="Naar vorige memo">⏮ memo</button>
     <button id="memoBadge">🔊 memo</button>
     <button id="skipMemo">SKIP MEMO ⏭</button>
+    <button id="replaceMemo" title="Deze memo vervangen (opnieuw inspreken)">↻🎙️ vervang</button>
     <button id="nextMemo" title="Naar volgende memo">memo ⏭</button>
     <button id="memoDel" title="Deze memo verwijderen">🗑</button>
   </div>
@@ -974,7 +983,7 @@ if (qv) {
   // reuse one <audio> element and prime it (play a silent clip) on the first
   // tap, so memos can later auto-play during the annotation pause.
   const SILENT_WAV = 'data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA';
-  let memoAudio = null, audioPrimed = false, pendingMemo = null, currentMemoFinish = null, memoWatchdog = null;
+  let memoAudio = null, audioPrimed = false, pendingMemo = null, currentMemoFinish = null, memoWatchdog = null, currentMemoMark = null;
   function getAudio() { if (!memoAudio) { memoAudio = new Audio(); memoAudio.preload = 'auto'; } return memoAudio; }
   function primeAudio() {
     if (audioPrimed) return; audioPrimed = true;
@@ -999,8 +1008,9 @@ if (qv) {
     return new Promise(res => { const fr = new FileReader();
       fr.onload = () => res(String(fr.result).split(',')[1] || ''); fr.readAsDataURL(blob); });
   }
-  $('micBtn').addEventListener('click', async () => {
+  async function startRecording() {
     if (!hasVideo) { toast('Laad eerst een video.'); return; }
+    if (mediaRec && mediaRec.state === 'recording') return;
     if (!navigator.mediaDevices || !window.MediaRecorder) { toast('Opnemen wordt niet ondersteund op dit toestel.'); return; }
     if (!video.paused) video.pause();
     let stream;
@@ -1010,13 +1020,14 @@ if (qv) {
       .find(m => { try { return MediaRecorder.isTypeSupported(m); } catch (_) { return false; } }) || '';
     try { mediaRec = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 24000 } : undefined); }
     catch (_) { mediaRec = new MediaRecorder(stream); }
+    const at = video.currentTime || 0;               // pin the memo to the frame it started on
     chunks = [];
     mediaRec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
     mediaRec.onstop = async () => {
       stream.getTracks().forEach(tr => tr.stop());
       const blob = new Blob(chunks, { type: mediaRec.mimeType || mime || 'audio/webm' });
       const dur = (performance.now() - recStart) / 1000;
-      marks.push({ t: video.currentTime || 0, k: 'memo', pin: false, color: '#38bdf8', dur, mime: blob.type, au: await blobToB64(blob) });
+      marks.push({ t: at, k: 'memo', pin: false, color: '#38bdf8', dur, mime: blob.type, au: await blobToB64(blob) });
       updateTimeline(); updateMemoBadge();
       toast('Spraakmemo bewaard (' + dur.toFixed(1).replace('.', ',') + 's).');
       video.pause();                                  // stay paused after saving a memo
@@ -1024,7 +1035,8 @@ if (qv) {
     recStart = performance.now(); mediaRec.start();
     $('recBar').classList.add('show');
     recTimer = setInterval(() => { $('recTime').textContent = ((performance.now() - recStart) / 1000).toFixed(1).replace('.', ',') + 's'; }, 100);
-  });
+  }
+  $('micBtn').addEventListener('click', startRecording);
   $('recStop').addEventListener('click', e => {
     e.stopPropagation();
     if (mediaRec && mediaRec.state !== 'inactive') mediaRec.stop();
@@ -1035,6 +1047,7 @@ if (qv) {
   }
   function playMemo(m, onDone) {
     if (!m) { if (onDone) onDone(); return; }
+    currentMemoMark = m;                             // remember which memo is playing (for REPLACE)
     const a = getAudio();
     try { a.pause(); } catch (_) {}
     a.muted = false;
@@ -1045,7 +1058,7 @@ if (qv) {
     const finish = () => {                          // run exactly once, however we get here
       if (done) return; done = true;
       clearTimeout(memoWatchdog);
-      currentMemoFinish = null;
+      currentMemoFinish = null; currentMemoMark = null;
       memoBadge.classList.remove('playing');
       $('skipMemo').classList.remove('show');
       a.onended = null; a.onerror = null;
@@ -1065,8 +1078,10 @@ if (qv) {
     const t = video.currentTime || 0;
     const near = marks.some(m => m.k === 'memo' && (m.pin || Math.abs(m.t - t) <= WINDOW));
     const anyMemo = marks.some(m => m.k === 'memo');
+    const edit = document.body.classList.contains('trainer');
     memoBadge.classList.toggle('show', near);
-    $('memoDel').classList.toggle('show', near && document.body.classList.contains('trainer'));
+    $('memoDel').classList.toggle('show', near && edit);
+    $('replaceMemo').classList.toggle('show', near && edit);
     $('prevMemo').classList.toggle('show', anyMemo);
     $('nextMemo').classList.toggle('show', anyMemo);
   }
@@ -1093,7 +1108,7 @@ if (qv) {
   function stopMemoAudio() {
     clearTimeout(memoWatchdog);
     try { if (memoAudio) { memoAudio.onended = null; memoAudio.onerror = null; memoAudio.pause(); } } catch (_) {}
-    currentMemoFinish = null; memoPlaying = false; pendingMemo = null;
+    currentMemoFinish = null; currentMemoMark = null; memoPlaying = false; pendingMemo = null;
     memoBadge.classList.remove('playing'); memoBadge.classList.remove('await');
     $('skipMemo').classList.remove('show');
     setAnnotLock(false);
@@ -1116,6 +1131,20 @@ if (qv) {
   }
   $('prevMemo').addEventListener('click', e => { e.stopPropagation(); gotoMemo(-1); });
   $('nextMemo').addEventListener('click', e => { e.stopPropagation(); gotoMemo(1); });
+  // REPLACE MEMO: delete the current memo and start a new recording at its frame
+  $('replaceMemo').addEventListener('click', async e => {
+    e.stopPropagation();
+    const m = currentMemoMark || nearestMemo(video.currentTime || 0);
+    if (!m) return;
+    const at = m.t;
+    stopMemoAudio();
+    const i = marks.indexOf(m); if (i >= 0) marks.splice(i, 1);
+    updateTimeline(); updateMemoBadge();
+    if (!video.paused) video.pause();
+    try { video.currentTime = at; } catch (_) {}
+    await startRecording();
+    if (mediaRec && mediaRec.state === 'recording') toast('Oude memo weg — spreek in, dan ■ Stop & bewaar.');
+  });
 
   // ---------- timeline (dots + scrub) ----------
   function updateTimeline() {
