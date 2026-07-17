@@ -402,8 +402,10 @@
   </div>
   <div class="sep"></div>
   <div class="group">
-    <button class="tool" id="undoBtn"  title="Ongedaan maken">⟲</button>
-    <button class="tool" id="clearBtn" title="Frame wissen">🗑</button>
+    <button class="tool" id="undoBtn"  title="Ongedaan maken (nieuwste op dit frame)">⟲</button>
+    <button class="tool" id="redoBtn"  title="Opnieuw doen (herstel laatste ongedaan)">⟳</button>
+    <button class="tool" id="drawDel"  title="Alleen de laatste tekening op dit frame wissen">✐✕</button>
+    <button class="tool" id="clearBtn" title="Alles op dit frame wissen">🗑</button>
   </div>
   <div class="sep"></div>
   <div class="group">
@@ -878,6 +880,7 @@ if (qv) {
       : { t, k: 'arrow', color, pin: pinned, x1: x, y1: y, x2: x, y2: y };
     if (pinned) liveMark.end = Infinity;   // open-ended until vastzetten is turned off
     marks.push(liveMark); renderAnnotations();
+    if (typeof redoStack !== 'undefined') redoStack.length = 0;   // a new edit invalidates redo
   }
   function moveDraw(e) {
     if (!liveMark) return; e.preventDefault();
@@ -915,14 +918,45 @@ if (qv) {
               : 'Vastzetten uit — nieuwe markeringen horen bij hun frame');
     }
   });
+  // undo / redo with feedback so you can see what happens
+  let redoStack = [];
+  function describeMark(m) {
+    return m.k === 'arrow' ? 'pijl' : m.k === 'pen' ? 'tekening'
+      : m.k === 'memo' ? 'memo' : ('notitie “' + (m.text || '').slice(0, 18) + '”');
+  }
+  function refreshAnnot() { updateTimeline(); updateNoteCaption(); updateMemoBadge(); }
+  function removeAt(index, redoable) {
+    const m = marks.splice(index, 1)[0];
+    if (redoable) redoStack.push({ m, i: index });
+    refreshAnnot();
+    return m;
+  }
   $('undoBtn').addEventListener('click', () => {
     const t = video.currentTime || 0;
-    for (let i = marks.length - 1; i >= 0; i--) { if (visible(marks[i], t)) { marks.splice(i, 1); break; } }
-    updateTimeline(); updateNoteCaption(); updateMemoBadge();
+    for (let i = marks.length - 1; i >= 0; i--) {
+      if (visible(marks[i], t)) { const m = removeAt(i, true); toast('Ongedaan: ' + describeMark(m) + ' — ⟳ om terug te halen.'); return; }
+    }
+    toast('Niets om ongedaan te maken op dit frame.');
+  });
+  $('redoBtn').addEventListener('click', () => {
+    if (!redoStack.length) { toast('Niets om opnieuw te doen.'); return; }
+    const { m, i } = redoStack.pop();
+    marks.splice(Math.min(i, marks.length), 0, m);
+    refreshAnnot(); toast('Opnieuw: ' + describeMark(m) + '.');
+  });
+  // wis alleen de laatste tekening (pen/pijl) op dit frame — memo en notitie blijven
+  $('drawDel').addEventListener('click', () => {
+    const t = video.currentTime || 0;
+    for (let i = marks.length - 1; i >= 0; i--) {
+      if ((marks[i].k === 'pen' || marks[i].k === 'arrow') && visible(marks[i], t)) {
+        removeAt(i, true); toast('Tekening gewist — ⟳ om terug te halen.'); return;
+      }
+    }
+    toast('Geen tekening op dit frame.');
   });
   $('clearBtn').addEventListener('click', () => {
     const t = video.currentTime || 0; marks = marks.filter(m => !visible(m, t));
-    updateTimeline(); updateNoteCaption(); updateMemoBadge();
+    redoStack = []; refreshAnnot();
   });
 
   // ---------- text notes ----------
@@ -939,6 +973,7 @@ if (qv) {
     noteInput.classList.remove('show');
     if (!text) return;
     marks.push({ t: video.currentTime || 0, k: 'note', pin: false, color: '#34d399', text });
+    redoStack.length = 0;
     updateTimeline(); updateNoteCaption();
     toast('Notitie bewaard.');
     const p = video.play(); if (p && p.catch) p.catch(() => {});   // carry on playing
@@ -1028,6 +1063,7 @@ if (qv) {
       const blob = new Blob(chunks, { type: mediaRec.mimeType || mime || 'audio/webm' });
       const dur = (performance.now() - recStart) / 1000;
       marks.push({ t: at, k: 'memo', pin: false, color: '#38bdf8', dur, mime: blob.type, au: await blobToB64(blob) });
+      redoStack.length = 0;
       updateTimeline(); updateMemoBadge();
       toast('Spraakmemo bewaard (' + dur.toFixed(1).replace('.', ',') + 's).');
       video.pause();                                  // stay paused after saving a memo
@@ -1041,6 +1077,7 @@ if (qv) {
     e.stopPropagation();
     if (mediaRec && mediaRec.state !== 'inactive') mediaRec.stop();
     clearInterval(recTimer); $('recBar').classList.remove('show');
+    video.pause();                                    // ensure the film stays paused after saving
   });
   function nearestMemo(t) {
     return marks.filter(x => x.k === 'memo').sort((a, b) => Math.abs(a.t - t) - Math.abs(b.t - t))[0];
