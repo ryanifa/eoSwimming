@@ -235,8 +235,12 @@
   /* voice-memo play badge (viewer taps to replay) + skip button */
   #memoBar {
     position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
-    z-index: 4; display: flex; gap: 10px; align-items: flex-start;
+    z-index: 4; display: flex; gap: 8px; align-items: flex-start;
   }
+  /* Keep every memo button in a fixed slot: hidden ones reserve their space
+     (visibility, not display) so nothing shifts and you never click the wrong spot. */
+  #memoBar button { display: block; visibility: hidden; }
+  #memoBar button.show { visibility: visible; }
   #memoBadge {
     display: none;
     -webkit-tap-highlight-color: transparent; touch-action: manipulation;
@@ -429,11 +433,11 @@
 
   <div id="noteCap"></div>
   <div id="memoBar">
-    <button id="prevMemo" title="Naar vorige memo">⏮ memo</button>
-    <button id="memoBadge">🔊 memo</button>
-    <button id="skipMemo">SKIP MEMO ⏭</button>
-    <button id="replaceMemo" title="Deze memo vervangen (opnieuw inspreken)">↻🎙️ vervang</button>
-    <button id="nextMemo" title="Naar volgende memo">memo ⏭</button>
+    <button id="prevMemo" title="Naar vorige memo">⏮</button>
+    <button id="memoBadge" title="Memo afspelen">🔊 memo</button>
+    <button id="skipMemo" title="Memo overslaan">SKIP ⏭</button>
+    <button id="replaceMemo" title="Deze memo vervangen (opnieuw inspreken)">↻🎙️</button>
+    <button id="nextMemo" title="Naar volgende memo">⏭</button>
     <button id="memoDel" title="Deze memo verwijderen">🗑</button>
   </div>
   <div id="timeline"><div id="tlbar"></div><div id="tlfill"></div><div id="tlhandle"></div></div>
