@@ -1323,7 +1323,7 @@ if (qv) {
     if (isFinite(video.duration)) video.currentTime = x * video.duration;
   }
   tl.addEventListener('click', e => e.stopPropagation());
-  tl.addEventListener('pointerdown', e => { e.stopPropagation(); try { tl.setPointerCapture(e.pointerId); } catch (_) {} tl._s = true; tlSeek(e); });
+  tl.addEventListener('pointerdown', e => { e.stopPropagation(); stopMemoAudio(); try { tl.setPointerCapture(e.pointerId); } catch (_) {} tl._s = true; tlSeek(e); });
   tl.addEventListener('pointermove', e => { if (tl._s) { e.preventDefault(); tlSeek(e); } });
   tl.addEventListener('pointerup', () => { tl._s = false; });
 
