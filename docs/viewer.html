@@ -505,7 +505,8 @@ const emptyhint = $('emptyhint');
 const stageEl = $('stage');
 
 let hasVideo = false;
-let annotReset = null;   // set by the annotation layer: stop memo + reset auto-pause state
+let annotReset = null;         // set by the annotation layer: stop memo + reset auto-pause state
+let stopMemoPlayback = null;   // set by the annotation layer: stop a playing memo, keep the frame
 
 // Set while annotation auto-pause is in control (holding on a mark / playing a
 // memo). Transport controls bail out and dim until the film resumes itself.
@@ -574,6 +575,13 @@ stageEl.addEventListener('drop', e => {
 // ---------- playback: tap the video to play/pause (or pick a file if empty) ----------
 function togglePlay() {
   if (annotLock) return;                       // auto-pause is holding the film
+  // in edit mode the controls aren't locked during a memo; pressing play while a
+  // memo plays would run the film against the audio (out of sync) — stop the memo
+  // first, then continue the film from here.
+  if (stopMemoPlayback && stopMemoPlayback()) {
+    const p = video.play(); if (p && p.catch) p.catch(() => {});
+    return;
+  }
   if (video.paused) { const p = video.play(); if (p && p.catch) p.catch(() => {}); }
   else video.pause();
 }
@@ -1218,6 +1226,19 @@ if (qv) {
   }
   // exposed to restart(): stop the memo and rewind the auto-pause state
   annotReset = function () { stopMemoAudio(); holdUntil = 0; prevTime = 0; };
+
+  // exposed to togglePlay(): if a memo is playing/pending, stop it and keep the
+  // current frame so pressing play continues the film in sync (edit mode has no
+  // annotLock, so play would otherwise run the film against the memo audio).
+  stopMemoPlayback = function () {
+    const active = memoPlaying || pendingMemo ||
+      (currentMemoMark && memoAudio && !memoAudio.paused);
+    if (!active) return false;
+    stopMemoAudio();
+    holdUntil = 0;
+    prevTime = video.currentTime || 0;
+    return true;
+  };
 
   // jump to the start of the previous / next memo (paused there)
   function gotoMemo(dir) {
