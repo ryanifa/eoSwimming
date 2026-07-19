@@ -205,6 +205,8 @@
   }
   .tool:active { background: #1f6bff; }
   .tool.active { background: #1f6bff; color: #fff; border-color: #1f6bff; }
+  .tool:disabled { opacity: .38; cursor: default; }
+  .tool:disabled:active { background: #16241f; }
   .swatch { width: 26px; height: 26px; border-radius: 7px; border: 2px solid #284038;
             cursor: pointer; padding: 0; }
   .swatch.active { border-color: #fff; box-shadow: 0 0 0 2px #1f6bff; }
@@ -1129,6 +1131,9 @@ if (qv) {
   async function startRecording() {
     if (!hasVideo) { toast('Laad eerst een video.'); return; }
     if (mediaRec && mediaRec.state === 'recording') return;
+    if (currentMemoMark && memoAudio && !memoAudio.paused) {   // a memo is playing
+      toast('Memo speelt af — vervang (↻🎙️) of verwijder (🗑) deze eerst.'); return;
+    }
     if (!navigator.mediaDevices || !window.MediaRecorder) { toast('Opnemen wordt niet ondersteund op dit toestel.'); return; }
     if (!video.paused) video.pause();
     let stream;
@@ -1216,6 +1221,10 @@ if (qv) {
     $('replaceMemo').classList.toggle('show', near && edit);
     $('prevMemo').classList.toggle('show', anyMemo);
     $('nextMemo').classList.toggle('show', anyMemo);
+    // while a memo plays you can only replace or delete it — block recording a new one
+    $('micBtn').disabled = playing;
+    $('micBtn').title = playing ? 'Memo speelt af — gebruik ↻🎙️ (vervangen) of 🗑 (verwijderen)'
+                                : 'Spraakmemo op dit frame';
   }
   memoBadge.addEventListener('click', e => {
     e.stopPropagation();
@@ -1244,6 +1253,7 @@ if (qv) {
     memoBadge.classList.remove('playing'); memoBadge.classList.remove('await');
     $('skipMemo').classList.remove('show');
     setAnnotLock(false);
+    updateMemoBadge();                 // re-enable the record button etc.
   }
   // exposed to restart(): stop the memo and rewind the auto-pause state
   annotReset = function () { stopMemoAudio(); holdUntil = 0; prevTime = 0; };
