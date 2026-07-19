@@ -306,20 +306,36 @@
      Inset past the side-button columns (var --bar) so the handle at t=0 isn't
      hidden behind them, and lifted off the bottom edge so it's easy to reach. */
   #timeline { position: absolute; left: calc(var(--bar, 78px) + 8px); right: calc(var(--bar, 78px) + 8px);
-              bottom: 46px; height: 36px; z-index: 5; cursor: pointer; display: none; touch-action: none; }
+              bottom: 46px; height: 60px; z-index: 5; cursor: pointer; display: none; touch-action: none; }
   body.has-video #timeline, body.has-annot #timeline, body.trainer #timeline { display: block; }
-  #tlbar { position: absolute; left: 0; right: 0; top: 14px; height: 7px;
+
+  /* Three separate annotation lanes stacked above the scrub track, so markers of
+     different types never overlap. Top→bottom: memo (blue), notitie (green),
+     pijl/pen (geel). The scrub bar + handle sit below them. */
+  .tllane { position: absolute; left: 0; right: 0; height: 11px; pointer-events: none;
+            border-radius: 3px; background: rgba(255,255,255,.06); }
+  .tllane.memo { top: 0; }
+  .tllane.note { top: 12px; }
+  .tllane.draw { top: 24px; }
+  .tllabel { position: absolute; left: 4px; top: 50%; transform: translateY(-50%);
+             font: 700 8px/1 system-ui, sans-serif; letter-spacing: .4px;
+             text-transform: uppercase; opacity: .65; pointer-events: none; }
+  .tllane.memo .tllabel { color: #38bdf8; }
+  .tllane.note .tllabel { color: #34d399; }
+  .tllane.draw .tllabel { color: #ffcf33; }
+
+  #tlbar { position: absolute; left: 0; right: 0; top: 44px; height: 7px;
            background: rgba(255,255,255,.28); border-radius: 4px; }
-  #tlfill { position: absolute; left: 0; top: 14px; height: 7px;
+  #tlfill { position: absolute; left: 0; top: 44px; height: 7px;
             background: #1f6bff; border-radius: 4px; width: 0; }
-  #tlhandle { position: absolute; top: 6px; width: 24px; height: 24px; margin-left: -12px;
+  #tlhandle { position: absolute; top: 36px; width: 24px; height: 24px; margin-left: -12px;
               border-radius: 50%; background: #fff; border: 2px solid #1f6bff;
               box-shadow: 0 2px 8px rgba(0,0,0,.7); }
-  .tldot { position: absolute; top: 12px; width: 10px; height: 10px; margin-left: -5px;
+  .tldot { position: absolute; top: 25px; width: 9px; height: 9px; margin-left: -4.5px;
            border-radius: 50%; background: #ffcf33; box-shadow: 0 0 0 1px rgba(0,0,0,.5);
-           pointer-events: none; }
-  .tldot.audio { background: #34d399; }
-  .tldot.memo { background: #38bdf8; }
+           pointer-events: none; }              /* pijl/pen lane (default) */
+  .tldot.audio { background: #34d399; top: 13px; }   /* notitie lane */
+  .tldot.memo { background: #38bdf8; top: 1px; }     /* memo lane */
 
   /* note input bar — floats over the video so the frame stays visible */
   #noteInput {
@@ -442,7 +458,12 @@
     <button id="nextMemo" title="Naar volgende memo">⏭</button>
     <button id="memoDel" title="Deze memo verwijderen">🗑</button>
   </div>
-  <div id="timeline"><div id="tlbar"></div><div id="tlfill"></div><div id="tlhandle"></div></div>
+  <div id="timeline">
+    <div class="tllane memo"><span class="tllabel">memo</span></div>
+    <div class="tllane note"><span class="tllabel">notitie</span></div>
+    <div class="tllane draw"><span class="tllabel">pijl/pen</span></div>
+    <div id="tlbar"></div><div id="tlfill"></div><div id="tlhandle"></div>
+  </div>
   <div id="toast"></div>
   <div id="noteInput">
     <input id="noteText" type="text" placeholder="Typ je opmerking…" autocomplete="off" autocapitalize="sentences">
