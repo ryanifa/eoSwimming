@@ -243,6 +243,11 @@
      (visibility, not display) so nothing shifts and you never click the wrong spot. */
   #memoBar button { display: block; visibility: hidden; }
   #memoBar button.show { visibility: visible; }
+  /* in edit mode the bar is docked in the black toolbar (next to ⬇⬆) instead of
+     floating over the video — sit inline there */
+  .toolbar #memoBar { position: static; transform: none; left: auto; top: auto;
+                      z-index: auto; align-items: center; }
+  #memoDock:empty { display: none; }
   #memoBadge {
     display: none;
     -webkit-tap-highlight-color: transparent; touch-action: manipulation;
@@ -441,6 +446,9 @@
     <button class="tool" id="ulAnnot" title="Annotaties uit een bestand laden">⬆</button>
     <input type="file" id="annotFile" accept=".json,application/json" style="display:none">
   </div>
+  <div class="sep"></div>
+  <!-- memo controls dock here in edit mode (moved out of the video overlay) -->
+  <div class="group" id="memoDock"></div>
   <div class="spacer"></div>
   <button class="tool" id="publishBtn" title="Annotaties opslaan & deellink maken">⇪ publiceer</button>
 </div>
@@ -818,6 +826,19 @@ if (qv) {
   const editable = new URLSearchParams(location.search).has('edit')
                    || location.href.indexOf('edit=1') !== -1;
   if (editable) document.body.classList.add('can-edit', 'trainer');
+
+  // Memo controls live over the video for the viewer (preview mode, no toolbar),
+  // but dock into the black edit toolbar (next to ⬇⬆) in edit mode so they don't
+  // cover the frame. Reparent the one #memoBar node so the button IDs stay unique.
+  const memoBar = $('memoBar'), memoDock = $('memoDock');
+  function dockMemoBar() {
+    if (document.body.classList.contains('trainer')) {
+      if (memoBar.parentNode !== memoDock) memoDock.appendChild(memoBar);
+    } else if (memoBar.parentNode !== stageEl) {
+      stageEl.insertBefore(memoBar, tl);
+    }
+  }
+  dockMemoBar();
 
   // visible version marker so we can confirm which build loaded (caches!).
   // Keep the real Pages deploy stamp (build <sha> · <date>) and just append the
@@ -1342,6 +1363,7 @@ if (qv) {
   $('trainerToggle').addEventListener('click', e => {
     e.stopPropagation();
     document.body.classList.toggle('trainer');
+    dockMemoBar();
     layoutBars(); ensureCanvasSize(); renderAnnotations();
   });
 
