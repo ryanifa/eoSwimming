@@ -343,6 +343,10 @@
            pointer-events: none; }              /* pijl/pen lane (default) */
   .tldot.audio { background: #34d399; top: 13px; }   /* notitie lane */
   .tldot.memo { background: #38bdf8; top: 1px; }     /* memo lane */
+  /* pinned ("vastgezet") period: a line between the start and end dot on its lane */
+  .tlspan { position: absolute; height: 3px; border-radius: 2px; opacity: .55; pointer-events: none; }
+  .tlspan.draw { top: 28px; background: #ffcf33; }   /* pijl/pen lane */
+  .tlspan.note { top: 16px; background: #34d399; }   /* notitie lane */
 
   /* note input bar — floats over the video so the frame stays visible */
   #noteInput {
@@ -1065,7 +1069,8 @@ if (qv) {
     const text = noteText.value.trim();
     noteInput.classList.remove('show');
     if (!text) { pendingNoteMemo = null; return; }
-    const mark = { t: video.currentTime || 0, k: 'note', pin: false, color: '#34d399', text };
+    const mark = { t: video.currentTime || 0, k: 'note', pin: pinned, color: '#34d399', text };
+    if (pinned) mark.end = Infinity;   // open-ended until vastzetten is turned off
     if (pendingNoteMemo) { mark.t = pendingNoteMemo.frame; mark.md = pendingNoteMemo.elapsed; }
     marks.push(mark);
     redoStack.length = 0;
@@ -1085,7 +1090,7 @@ if (qv) {
 
   // the caption the viewer reads: shows the note nearest the current frame
   function noteAt(t) {
-    return marks.filter(m => m.k === 'note' && (m.pin || Math.abs(m.t - t) <= WINDOW))
+    return marks.filter(m => m.k === 'note' && visible(m, t))
                 .sort((a, b) => Math.abs(a.t - t) - Math.abs(b.t - t))[0];
   }
   let shownNote = null;
@@ -1096,7 +1101,7 @@ if (qv) {
     const cands = marks.filter(x => {
       if (x.k !== 'note') return false;
       if (x.md != null) return memoEl != null && Math.abs(x.t - currentMemoMark.t) <= 0.06 && x.md <= memoEl + 0.06;
-      return x.pin || Math.abs(x.t - t) <= WINDOW;
+      return visible(x, t);
     });
     const m = cands.filter(x => x.md != null).sort((a, b) => b.md - a.md)[0]
            || cands.filter(x => x.md == null).sort((a, b) => Math.abs(a.t - t) - Math.abs(b.t - t))[0];
@@ -1329,16 +1334,38 @@ if (qv) {
   // ---------- timeline (dots + scrub) ----------
   function updateTimeline() {
     const dur = video.duration || 0;
-    tl.querySelectorAll('.tldot').forEach(d => d.remove());
+    tl.querySelectorAll('.tldot, .tlspan').forEach(d => d.remove());
     if (dur > 0) {
+      const laneOf = m => m.k === 'note' ? 'note' : m.k === 'memo' ? 'memo' : 'draw';
+      const dotClass = k => 'tldot' + (k === 'note' ? ' audio' : k === 'memo' ? ' memo' : '');
+      const pct = x => (Math.max(0, Math.min(1, x / dur)) * 100) + '%';
+      // pinned periods first (behind the dots): a line spanning t → end on its lane,
+      // with a closing dot where the pin ends (open pins run to the video's end).
+      for (const m of marks) {
+        if (!m.pin) continue;
+        const kind = laneOf(m);                 // memos aren't pinnable → note/draw only
+        const endT = isFinite(m.end) ? m.end : dur;
+        const a = Math.max(0, Math.min(1, m.t / dur)), b = Math.max(a, Math.min(1, endT / dur));
+        const span = document.createElement('div');
+        span.className = 'tlspan ' + kind;
+        span.style.left = (a * 100) + '%';
+        span.style.width = ((b - a) * 100) + '%';
+        tl.appendChild(span);
+        if (isFinite(m.end)) {
+          const ed = document.createElement('div');
+          ed.className = dotClass(kind);
+          ed.style.left = pct(endT);
+          tl.appendChild(ed);
+        }
+      }
       const seen = new Set();
       for (const m of marks) {
-        const kind = m.k === 'note' ? 'note' : m.k === 'memo' ? 'memo' : 'draw';
+        const kind = laneOf(m);
         const key = m.t.toFixed(2) + kind;
         if (seen.has(key)) continue; seen.add(key);
         const dot = document.createElement('div');
-        dot.className = 'tldot' + (kind === 'note' ? ' audio' : kind === 'memo' ? ' memo' : '');
-        dot.style.left = (Math.min(1, m.t / dur) * 100) + '%';
+        dot.className = dotClass(kind);
+        dot.style.left = pct(m.t);
         tl.appendChild(dot);
       }
     }
