@@ -435,7 +435,8 @@
   <div class="group">
     <button class="tool" id="noteBtn" title="Tekstnotitie op dit frame">📝 notitie</button>
     <button class="tool" id="micBtn"  title="Spraakmemo op dit frame">🎙️ memo</button>
-    <button class="tool" id="pinBtn"  title="Markering op hele video tonen">📌 vastzet</button>
+    <button class="tool" id="pinDrawBtn" title="Pijl/pen vastzetten — blijft staan tot je het weer uitzet">📌 pijl/pen</button>
+    <button class="tool" id="pinNoteBtn" title="Notitie vastzetten — blijft staan tot je het weer uitzet">📌 notitie</button>
   </div>
   <div class="sep"></div>
   <div class="group">
@@ -819,7 +820,7 @@ if (qv) {
   const COLORS = ['#ff3b30', '#ffcf33', '#22c55e', '#3b82f6'];
   const WINDOW = 0.20;          // s: a non-pinned mark shows within ±WINDOW of its time
   let marks = [];               // {t,k:'pen'|'arrow'|'note',color,pin, pts|x1..y2 | text}
-  let tool = 'pen', color = COLORS[0], pinned = false, liveMark = null;
+  let tool = 'pen', color = COLORS[0], pinDraw = false, pinNote = false, liveMark = null;
   let prevTime = 0, holdUntil = 0;   // auto play/pause state
   const HOLD_MS = 2200;          // base hold on a drawing/short-note frame
   const EARLY_MEMO = 1.0;        // memos before this (s) auto-play only after the start
@@ -969,9 +970,9 @@ if (qv) {
     if (!video.paused) video.pause();
     const t = video.currentTime || 0, [x, y] = evToNorm(e);
     liveMark = (tool === 'pen')
-      ? { t, k: 'pen', color, pin: pinned, pts: [[x, y]] }
-      : { t, k: 'arrow', color, pin: pinned, x1: x, y1: y, x2: x, y2: y };
-    if (pinned) liveMark.end = Infinity;   // open-ended until vastzetten is turned off
+      ? { t, k: 'pen', color, pin: pinDraw, pts: [[x, y]] }
+      : { t, k: 'arrow', color, pin: pinDraw, x1: x, y1: y, x2: x, y2: y };
+    if (pinDraw) liveMark.end = Infinity;   // open-ended until pijl/pen-vastzetten is turned off
     const mc = memoCtx();                  // drawn during a memo? pin it to that moment in the memo
     if (mc) { liveMark.t = mc.frame; liveMark.md = mc.elapsed; }
     marks.push(liveMark); renderAnnotations();
@@ -1000,17 +1001,32 @@ if (qv) {
     b.addEventListener('click', () => { setActive('.tool[data-tool]', b); tool = b.dataset.tool; }));
   document.querySelectorAll('.swatch').forEach(b =>
     b.addEventListener('click', () => { setActive('.swatch', b); color = b.dataset.color; }));
-  $('pinBtn').addEventListener('click', () => {
-    pinned = !pinned; $('pinBtn').classList.toggle('active', pinned);
-    if (pinned) {
-      toast('Vastzetten AAN — wat je nu tekent blijft staan, tot je vastzetten weer uitzet');
+  // Pijl/pen and notities pin independently — each toggle only closes its own
+  // type's still-open pins, so their pinned periods can differ.
+  function closePins(kinds) {
+    const t = video.currentTime || 0; let n = 0;
+    for (const m of marks) if (kinds.indexOf(m.k) !== -1 && m.pin && !isFinite(m.end)) { m.end = t; n++; }
+    updateTimeline();
+    return n;
+  }
+  $('pinDrawBtn').addEventListener('click', () => {
+    pinDraw = !pinDraw; $('pinDrawBtn').classList.toggle('active', pinDraw);
+    if (pinDraw) {
+      toast('Pijl/pen vastzetten AAN — wat je nu tekent blijft staan, tot je het weer uitzet');
     } else {
-      // close any still-open pinned marks at the current frame: they disappear from here on
-      const t = video.currentTime || 0; let n = 0;
-      for (const m of marks) if (m.pin && !isFinite(m.end)) { m.end = t; n++; }
-      updateTimeline();
-      toast(n ? ('Vastzetten gestopt — ' + n + ' markering(en) lopen tot hier en zijn daarna weg')
-              : 'Vastzetten uit — nieuwe markeringen horen bij hun frame');
+      const n = closePins(['pen', 'arrow']);
+      toast(n ? ('Pijl/pen vastzetten gestopt — ' + n + ' markering(en) lopen tot hier')
+              : 'Pijl/pen vastzetten uit — nieuwe tekeningen horen bij hun frame');
+    }
+  });
+  $('pinNoteBtn').addEventListener('click', () => {
+    pinNote = !pinNote; $('pinNoteBtn').classList.toggle('active', pinNote);
+    if (pinNote) {
+      toast('Notitie vastzetten AAN — je volgende notitie blijft staan, tot je het weer uitzet');
+    } else {
+      const n = closePins(['note']);
+      toast(n ? ('Notitie vastzetten gestopt — ' + n + ' notitie(s) lopen tot hier')
+              : 'Notitie vastzetten uit — nieuwe notities horen bij hun frame');
     }
   });
   // undo / redo with feedback so you can see what happens
@@ -1069,8 +1085,8 @@ if (qv) {
     const text = noteText.value.trim();
     noteInput.classList.remove('show');
     if (!text) { pendingNoteMemo = null; return; }
-    const mark = { t: video.currentTime || 0, k: 'note', pin: pinned, color: '#34d399', text };
-    if (pinned) mark.end = Infinity;   // open-ended until vastzetten is turned off
+    const mark = { t: video.currentTime || 0, k: 'note', pin: pinNote, color: '#34d399', text };
+    if (pinNote) mark.end = Infinity;   // open-ended until notitie-vastzetten is turned off
     if (pendingNoteMemo) { mark.t = pendingNoteMemo.frame; mark.md = pendingNoteMemo.elapsed; }
     marks.push(mark);
     redoStack.length = 0;
