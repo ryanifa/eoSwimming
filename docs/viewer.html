@@ -207,6 +207,8 @@
   .tool.active { background: #1f6bff; color: #fff; border-color: #1f6bff; }
   .tool:disabled { opacity: .38; cursor: default; }
   .tool:disabled:active { background: #16241f; }
+  .tool.danger { color: #ff9a9a; border-color: #7a2020; }
+  .tool.danger:active { background: #b91c1c; color: #fff; border-color: #b91c1c; }
   .swatch { width: 26px; height: 26px; border-radius: 7px; border: 2px solid #284038;
             cursor: pointer; padding: 0; }
   .swatch.active { border-color: #fff; box-shadow: 0 0 0 2px #1f6bff; }
@@ -444,6 +446,7 @@
     <button class="tool" id="redoBtn"  title="Opnieuw doen (herstel laatste ongedaan)">⟳</button>
     <button class="tool" id="drawDel"  title="Alleen de laatste tekening op dit frame wissen">✐✕</button>
     <button class="tool" id="clearBtn" title="Alles op dit frame wissen">🗑</button>
+    <button class="tool danger" id="resetAll" title="ALLE annotaties wissen — helemaal opnieuw beginnen">♻︎ reset</button>
   </div>
   <div class="sep"></div>
   <div class="group">
@@ -1068,6 +1071,20 @@ if (qv) {
   $('clearBtn').addEventListener('click', () => {
     const t = video.currentTime || 0; marks = marks.filter(m => !visible(m, t));
     redoStack = []; refreshAnnot();
+  });
+  // RESET: wipe ALL annotations and start from scratch (confirmed — not undoable)
+  $('resetAll').addEventListener('click', () => {
+    if (!marks.length) { toast('Er zijn nog geen annotaties.'); return; }
+    const n = marks.length;
+    if (!confirm('Alle ' + n + ' annotatie(s) wissen en helemaal opnieuw beginnen?\n\nDit kan niet ongedaan worden gemaakt.')) return;
+    stopMemoAudio();                          // in case a memo is playing/recording
+    marks = []; redoStack = []; liveMark = null;
+    pinDraw = pinNote = false;
+    $('pinDrawBtn').classList.remove('active');
+    $('pinNoteBtn').classList.remove('active');
+    refreshAnnot(); renderAnnotations();
+    clearDraft();                             // so a refresh doesn't restore them
+    toast('Alle annotaties gewist — je begint helemaal opnieuw.');
   });
 
   // ---------- text notes ----------
