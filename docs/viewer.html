@@ -1236,6 +1236,7 @@ if (qv) {
     e.stopPropagation();
     const m = currentMemoMark || nearestMemo(video.currentTime || 0);
     if (!m) return;
+    if (m === currentMemoMark) stopMemoAudio();   // stop playback of the memo we're deleting
     const i = marks.indexOf(m); if (i >= 0) marks.splice(i, 1);
     updateTimeline(); updateMemoBadge(); toast('Memo verwijderd.');
   });
