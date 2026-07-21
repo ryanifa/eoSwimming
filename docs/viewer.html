@@ -1623,7 +1623,11 @@ if (qv) {
       if (!marks.length) { localStorage.removeItem(DRAFT_KEY); return; }
       localStorage.setItem(DRAFT_KEY, JSON.stringify({ at: Date.now(), data: serialize() }));
     } catch (e) {
-      if (!draftWarned) { draftWarned = true; toast('⚠️ Concept te groot om automatisch te bewaren (audio) — ⇪ publiceer tussentijds.'); }
+      // couldn't store the current work (usually audio memos > localStorage limit).
+      // Drop any earlier draft too, otherwise a refresh would restore that STALE,
+      // out-of-date version and look like your latest changes were lost.
+      try { localStorage.removeItem(DRAFT_KEY); } catch (_) {}
+      if (!draftWarned) { draftWarned = true; toast('⚠️ Concept te groot om automatisch te bewaren (audio) — gebruik ⬇ (bestand) of ⇪ publiceer om te bewaren.'); }
     }
   }
   function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (_) {} }
