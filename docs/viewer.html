@@ -77,6 +77,11 @@
   body.annot-lock .sidebtns button {
     opacity: .3; pointer-events: none; filter: grayscale(1);
   }
+  /* ...except the memo badge: it must stay tappable to pause/resume the memo
+     that the lock is holding for. */
+  body.annot-lock #memoBadge {
+    opacity: 1; pointer-events: auto; filter: none;
+  }
 
   /* Small time / frame readout on the video. */
   #readout {
@@ -251,12 +256,16 @@
   .toolbar #memoBar { position: static; transform: none; left: auto; top: auto;
                       z-index: auto; align-items: center; }
   #memoDock:empty { display: none; }
+  /* memo play/pause/resume — lives in the right side column, directly under the
+     regular play button, so film-play and memo-play sit together. */
   #memoBadge {
     display: none;
     -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    width: 100%; max-width: 112px; min-width: 0;
     background: rgba(0,0,0,.7); color: #38bdf8; border: 2px solid #38bdf8;
-    border-radius: 999px; font-size: 16px; font-weight: 700;
-    padding: 7px 14px; cursor: pointer; white-space: nowrap;
+    border-radius: 14px; font-size: 14px; font-weight: 800;
+    padding: 12px 4px; cursor: pointer; white-space: nowrap;
+    box-shadow: 0 2px 12px rgba(0,0,0,.55);
   }
   #memoBadge.show { display: block; }
   #memoBadge.playing { background: #38bdf8; color: #04110d; }
@@ -472,7 +481,6 @@
   <div id="noteCap"></div>
   <div id="memoBar">
     <button id="prevMemo" title="Naar vorige memo">⏮</button>
-    <button id="memoBadge" title="Memo afspelen">🔊 memo</button>
     <button id="skipMemo" title="Memo overslaan">SKIP ⏭</button>
     <button id="replaceMemo" title="Deze memo vervangen (opnieuw inspreken)">↻🎙️</button>
     <button id="nextMemo" title="Naar volgende memo">⏭</button>
@@ -516,6 +524,7 @@
   <div class="sidebtns right">
     <button id="fwd1"  title="Forward 1 frame (→)">+1</button>
     <button id="playBtn" title="Play / pause">▶</button>
+    <button id="memoBadge" title="Memo afspelen">🔊 memo</button>
     <button id="fwd10" title="Forward 10 frames (Shift+→)">+10</button>
     <select id="speedSel" title="Afspeelsnelheid">
       <option value="1">1×</option>
@@ -1296,8 +1305,8 @@ if (qv) {
     memoBadge.classList.toggle('show', near);
     memoBadge.classList.toggle('playing', active);
     memoBadge.classList.toggle('paused', paused);
-    // badge doubles as play / pause / resume for a memo
-    memoBadge.textContent = playing ? '⏸ pauze' : paused ? '▶ verder' : '🔊 memo';
+    // badge doubles as play / pause / resume for a memo (under the film play button)
+    memoBadge.textContent = playing ? '⏸ memo' : paused ? '▶ memo' : '🔊 memo';
     memoBadge.title = playing ? 'Memo pauzeren' : paused ? 'Memo hervatten' : 'Memo afspelen';
     $('skipMemo').classList.toggle('show', active);
     $('memoDel').classList.toggle('show', near && edit);
