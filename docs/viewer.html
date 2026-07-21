@@ -1366,21 +1366,24 @@ if (qv) {
     return !!(memoPlaying || pendingMemo || (currentMemoMark && memoAudio));
   };
 
-  // jump to the start of the previous / next memo (paused there)
+  // jump to the previous / next memo and play it straight away
   function gotoMemo(dir) {
-    const ts = marks.filter(m => m.k === 'memo').map(m => m.t).sort((a, b) => a - b);
-    if (!ts.length) return;
-    const t = video.currentTime || 0, E = 0.06;
+    const memos = marks.filter(m => m.k === 'memo').sort((a, b) => a.t - b.t);
+    if (!memos.length) return;
+    const E = 0.06;
+    // measure from the memo in focus (playing/paused), else from the current frame,
+    // so repeated presses step reliably even while a memo is playing.
+    const ref = (currentMemoMark && currentMemoMark.k === 'memo') ? currentMemoMark.t : (video.currentTime || 0);
     let target = null;
-    if (dir < 0) { for (let i = ts.length - 1; i >= 0; i--) if (ts[i] < t - E) { target = ts[i]; break; } }
-    else { for (let i = 0; i < ts.length; i++) if (ts[i] > t + E) { target = ts[i]; break; } }
-    if (target == null) { toast(dir < 0 ? 'Geen eerdere memo.' : 'Geen volgende memo.'); return; }
+    if (dir < 0) { for (let i = memos.length - 1; i >= 0; i--) if (memos[i].t < ref - E) { target = memos[i]; break; } }
+    else { for (let i = 0; i < memos.length; i++) if (memos[i].t > ref + E) { target = memos[i]; break; } }
+    if (!target) { toast(dir < 0 ? 'Geen eerdere memo.' : 'Geen volgende memo.'); return; }
     stopMemoAudio(); holdUntil = 0;
     if (!video.paused) video.pause();
-    // land a hair BEFORE the memo frame so pressing play crosses it and the
-    // memo triggers (sitting exactly on it wouldn't fire the crossing).
-    const before = Math.max(0, target - 0.08);
-    try { video.currentTime = before; } catch (_) {} prevTime = before;
+    try { video.currentTime = target.t; } catch (_) {} prevTime = target.t;
+    // land on the memo and play it; park back on its frame when it ends so the
+    // next/prev step measures from the right place.
+    playMemo(target, () => { try { video.currentTime = target.t; } catch (_) {} prevTime = target.t; });
   }
   $('prevMemo').addEventListener('click', e => { e.stopPropagation(); gotoMemo(-1); });
   $('nextMemo').addEventListener('click', e => { e.stopPropagation(); gotoMemo(1); });
