@@ -52,6 +52,7 @@
     backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
   }
   .sidebtns button:active { background: #1f6bff; border-color: #1f6bff; }
+  .sidebtns button:disabled { opacity: .3; pointer-events: none; filter: grayscale(1); cursor: default; }
 
   /* playback-speed dropdown — distinct amber fill + heavy text so it clearly
      reads as a different control from the black/white frame-step buttons. */
@@ -546,7 +547,7 @@ const stageEl = $('stage');
 
 let hasVideo = false;
 let annotReset = null;         // set by the annotation layer: stop memo + reset auto-pause state
-let stopMemoPlayback = null;   // set by the annotation layer: stop a playing memo, keep the frame
+let memoActive = null;   // set by the annotation layer: is a memo playing/paused right now?
 
 // Set while annotation auto-pause is in control (holding on a mark / playing a
 // memo). Transport controls bail out and dim until the film resumes itself.
@@ -615,13 +616,9 @@ stageEl.addEventListener('drop', e => {
 // ---------- playback: tap the video to play/pause (or pick a file if empty) ----------
 function togglePlay() {
   if (annotLock) return;                       // auto-pause is holding the film
-  // in edit mode the controls aren't locked during a memo; pressing play while a
-  // memo plays would run the film against the audio (out of sync) — stop the memo
-  // first, then continue the film from here.
-  if (stopMemoPlayback && stopMemoPlayback()) {
-    const p = video.play(); if (p && p.catch) p.catch(() => {});
-    return;
-  }
+  // during a memo the film is driven by the memo itself — the play button does
+  // nothing (it's disabled too); pause/resume the memo with the ⏸/▶ badge instead.
+  if (memoActive && memoActive()) return;
   if (video.paused) { const p = video.play(); if (p && p.catch) p.catch(() => {}); }
   else video.pause();
 }
@@ -1311,6 +1308,10 @@ if (qv) {
     $('micBtn').disabled = active;
     $('micBtn').title = active ? 'Memo bezig — gebruik ↻🎙️ (vervangen) of 🗑 (verwijderen)'
                                : 'Spraakmemo op dit frame';
+    // the play button does nothing during a memo — disable it so that's obvious;
+    // the ⏸/▶ badge is the memo control.
+    $('playBtn').disabled = active;
+    $('playBtn').title = active ? 'Tijdens een memo: pauzeer/hervat met de ⏸/▶ memo-knop' : 'Play / pause';
   }
   memoBadge.addEventListener('click', e => {
     e.stopPropagation();
@@ -1348,16 +1349,10 @@ if (qv) {
   // exposed to restart(): stop the memo and rewind the auto-pause state
   annotReset = function () { stopMemoAudio(); holdUntil = 0; prevTime = 0; };
 
-  // exposed to togglePlay(): if a memo is playing/pending, stop it and keep the
-  // current frame so pressing play continues the film in sync (edit mode has no
-  // annotLock, so play would otherwise run the film against the memo audio).
-  stopMemoPlayback = function () {
-    const active = memoPlaying || pendingMemo || (currentMemoMark && memoAudio);
-    if (!active) return false;
-    stopMemoAudio();
-    holdUntil = 0;
-    prevTime = video.currentTime || 0;
-    return true;
+  // exposed to togglePlay(): true while a memo is playing/paused/pending, so the
+  // play button and spacebar stay inert (the ⏸/▶ badge drives the memo instead).
+  memoActive = function () {
+    return !!(memoPlaying || pendingMemo || (currentMemoMark && memoAudio));
   };
 
   // jump to the start of the previous / next memo (paused there)
