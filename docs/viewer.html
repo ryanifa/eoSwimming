@@ -262,14 +262,13 @@
     display: none;
     -webkit-tap-highlight-color: transparent; touch-action: manipulation;
     width: 100%; max-width: 112px; min-width: 0;
-    background: rgba(0,0,0,.7); color: #38bdf8; border: 2px solid #38bdf8;
+    background: rgba(0,0,0,.7); color: #ffcf33; border: 2px solid #ffcf33;
     border-radius: 14px; font-size: 14px; font-weight: 800;
     padding: 12px 4px; cursor: pointer; white-space: nowrap;
     box-shadow: 0 2px 12px rgba(0,0,0,.55);
   }
   #memoBadge.show { display: block; }
-  #memoBadge.playing { background: #38bdf8; color: #04110d; }
-  #memoBadge.paused { background: rgba(0,0,0,.7); color: #ffcf33; border-color: #ffcf33; }
+  #memoBadge.playing { background: #38bdf8; color: #04110d; border-color: #38bdf8; }
   #memoBadge.await { animation: pulse 1s ease-in-out infinite; }
   /* SKIP sits under the memo badge in the side column */
   #skipMemo {
@@ -1308,9 +1307,9 @@ if (qv) {
     memoBadge.classList.toggle('show', near);
     memoBadge.classList.toggle('playing', active);
     memoBadge.classList.toggle('paused', paused);
-    // badge doubles as play / pause / resume for a memo (under the film play button)
-    memoBadge.textContent = playing ? '⏸ memo' : paused ? '▶ memo' : '🔊 memo';
-    memoBadge.title = playing ? 'Memo pauzeren' : paused ? 'Memo hervatten' : 'Memo afspelen';
+    // one memo play/pause control: ▶ memo = tap to play or resume, ⏸ memo = playing
+    memoBadge.textContent = playing ? '⏸ memo' : '▶ memo';
+    memoBadge.title = playing ? 'Memo pauzeren' : (paused ? 'Memo hervatten' : 'Memo afspelen');
     $('skipMemo').classList.toggle('show', active);
     $('memoDel').classList.toggle('show', near && edit);
     $('replaceMemo').classList.toggle('show', near && edit);
