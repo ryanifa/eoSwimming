@@ -77,9 +77,9 @@
   body.annot-lock .sidebtns button {
     opacity: .3; pointer-events: none; filter: grayscale(1);
   }
-  /* ...except the memo badge: it must stay tappable to pause/resume the memo
-     that the lock is holding for. */
-  body.annot-lock #memoBadge {
+  /* ...except the memo controls: they must stay tappable to pause/resume/skip
+     the memo that the lock is holding for. */
+  body.annot-lock #memoBadge, body.annot-lock #skipMemo {
     opacity: 1; pointer-events: auto; filter: none;
   }
 
@@ -271,12 +271,15 @@
   #memoBadge.playing { background: #38bdf8; color: #04110d; }
   #memoBadge.paused { background: rgba(0,0,0,.7); color: #ffcf33; border-color: #ffcf33; }
   #memoBadge.await { animation: pulse 1s ease-in-out infinite; }
+  /* SKIP sits under the memo badge in the side column */
   #skipMemo {
     display: none;
     -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    width: 100%; max-width: 112px; min-width: 0;
     background: rgba(0,0,0,.7); color: #fff; border: 2px solid #fff;
-    border-radius: 999px; font-size: 16px; font-weight: 800;
-    padding: 7px 14px; cursor: pointer; white-space: nowrap;
+    border-radius: 14px; font-size: 13px; font-weight: 800;
+    padding: 12px 4px; cursor: pointer; white-space: nowrap;
+    box-shadow: 0 2px 12px rgba(0,0,0,.55);
   }
   #skipMemo.show { display: block; }
   #skipMemo:active { background: #fff; color: #04110d; }
@@ -481,7 +484,6 @@
   <div id="noteCap"></div>
   <div id="memoBar">
     <button id="prevMemo" title="Naar vorige memo">⏮</button>
-    <button id="skipMemo" title="Memo overslaan">SKIP ⏭</button>
     <button id="replaceMemo" title="Deze memo vervangen (opnieuw inspreken)">↻🎙️</button>
     <button id="nextMemo" title="Naar volgende memo">⏭</button>
     <button id="memoDel" title="Deze memo verwijderen">🗑</button>
@@ -525,6 +527,7 @@
     <button id="fwd1"  title="Forward 1 frame (→)">+1</button>
     <button id="playBtn" title="Play / pause">▶</button>
     <button id="memoBadge" title="Memo afspelen">🔊 memo</button>
+    <button id="skipMemo" title="Memo overslaan">SKIP ⏭</button>
     <button id="fwd10" title="Forward 10 frames (Shift+→)">+10</button>
     <select id="speedSel" title="Afspeelsnelheid">
       <option value="1">1×</option>
