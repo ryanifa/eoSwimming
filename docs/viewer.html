@@ -259,6 +259,7 @@
   }
   #memoBadge.show { display: block; }
   #memoBadge.playing { background: #38bdf8; color: #04110d; }
+  #memoBadge.paused { background: rgba(0,0,0,.7); color: #ffcf33; border-color: #ffcf33; }
   #memoBadge.await { animation: pulse 1s ease-in-out infinite; }
   #skipMemo {
     display: none;
@@ -1269,25 +1270,54 @@ if (qv) {
     const p = a.play();
     if (p && p.catch) p.catch(() => { toast('Tik op de video om geluid aan te zetten, en speel opnieuw af.'); finish(); });
   }
+  // pause / resume the memo mid-playback (the film freezes on its current frame).
+  // The watchdog is wall-clock based, so drop it while paused and reschedule for
+  // the remaining audio on resume — otherwise a long pause would end the memo.
+  function pauseMemo() {
+    if (!(currentMemoMark && memoAudio && !memoAudio.paused)) return false;
+    try { memoAudio.pause(); } catch (_) {}
+    clearTimeout(memoWatchdog);
+    updateMemoBadge();
+    return true;
+  }
+  function resumeMemo() {
+    if (!(currentMemoMark && memoAudio && memoAudio.paused)) return false;
+    const remain = ((currentMemoMark.dur || 4) - (memoAudio.currentTime || 0)) * 1000 + 1200;
+    memoWatchdog = setTimeout(() => { if (currentMemoFinish) currentMemoFinish(); }, Math.max(1000, remain));
+    const p = memoAudio.play(); if (p && p.catch) p.catch(() => {});
+    updateMemoBadge();
+    return true;
+  }
   function updateMemoBadge() {
     const t = video.currentTime || 0;
-    const playing = !!(currentMemoMark && memoAudio && !memoAudio.paused);   // keep controls up during a memo (film may scrub away)
-    const near = playing || marks.some(m => m.k === 'memo' && (m.pin || Math.abs(m.t - t) <= WINDOW));
+    const active = !!(currentMemoMark && memoAudio);           // a memo session (playing OR paused)
+    const paused = active && memoAudio.paused;                 // frozen mid-memo
+    const playing = active && !paused;
+    const near = active || marks.some(m => m.k === 'memo' && (m.pin || Math.abs(m.t - t) <= WINDOW));
     const anyMemo = marks.some(m => m.k === 'memo');
     const edit = document.body.classList.contains('trainer');
     memoBadge.classList.toggle('show', near);
+    memoBadge.classList.toggle('playing', active);
+    memoBadge.classList.toggle('paused', paused);
+    // badge doubles as play / pause / resume for a memo
+    memoBadge.textContent = playing ? '⏸ pauze' : paused ? '▶ verder' : '🔊 memo';
+    memoBadge.title = playing ? 'Memo pauzeren' : paused ? 'Memo hervatten' : 'Memo afspelen';
+    $('skipMemo').classList.toggle('show', active);
     $('memoDel').classList.toggle('show', near && edit);
     $('replaceMemo').classList.toggle('show', near && edit);
     $('prevMemo').classList.toggle('show', anyMemo);
     $('nextMemo').classList.toggle('show', anyMemo);
-    // while a memo plays you can only replace or delete it — block recording a new one
-    $('micBtn').disabled = playing;
-    $('micBtn').title = playing ? 'Memo speelt af — gebruik ↻🎙️ (vervangen) of 🗑 (verwijderen)'
-                                : 'Spraakmemo op dit frame';
+    // during a memo you can only replace or delete it — block recording a new one
+    $('micBtn').disabled = active;
+    $('micBtn').title = active ? 'Memo bezig — gebruik ↻🎙️ (vervangen) of 🗑 (verwijderen)'
+                               : 'Spraakmemo op dit frame';
   }
   memoBadge.addEventListener('click', e => {
     e.stopPropagation();
-    if (memoBadge.classList.contains('playing')) return;   // already playing (avoid double-trigger)
+    if (currentMemoMark && memoAudio) {                    // a memo is playing/paused → toggle
+      if (memoAudio.paused) resumeMemo(); else pauseMemo();
+      return;
+    }
     playMemo(nearestMemo(video.currentTime || 0));
   });
   // delete the memo (the playing one, or the nearest to the frame)
@@ -1310,7 +1340,7 @@ if (qv) {
     clearTimeout(memoWatchdog);
     try { if (memoAudio) { memoAudio.onended = null; memoAudio.onerror = null; memoAudio.pause(); } } catch (_) {}
     currentMemoFinish = null; currentMemoMark = null; memoPlaying = false; pendingMemo = null;
-    memoBadge.classList.remove('playing'); memoBadge.classList.remove('await');
+    memoBadge.classList.remove('playing'); memoBadge.classList.remove('await'); memoBadge.classList.remove('paused');
     $('skipMemo').classList.remove('show');
     setAnnotLock(false);
     updateMemoBadge();                 // re-enable the record button etc.
@@ -1322,8 +1352,7 @@ if (qv) {
   // current frame so pressing play continues the film in sync (edit mode has no
   // annotLock, so play would otherwise run the film against the memo audio).
   stopMemoPlayback = function () {
-    const active = memoPlaying || pendingMemo ||
-      (currentMemoMark && memoAudio && !memoAudio.paused);
+    const active = memoPlaying || pendingMemo || (currentMemoMark && memoAudio);
     if (!active) return false;
     stopMemoAudio();
     holdUntil = 0;
