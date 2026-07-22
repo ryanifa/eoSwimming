@@ -1,11 +1,12 @@
 """Apply a Trim & rotate EDL (from docs/edit.html) to a video, server-side.
 
-The EDL is JSON: {"regions":[{"a":<s>,"b":<s>,"op":"cut|90_cw|90_ccw|180"}, ...]}.
-Regions with op "cut" are removed; regions with a rotation op rotate only that
-range (later regions win on overlap). Kept ranges are split at rotation
-boundaries, each piece encoded with its own rotation and normalised to one
-padded canvas so differing orientations concatenate cleanly. Read the EDL from
-the $EDL env var (or --edl).
+The EDL is JSON: {"regions":[{"a":<s>,"b":<s>,"op":"cut|90_cw|90_ccw|180|zoom",
+...}, ...]}. Regions with op "cut" are removed; a rotation op rotates only that
+range; a "zoom" op crops into a box (x,y,w,h in 0..1, aspect-locked so w==h) and
+scales it up over that range (later regions win on overlap). Kept ranges are
+split at rotation/zoom boundaries, each piece encoded with its own op and
+normalised to one padded canvas so differing orientations concatenate cleanly.
+Read the EDL from the $EDL env var (or --edl).
 """
 
 from __future__ import annotations
@@ -81,6 +82,7 @@ def main() -> int:
 
     cuts = merge([[r["a"], r["b"]] for r in regions if r.get("op") == "cut"])
     rots = [r for r in regions if r.get("op") in ROT]
+    zooms = [r for r in regions if r.get("op") == "zoom"]
 
     def rot_at(t):
         for r in reversed(rots):
@@ -88,8 +90,14 @@ def main() -> int:
                 return r["op"]
         return None
 
+    def zoom_at(t):
+        for r in reversed(zooms):
+            if r["a"] - EPS <= t < r["b"] - EPS:
+                return r
+        return None
+
     edges = []
-    for r in rots:
+    for r in rots + zooms:
         edges += [r["a"], r["b"]]
 
     segs = []
@@ -98,14 +106,15 @@ def main() -> int:
         for i in range(len(pts) - 1):
             s, e = pts[i], pts[i + 1]
             if e - s > EPS:
-                segs.append((s, e, rot_at((s + e) / 2)))
+                mid = (s + e) / 2
+                segs.append((s, e, rot_at(mid), zoom_at(mid)))
     if not segs:
         print("Nothing left after the edits.", file=sys.stderr)
         return 1
 
     # common canvas that fits every piece's orientation (pad the rest)
     TW = TH = 0
-    for _, _, rot in segs:
+    for _, _, rot, _z in segs:
         w, h = (H, W) if rot in ("90_cw", "90_ccw") else (W, H)
         TW, TH = max(TW, w), max(TH, h)
     # cap to 1080p so the result stays under GitHub Pages' 100 MB serving limit
@@ -116,8 +125,13 @@ def main() -> int:
     TW += TW % 2
     TH += TH % 2
 
-    def vf(rot):
+    def vf(rot, zoom):
         f = []
+        if zoom:                                   # crop into the box, then scale up
+            fw = float(zoom.get("w", 1.0))
+            x = min(max(0.0, float(zoom.get("x", 0.0))), 1.0 - fw)
+            y = min(max(0.0, float(zoom.get("y", 0.0))), 1.0 - fw)
+            f.append(f"crop=iw*{fw:.4f}:ih*{fw:.4f}:iw*{x:.4f}:ih*{y:.4f}")
         if rot in ROT:
             f.append(ROT[rot])
         f += [f"scale={TW}:{TH}:force_original_aspect_ratio=decrease",
@@ -128,12 +142,13 @@ def main() -> int:
     workdir.mkdir(parents=True, exist_ok=True)
     parts = []
     print(f"input {dur:.2f}s {W}x{H} -> {len(segs)} piece(s), canvas {TW}x{TH}")
-    for i, (s, e, rot) in enumerate(segs):
+    for i, (s, e, rot, zoom) in enumerate(segs):
         part = workdir / f"part_{i:03d}.mp4"
-        print(f"  piece {i + 1}/{len(segs)}: {s:.2f}-{e:.2f}s rot={rot or 'none'}")
+        zlbl = f" zoom={1 / float(zoom['w']):.1f}x" if zoom else ""
+        print(f"  piece {i + 1}/{len(segs)}: {s:.2f}-{e:.2f}s rot={rot or 'none'}{zlbl}")
         subprocess.run(
             ["ffmpeg", "-y", "-ss", f"{s:.3f}", "-i", str(args.video), "-t", f"{e - s:.3f}",
-             "-vf", vf(rot),
+             "-vf", vf(rot, zoom),
              "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "fast", "-crf", "20",
              "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(part)],
             check=True)
