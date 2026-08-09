@@ -1,36 +1,33 @@
 <#
 .SYNOPSIS
   Upload a (locally rendered) video to Cloudflare R2 and build a ready-to-share
-  viewer link — in one command. Copies the viewer link to your clipboard.
+  viewer link in one command. Copies the viewer link to your clipboard.
 
 .DESCRIPTION
-  Does the whole chain so you never hand-encode a URL again:
-    1. rclone copy <file>  -> r2:<bucket>/<dest>/<name>   (copy, never sync)
-    2. rclone link ... --expire <hours>h                  -> presigned URL
-    3. URL-encode it and build  viewer.html?v=<encoded>
-    4. print both + copy the viewer link to the clipboard
+  Two modes, chosen automatically:
 
-  Requirements (already set up on this PC):
-    - rclone configured with a remote named "r2" (see rclone.conf)
-    - the bucket below exists and the token can Read & Write it
+  * TOKEN mode (preferred) — when both env vars are set:
+        EOSWIM_MEDIA_BASE       e.g. https://eoswim-media.you.workers.dev
+        EOSWIM_R2_TOKEN_SECRET  the same secret you gave the Worker
+    Builds a short, private, long-lived link:
+        viewer.html?k=<key>&e=<expiry>&t=<token>
+    served by your media Worker. No 7-day limit; you choose -ExpireDays.
 
-.PARAMETER File
-  Path to the local video, e.g.  C:\media\test.mp4
+  * PRESIGNED mode (fallback) — when those env vars are NOT set:
+    Uses `rclone link` (presigned, max 7 days) and builds viewer.html?v=<url>.
+    Handy before the Worker is deployed.
 
-.PARAMETER Dest
-  Folder (key prefix) inside the bucket. Default: swim/2026
+  Upload is always `rclone copy` (never sync — sync deletes on the R2 side).
 
-.PARAMETER Edit
-  Add &edit=1 so the viewer opens straight in annotate mode.
-
-.PARAMETER Annot
-  Optional annotation id to append as &a=<id>.
-
-.PARAMETER ExpireHours
-  Presigned-URL validity in hours. Max 168 (7 days, a hard SigV4 limit). Default 168.
+.PARAMETER File     Path to the local video, e.g. C:\media\test.mp4
+.PARAMETER Dest     Folder (key prefix) in the bucket. Default: swim/2026
+.PARAMETER Edit     Add &edit=1 so the viewer opens straight in annotate mode.
+.PARAMETER Annot    Optional annotation id to append as &a=<id>.
+.PARAMETER ExpireDays  Link validity in days. Default 365 (token mode).
+                       Presigned mode is capped at 7 days regardless.
 
 .EXAMPLE
-  .\publish-to-r2.ps1 -File C:\media\test.mp4
+  .\publish-to-r2.ps1 C:\media\test.mp4
   .\publish-to-r2.ps1 C:\media\jeroen.mp4 -Dest swim/2026 -Edit
 #>
 
@@ -40,62 +37,79 @@ param(
   [Parameter(Position = 1)] [string] $Dest = "swim/2026",
   [switch] $Edit,
   [string] $Annot = "",
-  [int] $ExpireHours = 168
+  [int] $ExpireDays = 365
 )
 
-# ---- config (no secrets here; credentials live in the rclone "r2" remote) ----
+# ---- config (no secrets here; R2 credentials live in the rclone "r2" remote) --
 $Remote     = "r2"
 $Bucket     = "media-private"
 $ViewerBase = "https://ryanifa.github.io/eoSwimming/viewer.html"
+# media Worker + signing secret come from the environment (see worker/README.md)
+$MediaBase  = $env:EOSWIM_MEDIA_BASE
+$Secret     = $env:EOSWIM_R2_TOKEN_SECRET
 # -----------------------------------------------------------------------------
 
 $ErrorActionPreference = "Stop"
 
-if (-not (Get-Command rclone -ErrorAction SilentlyContinue)) {
-  throw "rclone not found on PATH. Install it or open the shell where it works."
-}
-if (-not (Test-Path -LiteralPath $File)) {
-  throw "File not found: $File"
-}
-if ($ExpireHours -lt 1 -or $ExpireHours -gt 168) {
-  throw "ExpireHours must be between 1 and 168 (7 days is the presigned max)."
+function Encode([string]$s) { [System.Uri]::EscapeDataString($s) }
+function EncodeKey([string]$k) { (($k -split '/') | ForEach-Object { Encode $_ }) -join '/' }
+function New-SignedToken([string]$secret, [string]$message) {
+  $h = [System.Security.Cryptography.HMACSHA256]::new([Text.Encoding]::UTF8.GetBytes($secret))
+  try { $bytes = $h.ComputeHash([Text.Encoding]::UTF8.GetBytes($message)) } finally { $h.Dispose() }
+  [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 }
 
-$name = Split-Path -Leaf $File
-$dst  = ($Dest.Trim("/"))            # normalise: no leading/trailing slash
-$key  = "$dst/$name"                 # object key inside the bucket
+if (-not (Get-Command rclone -ErrorAction SilentlyContinue)) {
+  throw "rclone not found on PATH."
+}
+if (-not (Test-Path -LiteralPath $File)) { throw "File not found: $File" }
+if ($ExpireDays -lt 1) { throw "ExpireDays must be >= 1." }
+
+$name   = Split-Path -Leaf $File
+$dst    = $Dest.Trim("/")
+$key    = "$dst/$name"                       # object key inside the bucket
 $target = "${Remote}:${Bucket}/${dst}/"
 
 Write-Host "1/3  Uploading $name -> ${Remote}:${Bucket}/${key}" -ForegroundColor Cyan
-# copy (never sync): sync would delete other files on the R2 side.
-# rclone sets Content-Type from the .mp4 extension automatically (video/mp4).
-rclone copy --progress $File $target
+rclone copy --progress $File $target         # copy, never sync
 if ($LASTEXITCODE -ne 0) { throw "rclone copy failed (exit $LASTEXITCODE)." }
 
-Write-Host "2/3  Making a presigned link (valid $ExpireHours h)" -ForegroundColor Cyan
-$presigned = (rclone link "${Remote}:${Bucket}/${key}" --expire "${ExpireHours}h").Trim()
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($presigned)) {
-  throw "rclone link failed (exit $LASTEXITCODE)."
+$tokenMode = $MediaBase -and $Secret
+if ($tokenMode) {
+  Write-Host "2/3  Signing a private token (valid $ExpireDays days)" -ForegroundColor Cyan
+  $exp = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + ($ExpireDays * 86400)
+  $sig = New-SignedToken $Secret "$key`n$exp"     # HMAC over "<key>\n<exp>"
+  $base = $MediaBase.TrimEnd('/')
+  $mediaUrl = "$base/$(EncodeKey $key)?e=$exp&t=$(Encode $sig)"
+  $validNote = "$ExpireDays days"
+  Write-Host "3/3  Building the short private viewer link" -ForegroundColor Cyan
+  $viewer = "$ViewerBase`?k=$(EncodeKey $key)&e=$exp&t=$(Encode $sig)"
+} else {
+  Write-Host "2/3  No Worker configured -> presigned link (max 7 days)" -ForegroundColor DarkYellow
+  $hours = [Math]::Min($ExpireDays * 24, 168)
+  $presigned = (rclone link "${Remote}:${Bucket}/${key}" --expire "${hours}h").Trim()
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($presigned)) { throw "rclone link failed." }
+  $mediaUrl = $presigned
+  $validNote = "$([Math]::Round($hours/24,1)) days (presigned limit)"
+  Write-Host "3/3  Building the viewer link" -ForegroundColor Cyan
+  $viewer = "$ViewerBase`?v=$(Encode $presigned)"
 }
 
-Write-Host "3/3  Building the viewer link" -ForegroundColor Cyan
-$encoded = [System.Uri]::EscapeDataString($presigned)
-$viewer  = "$ViewerBase`?v=$encoded"
 if ($Annot -ne "") { $viewer += "&a=$Annot" }
 if ($Edit)          { $viewer += "&edit=1" }
 
-# copy the viewer link to the clipboard for easy sharing/opening
 try { Set-Clipboard -Value $viewer; $copied = $true } catch { $copied = $false }
 
-$days = [math]::Round($ExpireHours / 24, 1)
 Write-Host ""
 Write-Host "Done." -ForegroundColor Green
 Write-Host "  object    : ${Bucket}/${key}"
-Write-Host "  presigned : $presigned"
+Write-Host "  media URL : $mediaUrl"
 Write-Host ""
-Write-Host "  VIEWER LINK (valid ~$days days):" -ForegroundColor Yellow
+Write-Host "  VIEWER LINK (valid $validNote):" -ForegroundColor Yellow
 Write-Host "  $viewer"
 if ($copied) { Write-Host "  (copied to clipboard)" -ForegroundColor DarkGray }
-Write-Host ""
-Write-Host "Note: the link stops working after $ExpireHours h (presigned limit)." -ForegroundColor DarkGray
-Write-Host "For a permanent shareable link you'll want the Cloudflare Worker path later." -ForegroundColor DarkGray
+if (-not $tokenMode) {
+  Write-Host ""
+  Write-Host "Tip: deploy the media Worker and set EOSWIM_MEDIA_BASE + EOSWIM_R2_TOKEN_SECRET" -ForegroundColor DarkGray
+  Write-Host "     to get short, private, long-lived links instead of this presigned one." -ForegroundColor DarkGray
+}

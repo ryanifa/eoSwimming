@@ -798,13 +798,33 @@ requestAnimationFrame(tick);
 
 // ---------- auto-load from the query string ----------
 //   ?v=<full-url>       any direct video / release download link
+//   ?k=<key>            an object key served by the private media Worker
+//                       (with &t=<token>&e=<expiry>) — the short, private link
 //   ?r=<tag>            a release tag in THIS repo (asset defaults to composite.mp4)
 //   ?r=<tag>&f=<file>   pick a different asset name from that release
+//
+// MEDIA_BASE = your deployed media Worker (see worker/). Set this to your
+// workers.dev URL (or custom domain) to enable the short ?k= links, e.g.
+//   const MEDIA_BASE = 'https://eoswim-media.yourname.workers.dev';
+const MEDIA_BASE = '';
 const qp = new URLSearchParams(location.search);
 const qv = qp.get('v') || qp.get('video');
+const qk = qp.get('k');
 const rtag = qp.get('r') || qp.get('release');
 if (qv) {
   loadSrc(qv, qv.split('/').pop() || qv);
+} else if (qk) {
+  if (!MEDIA_BASE) {
+    showMsg('Deze link gebruikt <code>?k=</code> maar <code>MEDIA_BASE</code> is nog niet ingesteld in de viewer.');
+  } else {
+    const t = qp.get('t'), e = qp.get('e');
+    let u = MEDIA_BASE.replace(/\/+$/, '') + '/' + qk.split('/').map(encodeURIComponent).join('/');
+    const q = [];
+    if (e) q.push('e=' + encodeURIComponent(e));
+    if (t) q.push('t=' + encodeURIComponent(t));
+    if (q.length) u += '?' + q.join('&');
+    loadSrc(u, qk.split('/').pop() || qk);
+  }
 } else if (rtag) {
   const owner = location.hostname.split('.')[0];
   const repo = location.pathname.split('/').filter(Boolean)[0] || '';

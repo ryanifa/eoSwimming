@@ -4,27 +4,36 @@ Helper scripts you run **on your own PC** (not in CI).
 
 ## publish-to-r2.ps1
 
-Upload a locally rendered video to Cloudflare R2 and get a ready-to-share
-viewer link in one command — no hand-encoding of URLs.
+Upload a locally rendered video to Cloudflare R2 and get a ready-to-share viewer
+link in one command — no hand-encoding of URLs. The link is copied to your
+clipboard.
 
-**Prerequisites** (already set up): rclone configured with a remote named `r2`,
-pointing at the private `media-private` bucket.
+**Prerequisite:** rclone configured with a remote named `r2` → the private
+`media-private` bucket.
 
-**Usage** (PowerShell):
+The script has **two modes**, chosen automatically:
+
+| Mode | When | Link it builds |
+|---|---|---|
+| **Token** (preferred) | env vars `EOSWIM_MEDIA_BASE` + `EOSWIM_R2_TOKEN_SECRET` are set | short, private, long-lived `viewer.html?k=…&t=…` via the media Worker |
+| **Presigned** (fallback) | those env vars are not set | `viewer.html?v=<presigned>` (max 7 days) |
+
+Set up the token mode once (see `../worker/README.md`), then:
 
 ```powershell
-# simplest: upload to swim/2026 and copy a viewer link to the clipboard
-.\publish-to-r2.ps1 C:\media\test.mp4
-
-# open straight into annotate mode, different folder
-.\publish-to-r2.ps1 C:\media\jeroen.mp4 -Dest swim/2026 -Edit
-
-# attach an existing annotation id
-.\publish-to-r2.ps1 C:\media\test.mp4 -Annot ar4knmu
+setx EOSWIM_MEDIA_BASE      "https://eoswim-media.you.workers.dev"
+setx EOSWIM_R2_TOKEN_SECRET "<the same secret you gave the Worker>"
 ```
 
-What it does: `rclone copy` → `rclone link --expire 168h` (presigned, max 7 days)
-→ URL-encodes → builds `viewer.html?v=…` → copies the link to your clipboard.
+(Open a new PowerShell after `setx` so the vars are picked up.)
 
-**Limitation:** presigned links are valid at most 7 days. For permanent
-shareable links, use the (future) Cloudflare Worker path.
+**Usage:**
+
+```powershell
+.\publish-to-r2.ps1 C:\media\test.mp4                       # upload -> link on clipboard
+.\publish-to-r2.ps1 C:\media\jeroen.mp4 -Dest swim/2026 -Edit   # open in annotate mode
+.\publish-to-r2.ps1 C:\media\test.mp4 -Annot ar4knmu -ExpireDays 90
+```
+
+First run may need: `powershell -ExecutionPolicy Bypass -File .\publish-to-r2.ps1 …`
+(or `Unblock-File .\publish-to-r2.ps1` if you downloaded it).

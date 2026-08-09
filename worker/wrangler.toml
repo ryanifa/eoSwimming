@@ -1,0 +1,13 @@
+name = "eoswim-media"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+# Bind the private R2 bucket. It was created with EU jurisdiction, so the
+# jurisdiction must be set here or the binding won't find it.
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "media-private"
+jurisdiction = "eu"
+
+# The HMAC signing secret is NOT stored here. Set it once, out of band:
+#   wrangler secret put SIGNING_SECRET
