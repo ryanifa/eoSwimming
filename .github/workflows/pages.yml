@@ -6,13 +6,8 @@ on:
     paths:
       - "docs/**"
       - ".github/workflows/pages.yml"
-  release:
-    # re-publish whenever a release video is added/changed/removed
-    types: [published, edited, deleted]
   workflow_dispatch:
-  # callable as a final step from the publishing workflows: a release created
-  # with GITHUB_TOKEN doesn't fire the 'release' trigger, so they call this
-  # directly to mirror the new video and deploy.
+  # still callable as a final "deploy" step from the (legacy) publishing workflows
   workflow_call:
 
 permissions:
@@ -42,57 +37,9 @@ jobs:
             sed -i "s|__BUILD_VERSION__|${STAMP}|g" "$f"
           done
 
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-
-      # Mirror release composite.mp4 files into the site as docs/videos/<tag>.mp4.
-      # GitHub serves release downloads as application/octet-stream + attachment,
-      # which iOS Safari will not play inline; a same-origin file served by Pages
-      # as video/mp4 (with range support) plays everywhere. We +faststart them so
-      # they stream from the first byte. These files are built here, never
-      # committed (see .gitignore).
-      #
-      # The whole Pages site must stay under 1 GB, so we mirror newest-first
-      # within a size budget and skip files > 100 MB (Pages won't serve those
-      # anyway). Older videos beyond the budget aren't mirrored — their viewer
-      # link still works on desktop (release-asset fallback), just not inline on
-      # iOS. Keep video files small (the publishing workflows cap them ~100 MB).
-      - name: Mirror release videos into the site
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p docs/videos
-          BUDGET=$((900 * 1024 * 1024))     # keep well under the 1 GB Pages limit
-          MAXFILE=$((99 * 1024 * 1024))     # Pages won't serve files over ~100 MB
-          USED=0
-          # newest first, so recent videos are the ones that get mirrored
-          while IFS="$(printf '\t')" read -r CREATED TAG; do
-            [ -n "$TAG" ] || continue
-            LINE=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
-              --jq '.assets[] | select(.name=="composite.mp4") | "\(.url) \(.size)"') || LINE=""
-            if [ -z "$LINE" ]; then echo "skip $TAG (no composite.mp4)"; continue; fi
-            URL=${LINE%% *}; SIZE=${LINE##* }
-            if [ "$SIZE" -gt "$MAXFILE" ]; then
-              echo "skip $TAG ($((SIZE/1024/1024)) MB > 100 MB, Pages can't serve it)"; continue
-            fi
-            if [ $((USED + SIZE)) -gt "$BUDGET" ]; then
-              echo "skip $TAG (over the site budget — older video)"; continue
-            fi
-            echo "::group::mirror $TAG ($((SIZE/1024/1024)) MB)"
-            if ! curl -sL --fail -H "Authorization: Bearer $GH_TOKEN" \
-                 -H "Accept: application/octet-stream" "$URL" -o /tmp/in.mp4; then
-              echo "download failed for $TAG — skipping"; echo "::endgroup::"; continue
-            fi
-            if ! ffmpeg -y -loglevel error -i /tmp/in.mp4 -c copy -movflags +faststart "docs/videos/$TAG.mp4"; then
-              echo "ffmpeg failed for $TAG — skipping"; rm -f "docs/videos/$TAG.mp4"; echo "::endgroup::"; continue
-            fi
-            USED=$((USED + SIZE))
-            echo "mirrored — running total $((USED/1024/1024)) MB"
-            echo "::endgroup::"
-          done < <(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-                     --jq '.[] | [.created_at, .tag_name] | @tsv' | sort -r)
-          echo "---- published videos ($(du -sh docs/videos 2>/dev/null | cut -f1)) ----"
-          ls -lh docs/videos/ || echo "(none)"
+      # Videos are NOT hosted here anymore — they live in Cloudflare R2 behind the
+      # media Worker (see worker/ and ARCHITECTURE.md). This job only publishes the
+      # static apps + small annotation JSON, so it stays tiny and well under limits.
 
       - uses: actions/configure-pages@v5
 

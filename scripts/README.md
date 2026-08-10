@@ -37,3 +37,17 @@ setx EOSWIM_R2_TOKEN_SECRET "<the same secret you gave the Worker>"
 
 First run may need: `powershell -ExecutionPolicy Bypass -File .\publish-to-r2.ps1 …`
 (or `Unblock-File .\publish-to-r2.ps1` if you downloaded it).
+
+## migrate-releases-to-r2.ps1
+
+One-shot migration of the old GitHub-release videos into R2, building a `?k=`
+link for each. Nothing is deleted from GitHub — you remove the releases yourself
+once the new links check out.
+
+```powershell
+.\migrate-releases-to-r2.ps1 -DryRun     # preview: list what it would migrate
+.\migrate-releases-to-r2.ps1             # do it; writes migration-links.md
+```
+
+Needs the same env vars as `publish-to-r2.ps1` to build the links.
+
