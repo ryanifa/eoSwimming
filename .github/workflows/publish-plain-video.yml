@@ -1,14 +1,18 @@
-name: Publish a plain video to the viewer (no data)
+name: Publish a plain video to R2 (no data)
 
 # Distinct title per run so triggered runs are easy to tell apart in the list.
 run-name: "${{ inputs.note != '' && format('{0} — ', inputs.note) || '' }}Plain video → ${{ inputs.tag }}"
 
-# For a video that has no swim data — you just want to watch it frame by
-# frame in the viewer and share it. Downloads the video, applies +faststart
-# (so it streams on mobile) and publishes it as composite.mp4 in a release.
-# The Pages deploy then mirrors it to video/mp4, so the share link
-#   https://ryanifa.github.io/eoSwimming/viewer.html?r=<tag>
-# works on iPhone too — no GitHub account needed for whoever you send it to.
+# For a video that has no swim data — you just want to watch it frame by frame
+# in the viewer and share it. Downloads the video, re-encodes it mobile-friendly
+# (+faststart, max 1080p), uploads it to the private R2 bucket, and prints a
+# short private viewer link:
+#   https://ryanifa.github.io/eoSwimming/viewer.html?k=<key>&e=<exp>&t=<token>
+# The video stays private (served by the media Worker); no GitHub account needed
+# for whoever you send it to.
+#
+# Requires repo secrets: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT,
+# MEDIA_SIGNING_SECRET (the same secret the media Worker uses). See ARCHITECTURE.md.
 
 on:
   workflow_dispatch:
@@ -18,25 +22,26 @@ on:
         required: false
         default: ""
       video_url:
-        description: "Direct download URL for the video (transfer.sh, public Dropbox/Drive direct link, GitHub Release asset, etc.)"
+        description: "Direct download URL for the video (transfer.sh, public Dropbox/Drive direct link, etc.)"
         required: true
       tag:
-        description: "Release tag / share name (used in the ?r=<tag> link, e.g. peter-freestyle)"
+        description: "Share name — used as the R2 filename and in the ?k= link (e.g. peter-freestyle)"
         required: true
-      title:
-        description: "Release title (optional)"
+      folder:
+        description: "R2 folder / key prefix"
         required: false
-        default: ""
+        default: "swim/2026"
+
+permissions:
+  contents: read
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    permissions:
-      contents: write          # needed to publish the video as a Release asset
     steps:
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install ffmpeg + rclone
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg rclone
 
       - name: Download the video
         run: |
@@ -45,63 +50,51 @@ jobs:
           ffprobe -v error -show_entries format=duration,size:stream=width,height,codec_name \
             -of default=noprint_wrappers=1 input.mp4 || true
 
-      - name: Remux to a mobile-friendly composite.mp4 (kept under Pages' 100 MB limit)
+      - name: Encode a mobile-friendly MP4
         run: |
           set -e
-          # Re-encode to H.264/AAC yuv420p with the index up front so it plays
-          # inline on iPhone. Downscale to max 1080p and raise CRF until the
-          # file fits under GitHub Pages' 100 MB per-file serving limit — files
-          # over that aren't served, so the viewer link would otherwise break.
-          MAX=99000000
-          for crf in 20 23 26 29 32; do
-            ffmpeg -y -i input.mp4 \
-              -vf "scale='min(1920,iw)':-2" \
-              -c:v libx264 -pix_fmt yuv420p -preset fast -crf "$crf" \
-              -c:a aac -b:a 160k -movflags +faststart composite.mp4
-            SZ=$(stat -c%s composite.mp4)
-            echo "crf=$crf -> $SZ bytes"
-            [ "$SZ" -le "$MAX" ] && break
-            echo "still over ~100 MB, retrying with a higher CRF…"
-          done
-          ls -lh composite.mp4
+          # H.264/AAC yuv420p with the index up front so it plays inline on
+          # iPhone. Downscale to max 1080p. No 100 MB cap anymore — R2 has no
+          # per-file serving limit.
+          ffmpeg -y -i input.mp4 \
+            -vf "scale='min(1920,iw)':-2" \
+            -c:v libx264 -pix_fmt yuv420p -preset fast -crf 20 \
+            -c:a aac -b:a 160k -movflags +faststart out.mp4
+          ls -lh out.mp4
 
-      - name: Publish to a Release
+      - name: Upload to R2 and build the private viewer link
         env:
-          GH_TOKEN: ${{ github.token }}
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_REGION: auto
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+          SIGNING_SECRET: ${{ secrets.MEDIA_SIGNING_SECRET }}
         run: |
+          set -e
+          BUCKET="media-private"
+          FOLDER="${{ inputs.folder }}"
           TAG="${{ inputs.tag }}"
-          TITLE="${{ inputs.title }}"
-          [ -n "$TITLE" ] || TITLE="Video — $TAG"
-          # --repo is required: this job has no checkout, so gh can't infer the
-          # repo from a local .git directory.
-          REPO="${{ github.repository }}"
-          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-            gh release upload "$TAG" composite.mp4 --clobber --repo "$REPO"
-          else
-            gh release create "$TAG" composite.mp4 \
-              --repo "$REPO" \
-              --title "$TITLE" \
-              --notes "Open frame by frame: https://ryanifa.github.io/eoSwimming/viewer.html?r=$TAG"
-          fi
-          VIEWER="https://ryanifa.github.io/eoSwimming/viewer.html?r=$TAG"
-          ASSET="https://github.com/${{ github.repository }}/releases/download/$TAG/composite.mp4"
-          echo "Frame viewer: $VIEWER"
-          {
-            echo "### Frame-by-frame viewer"
-            echo ""
-            echo "[Open this video in the frame viewer]($VIEWER)"
-            echo ""
-            echo "(Plays inline on iPhone once the Pages deploy below has mirrored it.)"
-            echo ""
-            echo "Direct video: <$ASSET>"
-          } >> "$GITHUB_STEP_SUMMARY"
+          KEY="${FOLDER%/}/${TAG}.mp4"
 
-  # A release made with GITHUB_TOKEN does not fire the 'release' trigger, so we
-  # call the Pages deploy directly to mirror the new video and publish it.
-  deploy-pages:
-    needs: publish
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    uses: ./.github/workflows/pages.yml
+          echo "Uploading -> r2:${BUCKET}/${KEY}"
+          rclone copyto out.mp4 "r2:${BUCKET}/${KEY}" -v
+
+          # sign a 365-day token: base64url( HMAC-SHA256( secret, "<key>\n<exp>" ) )
+          EXP=$(( $(date +%s) + 365*86400 ))
+          SIG=$(printf '%s\n%s' "$KEY" "$EXP" \
+            | openssl dgst -sha256 -hmac "$SIGNING_SECRET" -binary \
+            | base64 | tr '+/' '-_' | tr -d '=')
+          KEY_ENC=${KEY// /%20}
+          VIEWER="https://ryanifa.github.io/eoSwimming/viewer.html?k=${KEY_ENC}&e=${EXP}&t=${SIG}"
+
+          echo "Viewer: $VIEWER"
+          {
+            echo "### Private viewer link (valid 365 days)"
+            echo ""
+            echo "[▶ Open this video in the frame viewer]($VIEWER)"
+            echo ""
+            echo "R2 object: \`${BUCKET}/${KEY}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
