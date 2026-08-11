@@ -55,3 +55,18 @@ once the new links check out.
 
 Needs the same env vars as `publish-to-r2.ps1` to build the links.
 
+## delete-migrated-releases.ps1
+
+Clean up GitHub afterwards — safely. It only deletes a release once **all** of
+its videos are confirmed present in R2 (it checks with rclone first). Dry-run by
+default.
+
+```powershell
+.\delete-migrated-releases.ps1 -IncludeRaw            # dry run: what is safe to delete
+.\delete-migrated-releases.ps1 -IncludeRaw -Execute  # really delete the safe ones
+```
+
+The `-Execute` delete uses the GitHub CLI, so you need `gh` installed and
+`gh auth login` done once. (No `gh`? Delete the listed releases via the website.)
+Use the same `-IncludeRaw` you used when migrating.
+
