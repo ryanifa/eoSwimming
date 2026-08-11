@@ -45,9 +45,13 @@ link for each. Nothing is deleted from GitHub — you remove the releases yourse
 once the new links check out.
 
 ```powershell
-.\migrate-releases-to-r2.ps1 -DryRun     # preview: list what it would migrate
-.\migrate-releases-to-r2.ps1             # do it; writes migration-links.md
+.\migrate-releases-to-r2.ps1 -DryRun               # preview (composite videos only)
+.\migrate-releases-to-r2.ps1 -IncludeRaw -DryRun   # preview incl. raw source videos
+.\migrate-releases-to-r2.ps1 -IncludeRaw           # do it; writes migration-links.md
 ```
+
+- `composite.mp4` assets (finished overlay videos) → `swim/2026/<tag>.mp4`
+- with `-IncludeRaw`, other video assets (raw sources) → `raw/<tag>/<name>`
 
 Needs the same env vars as `publish-to-r2.ps1` to build the links.
 
