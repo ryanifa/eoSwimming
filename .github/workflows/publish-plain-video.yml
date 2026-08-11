@@ -4,12 +4,10 @@ name: Publish a plain video to R2 (no data)
 run-name: "${{ inputs.note != '' && format('{0} — ', inputs.note) || '' }}Plain video → ${{ inputs.tag }}"
 
 # For a video that has no swim data — you just want to watch it frame by frame
-# in the viewer and share it. Downloads the video, re-encodes it mobile-friendly
-# (+faststart, max 1080p), uploads it to the private R2 bucket, and prints a
-# short private viewer link:
+# in the viewer and share it. Takes the source video (straight from an R2 key, or
+# from a URL), re-encodes it mobile-friendly (+faststart, max 1080p), uploads it
+# to the private R2 bucket, and prints a short private viewer link:
 #   https://ryanifa.github.io/eoSwimming/viewer.html?k=<key>&e=<exp>&t=<token>
-# The video stays private (served by the media Worker); no GitHub account needed
-# for whoever you send it to.
 #
 # Requires repo secrets: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT,
 # MEDIA_SIGNING_SECRET (the same secret the media Worker uses). See ARCHITECTURE.md.
@@ -21,31 +19,56 @@ on:
         description: "Label for the run title so you can find it back later. Shown first in the run name."
         required: false
         default: ""
+      r2_key:
+        description: "Source video already in R2 — its key, e.g. raw/Upload/Mijn.film.24.MOV. Leave empty to use a URL instead."
+        required: false
+        default: ""
       video_url:
-        description: "Direct download URL for the video (transfer.sh, public Dropbox/Drive direct link, etc.)"
-        required: true
+        description: "…or a direct download URL for the source video (used only if r2_key is empty)."
+        required: false
+        default: ""
       tag:
         description: "Share name — used as the R2 filename and in the ?k= link (e.g. peter-freestyle)"
         required: true
       folder:
-        description: "R2 folder / key prefix"
+        description: "R2 output folder / key prefix"
         required: false
         default: "swim/2026"
 
 permissions:
   contents: read
 
+env:
+  # rclone reads these to talk to R2 (no config file needed). Same on every step.
+  RCLONE_CONFIG_R2_TYPE: s3
+  RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+  RCLONE_CONFIG_R2_REGION: auto
+  RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+  RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  RCLONE_CONFIG_R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+  RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+  BUCKET: media-private
+
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Install ffmpeg + rclone
         run: sudo apt-get update && sudo apt-get install -y ffmpeg rclone
 
-      - name: Download the video
+      - name: Get the source video (from an R2 key or a URL)
         run: |
-          curl -L --fail --max-time 900 -o input.mp4 "${{ inputs.video_url }}"
+          set -e
+          if [ -n "${{ inputs.r2_key }}" ]; then
+            echo "Fetching from R2: ${{ inputs.r2_key }}"
+            rclone copyto "r2:${BUCKET}/${{ inputs.r2_key }}" input.mp4 -v
+          elif [ -n "${{ inputs.video_url }}" ]; then
+            echo "Downloading from URL"
+            curl -L --fail --max-time 900 -o input.mp4 "${{ inputs.video_url }}"
+          else
+            echo "::error::Provide either r2_key or video_url."; exit 1
+          fi
           ls -lh input.mp4
           ffprobe -v error -show_entries format=duration,size:stream=width,height,codec_name \
             -of default=noprint_wrappers=1 input.mp4 || true
@@ -54,8 +77,7 @@ jobs:
         run: |
           set -e
           # H.264/AAC yuv420p with the index up front so it plays inline on
-          # iPhone. Downscale to max 1080p. No 100 MB cap anymore — R2 has no
-          # per-file serving limit.
+          # iPhone. Downscale to max 1080p. No 100 MB cap — R2 has no serving limit.
           ffmpeg -y -i input.mp4 \
             -vf "scale='min(1920,iw)':-2" \
             -c:v libx264 -pix_fmt yuv420p -preset fast -crf 20 \
@@ -64,17 +86,9 @@ jobs:
 
       - name: Upload to R2 and build the private viewer link
         env:
-          RCLONE_CONFIG_R2_TYPE: s3
-          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
-          RCLONE_CONFIG_R2_REGION: auto
-          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          RCLONE_CONFIG_R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
-          RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
           SIGNING_SECRET: ${{ secrets.MEDIA_SIGNING_SECRET }}
         run: |
           set -e
-          BUCKET="media-private"
           FOLDER="${{ inputs.folder }}"
           TAG="${{ inputs.tag }}"
           KEY="${FOLDER%/}/${TAG}.mp4"
