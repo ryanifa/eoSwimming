@@ -1,5 +1,12 @@
-name: Composite video with overlay (by swim ID)
+name: Composite video with overlay (by swim ID) → R2
 run-name: "${{ inputs.title }} · swim ${{ inputs.swim_id }} @ ${{ inputs.swim_start_seconds }}s"
+
+# Renders the SwimBETTER sensor overlay onto the source video and uploads the
+# result to the private R2 bucket with a private viewer link.
+#
+# Requires repo secrets: EO_EMAIL, EO_PASSWORD (sensor data) and
+# R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT, MEDIA_SIGNING_SECRET
+# (the same secret the media Worker uses). See ARCHITECTURE.md.
 
 on:
   workflow_dispatch:
@@ -11,9 +18,14 @@ on:
       swim_id:
         description: "Swim ID to render (run 'Fetch swim by date' first to find it)"
         required: true
+      r2_key:
+        description: "Source video already in R2 — its key, e.g. raw/Upload/Mijn.film.24.MOV. Leave empty to use a URL."
+        required: false
+        default: ""
       video_url:
-        description: "Direct download URL for the source video (transfer.sh, public Dropbox/Drive direct link, GitHub Release asset, etc.)"
-        required: true
+        description: "…or a direct download URL for the source video (used only if r2_key is empty)."
+        required: false
+        default: ""
       swim_start_seconds:
         description: "Seconds into the video where the swim begins (overlay aligns here)"
         required: true
@@ -44,13 +56,32 @@ on:
         options:
           - full
           - speed_and_strokerate
+      tag:
+        description: "Share name for the result — R2 filename + ?k= link. Leave empty for composite-<swim_id>."
+        required: false
+        default: ""
+      folder:
+        description: "R2 output folder / key prefix"
+        required: false
+        default: "swim/2026"
+
+permissions:
+  contents: read
+
+env:
+  RCLONE_CONFIG_R2_TYPE: s3
+  RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+  RCLONE_CONFIG_R2_REGION: auto
+  RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+  RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  RCLONE_CONFIG_R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+  RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+  BUCKET: media-private
 
 jobs:
   composite:
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    permissions:
-      contents: write          # needed to publish the composite as a Release asset
     steps:
       - uses: actions/checkout@v4
 
@@ -58,10 +89,7 @@ jobs:
         run: |
           echo "ref:     ${{ github.ref }}"
           echo "sha:     ${{ github.sha }}"
-          echo "---- last commit ----"
           git log -1 --format='%H%n%ci%n%s'
-          echo "---- file fingerprints (latest version has the right-hand path panels) ----"
-          git log -1 --format='%h %ci %s' -- render_overlay.py
           md5sum render_overlay.py composite_video.py .github/workflows/composite-video.yml
 
       - uses: actions/setup-python@v5
@@ -69,8 +97,8 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install ffmpeg + rclone
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg rclone
 
       - run: pip install -r requirements.txt
 
@@ -81,10 +109,19 @@ jobs:
           SWIM_ID: ${{ inputs.swim_id }}
         run: python fetch_one_swim.py
 
-      - name: Download source video
+      - name: Get the source video (from an R2 key or a URL)
         run: |
+          set -e
           mkdir -p input
-          curl -L --fail --max-time 600 -o input/source.mp4 "${{ inputs.video_url }}"
+          if [ -n "${{ inputs.r2_key }}" ]; then
+            echo "Fetching from R2: ${{ inputs.r2_key }}"
+            rclone copyto "r2:${BUCKET}/${{ inputs.r2_key }}" input/source.mp4 -v
+          elif [ -n "${{ inputs.video_url }}" ]; then
+            echo "Downloading from URL"
+            curl -L --fail --max-time 600 -o input/source.mp4 "${{ inputs.video_url }}"
+          else
+            echo "::error::Provide either r2_key or video_url."; exit 1
+          fi
           ls -lh input/
           ffprobe -v error -show_entries format=duration,size:stream=width,height -of default=noprint_wrappers=1 input/source.mp4
 
@@ -97,11 +134,7 @@ jobs:
           fi
           echo "SWIM_DIR=$SWIM_DIR" >> "$GITHUB_ENV"
           echo "Using $SWIM_DIR"
-          echo "---- files fetched for this swim ----"
           ls -1 "$SWIM_DIR"
-          echo "---- path-panel data (need these for the right-hand panels) ----"
-          ls -1 "$SWIM_DIR"/lap-*-pathsweep.json "$SWIM_DIR"/lap-*-pathdepth.json 2>/dev/null \
-            || echo "NONE: this swim has no pathsweep/pathdepth data -> no right-hand panels."
 
       - name: Render overlay
         env:
@@ -115,8 +148,6 @@ jobs:
         run: |
           W=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 input/source.mp4)
           FPS=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of csv=p=0 input/source.mp4)
-          # overlay is rendered 1920px wide; scale it to the video width so the
-          # right-hand panels are never clipped (videos narrower than 1920 too)
           SCALE=$(python3 -c "print(round(${W:-1920}/1920.0, 4))")
           echo "video width=$W fps=$FPS -> overlay scale=$SCALE"
           python composite_video.py \
@@ -127,7 +158,7 @@ jobs:
             --overlay-scale $SCALE \
             --fps "$FPS"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4     # a downloadable copy too (optional)
         with:
           name: swim-composite-video
           path: |
@@ -136,41 +167,31 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # Publish the finished video as a Release asset so it has a stable, public
-      # URL the frame viewer can load directly (the artifact above is zipped and
-      # needs a login, so it can't be streamed into the browser).
-      - name: Publish composite to a Release
+      - name: Upload to R2 and build the private viewer link
         env:
-          GH_TOKEN: ${{ github.token }}
+          SIGNING_SECRET: ${{ secrets.MEDIA_SIGNING_SECRET }}
         run: |
-          TAG="composite-${{ inputs.swim_id }}"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$SWIM_DIR/composite.mp4" --clobber
-          else
-            gh release create "$TAG" "$SWIM_DIR/composite.mp4" \
-              --title "Composite — swim ${{ inputs.swim_id }}" \
-              --notes "Open frame by frame: https://ryanifa.github.io/eoSwimming/viewer.html?r=$TAG"
-          fi
-          ASSET="https://github.com/${{ github.repository }}/releases/download/$TAG/composite.mp4"
-          VIEWER="https://ryanifa.github.io/eoSwimming/viewer.html?r=$TAG"
-          echo "Composite asset: $ASSET"
-          echo "Frame viewer:    $VIEWER"
-          {
-            echo "### Frame-by-frame viewer"
-            echo ""
-            echo "[Open this swim in the frame viewer]($VIEWER)"
-            echo ""
-            echo "(Plays inline on iPhone once the Pages deploy below has mirrored it.)"
-            echo ""
-            echo "Direct video: <$ASSET>"
-          } >> "$GITHUB_STEP_SUMMARY"
+          set -e
+          FOLDER="${{ inputs.folder }}"
+          TAG="${{ inputs.tag }}"
+          [ -n "$TAG" ] || TAG="composite-${{ inputs.swim_id }}"
+          KEY="${FOLDER%/}/${TAG}.mp4"
 
-  # A release made with GITHUB_TOKEN doesn't fire the 'release' trigger, so call
-  # the Pages deploy directly to mirror the new composite and publish it.
-  deploy-pages:
-    needs: composite
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    uses: ./.github/workflows/pages.yml
+          echo "Uploading -> r2:${BUCKET}/${KEY}"
+          rclone copyto "$SWIM_DIR/composite.mp4" "r2:${BUCKET}/${KEY}" -v
+
+          EXP=$(( $(date +%s) + 365*86400 ))
+          SIG=$(printf '%s\n%s' "$KEY" "$EXP" \
+            | openssl dgst -sha256 -hmac "$SIGNING_SECRET" -binary \
+            | base64 | tr '+/' '-_' | tr -d '=')
+          KEY_ENC=${KEY// /%20}
+          VIEWER="https://ryanifa.github.io/eoSwimming/viewer.html?k=${KEY_ENC}&e=${EXP}&t=${SIG}"
+
+          echo "Viewer: $VIEWER"
+          {
+            echo "### Composite klaar — privé viewer-link (365 dagen)"
+            echo ""
+            echo "[▶ Open deze swim in de frame viewer]($VIEWER)"
+            echo ""
+            echo "R2 object: \`${BUCKET}/${KEY}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

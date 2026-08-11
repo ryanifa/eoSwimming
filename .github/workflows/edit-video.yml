@@ -1,10 +1,13 @@
-name: Edit video (trim & rotate from editor)
+name: Edit video (trim & rotate/zoom) → R2
 run-name: "${{ inputs.note != '' && format('{0} — ', inputs.note) || '' }}Edit video → ${{ inputs.tag }}"
 
 # Server-side render of an edit made in the Trim & rotate editor
-# (https://ryanifa.github.io/eoSwimming/edit.html). Paste the video URL and the
-# "render-opdracht (EDL)" the editor gives you. The result is published as a
-# release asset you can download, and is playable in the frame viewer.
+# (https://ryanifa.github.io/eoSwimming/edit.html). Give it the SOURCE video
+# (an R2 key or a URL) and the "render-opdracht (EDL)" the editor gives you.
+# The result is uploaded to the private R2 bucket and gets a private viewer link.
+#
+# Requires repo secrets: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT,
+# MEDIA_SIGNING_SECRET (the same secret the media Worker uses). See ARCHITECTURE.md.
 
 on:
   workflow_dispatch:
@@ -13,35 +16,60 @@ on:
         description: "Label for the run title so you can find it back later."
         required: false
         default: ""
+      r2_key:
+        description: "Source video already in R2 — its key, e.g. raw/Upload/Mijn.film.24.MOV. Leave empty to use a URL."
+        required: false
+        default: ""
       video_url:
-        description: "Direct download URL of the SOURCE video (the same one you loaded in the editor)."
-        required: true
+        description: "…or a direct download URL of the SOURCE video (used only if r2_key is empty)."
+        required: false
+        default: ""
       edl:
         description: "Render-opdracht (EDL JSON) — copy it from the editor's 'Kopieer render-opdracht' button."
         required: true
       tag:
-        description: "Release tag / share name for the result (used in the ?r=<tag> link, e.g. heidi-50m-edit)."
+        description: "Share name for the result — R2 filename and ?k= link (e.g. heidi-50m-edit)."
         required: true
-      title:
-        description: "Release title (optional)."
+      folder:
+        description: "R2 output folder / key prefix"
         required: false
-        default: ""
+        default: "swim/2026"
+
+permissions:
+  contents: read
+
+env:
+  RCLONE_CONFIG_R2_TYPE: s3
+  RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+  RCLONE_CONFIG_R2_REGION: auto
+  RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+  RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  RCLONE_CONFIG_R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+  RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+  BUCKET: media-private
 
 jobs:
   edit:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    permissions:
-      contents: write          # publish the result as a Release asset
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4          # needed for edit_video.py
 
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install ffmpeg + rclone
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg rclone
 
-      - name: Download source video
+      - name: Get the source video (from an R2 key or a URL)
         run: |
-          curl -L --fail --max-time 900 -o source.mp4 "${{ inputs.video_url }}"
+          set -e
+          if [ -n "${{ inputs.r2_key }}" ]; then
+            echo "Fetching from R2: ${{ inputs.r2_key }}"
+            rclone copyto "r2:${BUCKET}/${{ inputs.r2_key }}" source.mp4 -v
+          elif [ -n "${{ inputs.video_url }}" ]; then
+            echo "Downloading from URL"
+            curl -L --fail --max-time 900 -o source.mp4 "${{ inputs.video_url }}"
+          else
+            echo "::error::Provide either r2_key or video_url."; exit 1
+          fi
           ls -lh source.mp4
           ffprobe -v error -show_entries format=duration,size:stream=width,height,codec_name \
             -of default=noprint_wrappers=1 source.mp4 || true
@@ -51,48 +79,40 @@ jobs:
           EDL: ${{ inputs.edl }}
         run: |
           echo "EDL: $EDL"
-          python3 edit_video.py source.mp4 composite.mp4
-          ls -lh composite.mp4
+          python3 edit_video.py source.mp4 out.mp4
+          ls -lh out.mp4
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4     # a downloadable copy too (optional)
         with:
           name: edited-${{ inputs.tag }}
-          path: composite.mp4
+          path: out.mp4
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish to a Release
+      - name: Upload to R2 and build the private viewer link
         env:
-          GH_TOKEN: ${{ github.token }}
+          SIGNING_SECRET: ${{ secrets.MEDIA_SIGNING_SECRET }}
         run: |
+          set -e
+          FOLDER="${{ inputs.folder }}"
           TAG="${{ inputs.tag }}"
-          TITLE="${{ inputs.title }}"
-          [ -n "$TITLE" ] || TITLE="Edited — $TAG"
-          REPO="${{ github.repository }}"
-          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-            gh release upload "$TAG" composite.mp4 --clobber --repo "$REPO"
-          else
-            gh release create "$TAG" composite.mp4 \
-              --repo "$REPO" \
-              --title "$TITLE" \
-              --notes "Open frame by frame: https://ryanifa.github.io/eoSwimming/viewer.html?r=$TAG"
-          fi
-          VIEWER="https://ryanifa.github.io/eoSwimming/viewer.html?r=$TAG"
-          ASSET="https://github.com/${{ github.repository }}/releases/download/$TAG/composite.mp4"
-          {
-            echo "### Bewerkte video klaar"
-            echo ""
-            echo "[⬇ Download de video]($ASSET)"
-            echo ""
-            echo "[▶ Open in de frame viewer]($VIEWER)  (speelt inline op iPhone zodra de Pages-deploy hieronder hem heeft gespiegeld)"
-          } >> "$GITHUB_STEP_SUMMARY"
+          KEY="${FOLDER%/}/${TAG}.mp4"
 
-  # A release made with GITHUB_TOKEN doesn't fire the 'release' trigger, so call
-  # the Pages deploy directly to mirror the new video and publish it.
-  deploy-pages:
-    needs: edit
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    uses: ./.github/workflows/pages.yml
+          echo "Uploading -> r2:${BUCKET}/${KEY}"
+          rclone copyto out.mp4 "r2:${BUCKET}/${KEY}" -v
+
+          EXP=$(( $(date +%s) + 365*86400 ))
+          SIG=$(printf '%s\n%s' "$KEY" "$EXP" \
+            | openssl dgst -sha256 -hmac "$SIGNING_SECRET" -binary \
+            | base64 | tr '+/' '-_' | tr -d '=')
+          KEY_ENC=${KEY// /%20}
+          VIEWER="https://ryanifa.github.io/eoSwimming/viewer.html?k=${KEY_ENC}&e=${EXP}&t=${SIG}"
+
+          echo "Viewer: $VIEWER"
+          {
+            echo "### Bewerkte video klaar — privé viewer-link (365 dagen)"
+            echo ""
+            echo "[▶ Open in de frame viewer]($VIEWER)"
+            echo ""
+            echo "R2 object: \`${BUCKET}/${KEY}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
