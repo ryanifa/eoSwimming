@@ -1635,7 +1635,7 @@ if (qv) {
   let draftReady = false, draftWarned = false;
   const DRAFT_KEY = (() => {
     const p = new URLSearchParams(location.search);
-    return 'eoswim_draft:' + [p.get('r') || '', p.get('a') || '', p.get('f') || '', p.get('v') || ''].join('|');
+    return 'eoswim_draft:' + [p.get('r') || '', p.get('a') || '', p.get('f') || '', p.get('v') || '', p.get('k') || ''].join('|');
   })();
   function saveDraft() {
     if (!document.body.classList.contains('can-edit')) return;
