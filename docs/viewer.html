@@ -345,9 +345,10 @@
   .tllane.memo .tllabel { color: #38bdf8; }
   .tllane.note .tllabel { color: #34d399; }
   .tllane.draw .tllabel { color: #ffcf33; }
-  /* view mode (cursist): the labelled lane bars are editor scaffolding — hide
-     them; the dots + scrub bar stay so markers are still visible. */
-  body:not(.trainer) .tllane { display: none; }
+  /* view mode (cursist): the labelled lanes and the marker dots are editor
+     scaffolding — hide them so only the clean scrub bar remains. */
+  body:not(.trainer) .tllane,
+  body:not(.trainer) .tldot { display: none; }
 
   #tlbar { position: absolute; left: 0; right: 0; top: 44px; height: 7px;
            background: rgba(255,255,255,.28); border-radius: 4px; }
