@@ -38,10 +38,11 @@
   h2.sec::before{content:"";width:.85rem;height:.85rem;border-radius:4px;background:var(--blue);}
 
   .flow{display:grid;gap:.6rem;counter-reset:s;}
-  .step{display:grid;grid-template-columns:2rem 1fr;gap:.8rem;align-items:baseline;
+  .step{display:grid;grid-template-columns:2rem 1fr;column-gap:.8rem;row-gap:.15rem;align-items:baseline;
     background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--blue);
     border-radius:12px;padding:.75rem 1rem;box-shadow:var(--shadow);}
-  .step::before{counter-increment:s;content:counter(s);font-family:"Archivo";font-weight:800;color:var(--blue);font-size:1.1rem;text-align:center;}
+  .step::before{grid-column:1;grid-row:1;counter-increment:s;content:counter(s);font-family:"Archivo";font-weight:800;color:var(--blue);font-size:1.1rem;text-align:center;}
+  .step>b,.step>span{grid-column:2;}
   .step b{font-weight:600;} .step span{color:var(--ink-soft);}
 
   .caps{display:grid;gap:.55rem;}
