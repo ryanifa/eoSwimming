@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Handleiding voor de trainer — eo Swim</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --bg:#e9eff4; --surface:#fff; --surface-2:#f3f7fb;
+    --ink:#0e2233; --ink-soft:#48657a; --line:#d5e1ec; --line-strong:#b9cbdb;
+    --blue:#1668c8; --blue-soft:#e5eefb; --amber:#c26a06; --amber-soft:#f7ebda;
+    --green:#0d8f83; --green-soft:#dcf1ef;
+    --shadow:0 1px 2px rgba(14,34,51,.06),0 8px 24px rgba(14,34,51,.06); --radius:14px;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#071620; --surface:#0f2231; --surface-2:#14293a;
+    --ink:#e7eef4; --ink-soft:#92a9bb; --line:#21394c; --line-strong:#2e4b60;
+    --blue:#5aa2f0; --blue-soft:#14263c; --amber:#eda23f; --amber-soft:#2e2413;
+    --green:#35bcac; --green-soft:#10302e;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+  }}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;font-size:16px;line-height:1.6;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:52rem;margin:0 auto;padding:clamp(1.4rem,4vw,3rem) clamp(1.1rem,4vw,2rem) 5rem;}
+  h1,h2,h3{font-family:"Archivo",system-ui,sans-serif;text-wrap:balance;margin:0;}
+  .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:.72rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--blue);}
+  h1{font-size:clamp(1.9rem,5.5vw,2.8rem);font-weight:800;letter-spacing:-.02em;line-height:1.04;margin:.5rem 0 0;}
+  .lede{font-size:clamp(1rem,2.3vw,1.14rem);color:var(--ink-soft);max-width:38rem;margin:1rem 0 0;}
+  header{border-bottom:1px solid var(--line);padding-bottom:1.6rem;}
+  .backlink{font-family:"IBM Plex Mono",monospace;font-size:.8rem;color:var(--ink-soft);text-decoration:none;}
+  .backlink:hover{color:var(--blue);}
+  h2.sec{font-size:1.05rem;font-weight:700;margin:2.4rem 0 1rem;display:flex;align-items:center;gap:.6rem;}
+  h2.sec::before{content:"";width:.85rem;height:.85rem;border-radius:4px;background:var(--blue);}
+
+  .flow{display:grid;gap:.6rem;counter-reset:s;}
+  .step{display:grid;grid-template-columns:2rem 1fr;gap:.8rem;align-items:baseline;
+    background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--blue);
+    border-radius:12px;padding:.75rem 1rem;box-shadow:var(--shadow);}
+  .step::before{counter-increment:s;content:counter(s);font-family:"Archivo";font-weight:800;color:var(--blue);font-size:1.1rem;text-align:center;}
+  .step b{font-weight:600;} .step span{color:var(--ink-soft);}
+
+  .caps{display:grid;gap:.55rem;}
+  .cap{display:grid;grid-template-columns:3.2rem 1fr;gap:.85rem;align-items:start;
+    background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:.8rem 1rem;box-shadow:var(--shadow);}
+  .glyph{font-size:1.05rem;font-weight:700;text-align:center;padding:.35rem 0;background:var(--surface-2);
+    border:1px solid var(--line);border-radius:9px;font-family:"IBM Plex Mono",monospace;}
+  .cap h3{font-size:1rem;font-weight:700;} .cap p{margin:.2rem 0 0;color:var(--ink-soft);font-size:.95rem;}
+  .cap p b{color:var(--ink);font-weight:600;}
+
+  .callout{border-radius:var(--radius);padding:1.1rem 1.25rem;box-shadow:var(--shadow);
+    border:1px solid var(--amber);background:var(--amber-soft);margin-top:1rem;}
+  .callout .tag{font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.12em;text-transform:uppercase;color:var(--amber);font-weight:600;}
+  .callout h3{font-size:1.15rem;font-weight:800;margin-top:.2rem;} .callout p{margin:.45rem 0 0;} .callout b{font-weight:700;}
+
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-top:1rem;}
+  @media (max-width:34rem){.cols{grid-template-columns:1fr;}}
+  .box{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:.95rem 1.1rem;box-shadow:var(--shadow);}
+  .box.do{border-top:3px solid var(--green);} .box.dont{border-top:3px solid var(--amber);}
+  .box h3{font-size:.95rem;font-weight:700;margin-bottom:.5rem;}
+  .box ul{margin:0;padding-left:1.1rem;} .box li{margin:.28rem 0;font-size:.93rem;color:var(--ink-soft);}
+  .box li b{color:var(--ink);font-weight:600;}
+
+  .faq{display:grid;gap:.5rem;}
+  details{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);}
+  summary{cursor:pointer;padding:.8rem 1rem;font-weight:600;list-style:none;}
+  summary::-webkit-details-marker{display:none;}
+  summary::before{content:"＋";color:var(--blue);font-weight:800;margin-right:.6rem;}
+  details[open] summary::before{content:"－";}
+  details .a{padding:0 1rem 1rem 2.2rem;color:var(--ink-soft);font-size:.95rem;}
+
+  code{font-family:"IBM Plex Mono",monospace;font-size:.84em;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:.06em .38em;}
+  footer{margin-top:3rem;padding-top:1.3rem;border-top:1px solid var(--line);color:var(--ink-soft);font-size:.82rem;}
+  a{color:var(--blue);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="backlink" href="index.html">← eo Swim</a>
+    <div class="eyebrow" style="margin-top:.8rem;">Handleiding · trainer</div>
+    <h1>Zwemanalyse inspreken</h1>
+    <p class="lede">Je krijgt een link naar de zwembeelden. Jij loopt ze frame voor frame door en <b>spreekt je analyse in</b>. Als je klaar bent lever je één bestand aan — de rest wordt voor je geregeld.</p>
+  </header>
+
+  <h2 class="sec">Wat je nodig hebt</h2>
+  <div class="caps">
+    <div class="cap"><div class="glyph">💻</div><div><h3>Een computer met microfoon</h3><p>Liefst met een koptelefoon. Op een computer inspreken gaat het makkelijkst — op mobiel moet je het geluid eerst met een tik "aanzetten".</p></div></div>
+    <div class="cap"><div class="glyph">🔗</div><div><h3>De link die je krijgt</h3><p>Die eindigt op <code>&amp;edit=1</code> — dat opent de beelden in de <b>bewerk-stand</b> zodat je kunt inspreken.</p></div></div>
+  </div>
+
+  <h2 class="sec">In 5 stappen</h2>
+  <div class="flow">
+    <div class="step"><b>Open de link.</b> <span>Geef je browser toestemming voor de microfoon als dat gevraagd wordt.</span></div>
+    <div class="step"><b>Zet het beeld stil op het juiste moment.</b> <span>Gebruik <b>▶</b>, de <b>+1 / −1</b> en <b>+10 / −10</b> knoppen of sleep de schuifbalk.</span></div>
+    <div class="step"><b>Spreek een memo in.</b> <span>Klik <b>🎙️ memo</b>, praat je uitleg in — je mag tijdens het praten gewoon frame-voor-frame doorspoelen — en klik <b>■ stop &amp; bewaar</b>.</span></div>
+    <div class="step"><b>Luister terug &amp; ga verder.</b> <span>Met <b>▶ memo / ⏸ memo</b> speel je 'm af (het beeld loopt mee). Ga naar het volgende moment en spreek de volgende memo in.</span></div>
+    <div class="step"><b>Lever aan.</b> <span>Klik op <b>⬇</b> om alles als één bestand op te slaan en stuur dat bestand terug. Klaar!</span></div>
+  </div>
+
+  <h2 class="sec">De knoppen: spraakmemo's</h2>
+  <div class="caps">
+    <div class="cap"><div class="glyph">🎙️</div><div><h3>Memo inspreken</h3><p>Op het beeld dat je hebt stilgezet. Tijdens het opnemen mag je <b>doorspoelen</b> — die beweging wordt mee opgenomen en bij het afspelen weer getoond.</p></div></div>
+    <div class="cap"><div class="glyph">▶ ⏸</div><div><h3>Afspelen / pauzeren</h3><p>De memo-knop onder de gewone play-knop: <b>▶ memo</b> speelt af, <b>⏸ memo</b> pauzeert, nog eens tikken hervat.</p></div></div>
+    <div class="cap"><div class="glyph">⏮ ⏭</div><div><h3>Tussen memo's springen</h3><p>Naar de vorige of volgende memo — hij springt er heen én speelt 'm meteen af.</p></div></div>
+    <div class="cap"><div class="glyph">↻🎙️</div><div><h3>Opnieuw inspreken</h3><p>Vervangt de memo waar je op staat door een nieuwe opname.</p></div></div>
+    <div class="cap"><div class="glyph">🗑</div><div><h3>Memo verwijderen</h3><p>Wist de memo waar je op staat.</p></div></div>
+  </div>
+
+  <h2 class="sec">Extra: tekenen &amp; notities (optioneel)</h2>
+  <div class="caps">
+    <div class="cap"><div class="glyph">✐ ↗</div><div><h3>Pen &amp; pijl</h3><p>Vrij tekenen of een pijl trekken op het beeld, in <b>4 kleuren</b> (rood, geel, groen, blauw).</p></div></div>
+    <div class="cap"><div class="glyph">📝</div><div><h3>Tekstnotitie</h3><p>Een korte tekst bij het beeld — verschijnt als bijschrift.</p></div></div>
+    <div class="cap"><div class="glyph">📌</div><div><h3>Vastzetten</h3><p><b>📌 pijl/pen</b> en <b>📌 notitie</b> houden een tekening of notitie langer in beeld, over een heel stuk. Nog eens klikken zet het weer uit.</p></div></div>
+    <div class="cap"><div class="glyph">⟲ ⟳</div><div><h3>Ongedaan / opnieuw · wissen</h3><p><b>⟲/⟳</b> maakt de laatste actie ongedaan of herstelt 'm. <b>✐✕</b> wist de laatste tekening op dit beeld, <b>🗑</b> alles op dit beeld.</p></div></div>
+  </div>
+
+  <div class="callout">
+    <div class="tag">⬇ het enige dat verplicht is</div>
+    <h3>Aanleveren</h3>
+    <p>Als je klaar bent, klik je op <b>⬇</b>. Dat downloadt één bestand met al je memo's, pijlen en notities. <b>Stuur dat bestand terug</b> (mail of app). Meer hoef je niet te doen — de deelbare link voor de cursist wordt daarna voor je gemaakt.</p>
+  </div>
+
+  <div class="cols">
+    <div class="box do">
+      <h3>Wel doen</h3>
+      <ul>
+        <li>Werk rustig <b>frame voor frame</b> — dat is juist de kracht.</li>
+        <li>Geef <b>microfoon-toestemming</b> als de browser dat vraagt.</li>
+        <li><b>⬇ download</b> voordat je het tabblad sluit.</li>
+      </ul>
+    </div>
+    <div class="box dont">
+      <h3>Niet nodig</h3>
+      <ul>
+        <li>Je hoeft géén links te maken of te delen — dat gebeurt na jouw aanlevering.</li>
+        <li>Zie je een <b>⇪ publiceer</b>-knop? Die hoef je niet te gebruiken.</li>
+        <li>Ververs de pagina niet met onopgeslagen werk (download eerst).</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="sec">Veelgestelde vragen</h2>
+  <div class="faq">
+    <details><summary>De microfoon doet niets</summary><div class="a">Check of de browser toestemming heeft gevraagd en dat je die hebt gegeven (klik anders op het slotje/mic-icoon in de adresbalk). Werkt het nog niet, probeer dan een andere browser (Chrome) of een andere computer.</div></details>
+    <details><summary>Ik heb per ongeluk iets gewist</summary><div class="a">Gebruik <b>⟲</b> (ongedaan maken). Voor een memo: als je nog niets nieuws hebt gedaan kun je 'm opnieuw inspreken met <b>↻🎙️</b>.</div></details>
+    <details><summary>Speelt het ook op mijn telefoon af?</summary><div class="a">Bekijken kan op telefoon, maar voor het <b>inspreken</b> is een computer prettiger: op mobiel moet je het geluid eerst met een tik op het scherm "aanzetten".</div></details>
+    <details><summary>Waar vind ik deze handleiding terug?</summary><div class="a">In de editor staat rechtsboven een <b>❔ handleiding</b>-link. Of bewaar deze pagina als favoriet.</div></details>
+  </div>
+
+  <footer>
+    Kort samengevat: <b>beeld stilzetten → 🎙️ inspreken → terugluisteren → ⬇ aanleveren.</b> De rest is optioneel.
+  </footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Handleiding opleveren — eo Swim</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg:#e9eff4; --surface:#fff; --surface-2:#f3f7fb;
+    --ink:#0e2233; --ink-soft:#48657a; --line:#d5e1ec; --line-strong:#b9cbdb;
+    --blue:#1668c8; --blue-soft:#e5eefb; --amber:#c26a06; --amber-soft:#f7ebda;
+    --green:#0d8f83; --green-soft:#dcf1ef;
+    --shadow:0 1px 2px rgba(14,34,51,.06),0 8px 24px rgba(14,34,51,.06); --radius:14px;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#071620; --surface:#0f2231; --surface-2:#14293a;
+    --ink:#e7eef4; --ink-soft:#92a9bb; --line:#21394c; --line-strong:#2e4b60;
+    --blue:#5aa2f0; --blue-soft:#14263c; --amber:#eda23f; --amber-soft:#2e2413;
+    --green:#35bcac; --green-soft:#10302e;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+  }}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:54rem;margin:0 auto;padding:clamp(1.4rem,4vw,3rem) clamp(1.1rem,4vw,2rem) 5rem;}
+  h1,h2,h3{font-family:"Archivo",system-ui,sans-serif;text-wrap:balance;margin:0;}
+  .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:.72rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--green);}
+  h1{font-size:clamp(1.9rem,5.5vw,2.8rem);font-weight:800;letter-spacing:-.02em;line-height:1.04;margin:.5rem 0 0;}
+  .lede{font-size:clamp(1rem,2.3vw,1.14rem);color:var(--ink-soft);max-width:40rem;margin:1rem 0 0;}
+  header{border-bottom:1px solid var(--line);padding-bottom:1.6rem;}
+  .backlink{font-family:"IBM Plex Mono",monospace;font-size:.8rem;color:var(--ink-soft);text-decoration:none;}
+  .backlink:hover{color:var(--green);}
+  h2.sec{font-size:1.05rem;font-weight:700;margin:2.4rem 0 1rem;display:flex;align-items:center;gap:.6rem;}
+  h2.sec::before{content:"";width:.85rem;height:.85rem;border-radius:4px;background:var(--green);}
+
+  .lane{position:relative;margin-left:.3rem;}
+  .lane::before{content:"";position:absolute;left:1.1rem;top:.6rem;bottom:.6rem;width:2px;
+    background:repeating-linear-gradient(var(--line-strong) 0 8px,transparent 8px 16px);}
+  .phase{position:relative;padding:0 0 1rem 3.2rem;}
+  .node{position:absolute;left:0;top:0;width:2.25rem;height:2.25rem;border-radius:50%;display:grid;place-items:center;
+    font-family:"Archivo";font-weight:800;font-size:.95rem;color:#fff;background:var(--green);z-index:1;box-shadow:0 0 0 5px var(--bg),var(--shadow);}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:1rem 1.15rem;box-shadow:var(--shadow);border-left:4px solid var(--green);}
+  .phase.opt .card{border-left-style:dashed;}
+  .card h3{font-size:1.1rem;font-weight:700;}
+  .card .opt-tag{font-family:"IBM Plex Mono",monospace;font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);
+    border:1px solid var(--line-strong);border-radius:999px;padding:.1rem .5rem;margin-left:.5rem;vertical-align:middle;}
+  .card p{margin:.4rem 0 0;color:var(--ink-soft);} .card p b{color:var(--ink);font-weight:600;}
+  pre{background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:.7rem .85rem;overflow-x:auto;margin:.7rem 0 0;}
+  code{font-family:"IBM Plex Mono",monospace;font-size:.85em;}
+  p code,li code{background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:.06em .38em;}
+  pre code{background:none;border:0;padding:0;color:var(--ink);}
+
+  .note{background:var(--amber-soft);border:1px solid var(--amber);border-radius:12px;padding:.8rem 1rem;margin-top:.7rem;font-size:.93rem;}
+  .note b{color:var(--ink);}
+  .ref{display:grid;gap:.55rem;}
+  .refrow{display:grid;grid-template-columns:auto 1fr;gap:.9rem;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:.75rem 1rem;box-shadow:var(--shadow);}
+  .refrow code.k{font-weight:600;color:var(--ink);white-space:nowrap;}
+  .refrow span{color:var(--ink-soft);font-size:.95rem;}
+  footer{margin-top:3rem;padding-top:1.3rem;border-top:1px solid var(--line);color:var(--ink-soft);font-size:.82rem;}
+  a{color:var(--green);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="backlink" href="index.html">← eo Swim</a>
+    <div class="eyebrow" style="margin-top:.8rem;">Handleiding · opleveren (voor jou)</div>
+    <h1>Van beeld tot deelbare analyse</h1>
+    <p class="lede">De volledige voorbereiding: van de opname op je PC tot een privé kijk-link die je aan de cursist geeft. De trainer hoeft hiertussen alleen in te spreken.</p>
+  </header>
+
+  <h2 class="sec">De pijplijn, stap voor stap</h2>
+  <div class="lane">
+
+    <div class="phase">
+      <div class="node">1</div>
+      <div class="card">
+        <h3>Opnemen &amp; importeren</h3>
+        <p>Neem het onderwaterbeeld op (DJI / GoPro) en kopieer het naar je PC. Gebruik je sensordata (eo SwimBETTER), noteer dan de <b>swim-ID</b>.</p>
+        <div class="note"><b>Let op de rotatie/beeldverhouding.</b> Een geroteerde bron kan later klein/scheef in beeld komen. Bij twijfel de rotatie "inbakken" bij het bewerken (fase 3).</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="node">2</div>
+      <div class="card">
+        <h3>Bron naar R2</h3>
+        <p>Zet het ruwe bestand in de private bucket, in de map <code>raw/</code>. Kleine bestanden mogen via het Cloudflare-dashboard (Upload-knop); <b>vanaf ~300&nbsp;MB via rclone</b>:</p>
+        <pre><code>rclone copy "C:\media\mydji.MP4" r2:media-private/raw/shing/ -P</code></pre>
+        <p>Onthoud de <b>key</b> (bijv. <code>raw/shing/mydji.MP4</code>) — die geef je zo aan de workflows.</p>
+      </div>
+    </div>
+
+    <div class="phase opt">
+      <div class="node">3</div>
+      <div class="card">
+        <h3>Bewerken &amp; overlay <span class="opt-tag">optioneel</span></h3>
+        <p><b>Bijsnijden/roteren/inzoomen:</b> open <a href="edit.html">edit.html</a>, sleep het lokale bestand erin, maak je knippen en klik <b>📋 Kopieer render-opdracht (EDL)</b> — of render lokaal met 🎬.</p>
+        <p><b>Sensor-overlay:</b> start de <b>Composite → R2</b>-workflow met de swim-ID en <code>r2_key</code> = je ruwe bron. Voor knippen/roteren zonder data: de <b>Edit video → R2</b>-workflow met de EDL.</p>
+        <div class="note">De workflows leveren het resultaat rechtstreeks in R2 op <code>swim/2026/…</code> mét een kant-en-klare privé-link in de run-samenvatting — dan kun je fase 4 overslaan.</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="node">4</div>
+      <div class="card">
+        <h3>Video publiceren → privé-link</h3>
+        <p>Heb je lokaal (in de browser of met ffmpeg) gerenderd? Publiceer de kijk-klare video met één commando:</p>
+        <pre><code>.\publish-to-r2.ps1 C:\media\resultaat.mp4</code></pre>
+        <p>Je krijgt een korte, privé <code>?k=</code>-link (365 dagen) op je klembord.</p>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="node">5</div>
+      <div class="card">
+        <h3>Trainer-link versturen</h3>
+        <p>Geef de trainer de viewer-link <b>met <code>&amp;edit=1</code></b> erachter, zodat hij in de bewerk-stand kan inspreken. Verwijs 'm naar de <a href="handleiding-trainer.html">trainer-handleiding</a>.</p>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="node">6</div>
+      <div class="card">
+        <h3>Annotatie terugkrijgen</h3>
+        <p>De trainer spreekt in en stuurt je één <b>annotatie-bestand</b> terug (de <code>.json</code> die hij met <b>⬇</b> heeft opgeslagen).</p>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="node">7</div>
+      <div class="card">
+        <h3>Publiceren &amp; kijk-link voor de cursist</h3>
+        <p>Open de viewer met de video en <code>&amp;edit=1</code>, klik <b>⬆</b> en laad het annotatie-bestand van de trainer. Klik dan <b>⇪ publiceer</b> — dat legt de annotatie vast en geeft je een <code>?a=&lt;id&gt;</code>.</p>
+        <p>Stuur de cursist de <b>kijk-link zonder edit</b>: de video-<code>?k=…</code> plus <code>&amp;a=&lt;id&gt;</code>. Hij ziet de beelden, de pijlen én de ingesproken uitleg — op telefoon of laptop, zonder account.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <h2 class="sec">Naslag</h2>
+  <div class="ref">
+    <div class="refrow"><code class="k">publish-to-r2.ps1</code><span>Video → R2 + korte privé-link (op je klembord).</span></div>
+    <div class="refrow"><code class="k">migrate-releases-to-r2.ps1</code><span>Eenmalig: oude release-video's naar R2 (al gedaan).</span></div>
+    <div class="refrow"><code class="k">raw/ · swim/2026/</code><span>Ruw bronmateriaal in <code>raw/</code>, eindresultaten in <code>swim/2026/</code>.</span></div>
+    <div class="refrow"><code class="k">?k= · &amp;a= · &amp;edit=1</code><span>Welke video · welke annotatie · bewerk-stand.</span></div>
+    <div class="refrow"><code class="k">env-vars</code><span><code>EOSWIM_MEDIA_BASE</code> + <code>EOSWIM_R2_TOKEN_SECRET</code> (= de Worker-secret) op je PC.</span></div>
+  </div>
+  <p style="color:var(--ink-soft);margin-top:1rem;">Meer techniek en probleemoplossing staat in <a href="https://github.com/ryanifa/eoSwimming/blob/main/ARCHITECTURE.md">ARCHITECTURE.md</a>.</p>
+
+  <footer>
+    Kort: <b>opnemen → R2 → (bewerken/overlay) → privé-link → trainer spreekt in → jij publiceert → cursist krijgt de link.</b>
+  </footer>
+</div>
+</body>
+</html>
