@@ -96,6 +96,8 @@
     position: absolute; right: 8px; top: 8px; z-index: 3; pointer-events: none;
     font-size: 10px; color: #6f8a86; opacity: .7;
   }
+  /* dev/version stamp: only for edit mode — the cursist never sees it */
+  body:not(.trainer) #build { display: none; }
 
   #emptyhint {
     position: absolute; inset: 0; z-index: 2; display: flex;
@@ -434,7 +436,7 @@
   </div>
   <button class="rot-refresh" id="refreshBtn">↻ Vernieuwen / Refresh</button>
   <button class="rot-refresh" id="forceLandscapeBtn" style="background:#2c4540;">Werkt draaien niet? → Toon liggend</button>
-  <div class="rot-build">build __BUILD_VERSION__</div>
+  <div class="rot-build">build 2026-08-26</div>
 </div>
 
 <!-- trainer toolbar (edit mode only) -->
@@ -541,7 +543,7 @@
   </div>
 
   <div id="readout"></div>
-  <div id="build">build __BUILD_VERSION__</div>
+  <div id="build">build 2026-08-26</div>
   <div id="emptyhint">Tap to choose a video — or open a <code>?r=&lt;release-tag&gt;</code> share link</div>
   <div id="vmsg"></div>
   <div id="startOverlay"><button id="startBtn">▶<span>START</span></button></div>
