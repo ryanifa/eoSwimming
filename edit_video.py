@@ -26,12 +26,32 @@ EPS = 0.04
 def probe(video: Path):
     out = subprocess.run(
         ["ffprobe", "-v", "error", "-select_streams", "v:0",
-         "-show_entries", "stream=width,height", "-show_entries", "format=duration",
+         "-show_entries",
+         "stream=width,height:stream_tags=rotate:stream_side_data=rotation",
+         "-show_entries", "format=duration",
          "-of", "json", str(video)],
         check=True, capture_output=True, text=True).stdout
     d = json.loads(out)
     st = (d.get("streams") or [{}])[0]
-    return float(d["format"]["duration"]), int(st["width"]), int(st["height"])
+    w, h = int(st["width"]), int(st["height"])
+    # ffmpeg auto-rotates on decode, so report DISPLAY dimensions: if the stream
+    # carries a 90/270 rotation (old 'rotate' tag or a display-matrix side_data),
+    # swap w/h. Otherwise the padded canvas is computed for the wrong orientation
+    # and the (already-rotated) frames get squeezed into a tiny padded area.
+    rot = 0
+    try:
+        rot = int((st.get("tags") or {}).get("rotate", 0))
+    except (TypeError, ValueError):
+        rot = 0
+    for sd in (st.get("side_data_list") or []):
+        if "rotation" in sd:
+            try:
+                rot = int(sd["rotation"])
+            except (TypeError, ValueError):
+                pass
+    if abs(rot) % 180 == 90:
+        w, h = h, w
+    return float(d["format"]["duration"]), w, h
 
 
 def merge(cuts):
