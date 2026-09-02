@@ -1891,7 +1891,8 @@ if (qv) {
   // canvas at native video size is composited each frame and captured; memo
   // audio is mixed in through a WebAudio graph. Convert the WebM to MP4 with the
   // "Publish a plain video to R2" workflow. Laptop/edit only.
-  const WATERMARK = (new URLSearchParams(location.search).get('wm')) || 'Powered by Ryan Douglas';
+  const WATERMARK = (new URLSearchParams(location.search).get('wm')) || 'Ryan Douglas';
+  const WATERMARK_TAG = (new URLSearchParams(location.search).get('wmtag'));   // null -> default 'Powered by'
   let recCanvas = null, rctx = null, clipRec = null, clipChunks = [], recording = false;
   let audioCtx = null, audioDest = null, memoSrcNode = null;
 
@@ -1909,12 +1910,26 @@ if (qv) {
   }
   function drawWatermark(W, H) {
     if (!WATERMARK) return;
-    const fs = Math.max(14, Math.round(H * 0.030)), m = Math.round(H * 0.032);
-    rctx.font = '800 ' + fs + 'px system-ui, sans-serif';
+    const m = Math.round(H * 0.032);
+    const nameFs = Math.max(16, Math.round(H * 0.036));
+    const tagFs = Math.max(11, Math.round(nameFs * 0.58));
+    const tag = (WATERMARK_TAG == null) ? 'Powered by' : WATERMARK_TAG;
     rctx.textAlign = 'right'; rctx.textBaseline = 'alphabetic';
-    rctx.globalAlpha = 0.9; rctx.lineWidth = Math.max(2, fs / 6); rctx.strokeStyle = 'rgba(0,0,0,.55)';
-    rctx.strokeText(WATERMARK, W - m, H - m);
-    rctx.fillStyle = '#fff'; rctx.fillText(WATERMARK, W - m, H - m);
+    rctx.strokeStyle = 'rgba(0,0,0,.55)';
+    // name (bottom line, bold)
+    const nameY = H - m;
+    rctx.font = '800 ' + nameFs + 'px system-ui, sans-serif';
+    rctx.globalAlpha = 0.94; rctx.lineWidth = Math.max(2, nameFs / 6);
+    rctx.strokeText(WATERMARK, W - m, nameY);
+    rctx.fillStyle = '#fff'; rctx.fillText(WATERMARK, W - m, nameY);
+    // tag ("Powered by") above the name, smaller and lighter
+    if (tag) {
+      const tagY = nameY - nameFs - Math.round(H * 0.006);
+      rctx.font = '600 ' + tagFs + 'px system-ui, sans-serif';
+      rctx.globalAlpha = 0.88; rctx.lineWidth = Math.max(1.5, tagFs / 6);
+      rctx.strokeText(tag, W - m, tagY);
+      rctx.fillStyle = '#e5e7eb'; rctx.fillText(tag, W - m, tagY);
+    }
     rctx.globalAlpha = 1; rctx.textAlign = 'left';
   }
   function recDrawFrame() {
