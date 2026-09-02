@@ -132,11 +132,19 @@ def main() -> int:
         print("Nothing left after the edits.", file=sys.stderr)
         return 1
 
-    # common canvas that fits every piece's orientation (pad the rest)
-    TW = TH = 0
-    for _, _, rot, _z in segs:
+    # Canvas orientation = whichever orientation the timeline is MOSTLY in (by
+    # duration). A mostly-landscape edit with a few sideways (90°) clips renders
+    # landscape and fills the screen; those odd clips get side bars — instead of
+    # forcing everything into a square (which made the whole video look small).
+    L, S = max(W, H), min(W, H)
+    land = port = 0.0
+    for s, e, rot, _z in segs:
         w, h = (H, W) if rot in ("90_cw", "90_ccw") else (W, H)
-        TW, TH = max(TW, w), max(TH, h)
+        if w >= h:
+            land += e - s
+        else:
+            port += e - s
+    TW, TH = (L, S) if land >= port else (S, L)
     # cap to 1080p so the result stays under GitHub Pages' 100 MB serving limit
     big = max(TW, TH)
     if big > 1920:
