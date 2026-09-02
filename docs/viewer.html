@@ -1895,6 +1895,7 @@ if (qv) {
   const WATERMARK_TAG = (new URLSearchParams(location.search).get('wmtag'));   // null -> default 'Powered by'
   let recCanvas = null, rctx = null, clipRec = null, clipChunks = [], recording = false;
   let audioCtx = null, audioDest = null, memoSrcNode = null;
+  let clipTrack = null, clipManualFrame = false;   // 1:1 frame capture to avoid judder
 
   function drawRecCaption(text, W, H) {
     const pad = Math.round(H * 0.016), fs = Math.max(18, Math.round(H * 0.040));
@@ -1947,6 +1948,7 @@ if (qv) {
     rctx.globalAlpha = 1;
     if (shownNote && shownNote.text) drawRecCaption(shownNote.text, vw, vh);
     drawWatermark(vw, vh);
+    if (clipManualFrame && clipTrack) { try { clipTrack.requestFrame(); } catch (_) {} }
   }
   function buildAudioGraph() {
     if (audioDest) return audioDest;
@@ -2003,8 +2005,14 @@ if (qv) {
     rctx = recCanvas.getContext('2d');
     let stream;
     try {
-      const vstream = recCanvas.captureStream(30);
-      const tracks = vstream.getVideoTracks();
+      // captureStream(0) + track.requestFrame() emits exactly one frame per draw
+      // (no fixed-rate resampling), which keeps playback smooth. Fall back to a
+      // fixed 30fps capture if manual frames aren't supported.
+      let vstream = recCanvas.captureStream(0);
+      clipTrack = vstream.getVideoTracks()[0];
+      clipManualFrame = !!(clipTrack && typeof clipTrack.requestFrame === 'function');
+      if (!clipManualFrame) { vstream = recCanvas.captureStream(60); clipTrack = vstream.getVideoTracks()[0]; }
+      const tracks = [clipTrack];
       const dest = buildAudioGraph();
       if (dest) dest.stream.getAudioTracks().forEach(tr => tracks.push(tr));
       stream = new MediaStream(tracks);
