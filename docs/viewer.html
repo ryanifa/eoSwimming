@@ -422,6 +422,18 @@
   #toast.show { display: block; }
   #toast b { color: #9fffe0; }
 
+  /* marketing-clip recording indicator */
+  #clipRecInd { position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
+    z-index: 9; display: none; align-items: center; gap: 8px;
+    background: rgba(0,0,0,.82); color: #fff; border: 1px solid #7f1d1d;
+    border-radius: 999px; padding: 7px 10px 7px 12px; font-size: 13px; font-weight: 700; }
+  #clipRecInd.show { display: flex; }
+  #clipRecInd .cdot { width: 11px; height: 11px; border-radius: 50%; background: #ef4444;
+    box-shadow: 0 0 0 0 rgba(239,68,68,.7); animation: cpulse 1.1s infinite; }
+  @keyframes cpulse { 0% { box-shadow: 0 0 0 0 rgba(239,68,68,.7); } 70% { box-shadow: 0 0 0 8px rgba(239,68,68,0); } 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); } }
+  #clipRecStop { -webkit-tap-highlight-color: transparent; border: 0; border-radius: 999px;
+    background: #ef4444; color: #fff; font-weight: 700; font-size: 12px; padding: 6px 10px; cursor: pointer; }
+
   /* publish panel (how the coach saves annotations to the repo) */
   #pubPanel {
     position: absolute; inset: 0; z-index: 10; display: none;
@@ -508,6 +520,7 @@
   <div class="spacer"></div>
   <a class="tool" href="handleiding-trainer.html" target="_blank" rel="noopener"
      style="text-decoration:none;" title="Handleiding voor de trainer">❔ handleiding</a>
+  <button class="tool" id="recClipBtn" title="Marketingclip opnemen — video + annotatie + memo-geluid samen in één bestand">⏺ clip</button>
   <button class="tool" id="publishBtn" title="Annotaties opslaan & deellink maken">⇪ publiceer</button>
 </div>
 
@@ -540,6 +553,10 @@
     <div class="recdot"></div>
     <div class="rectime" id="recTime">0,0s</div>
     <button class="recstop" id="recStop">■ Stop &amp; bewaar</button>
+  </div>
+  <div id="clipRecInd">
+    <span class="cdot"></span><span>marketingclip opnemen…</span>
+    <button id="clipRecStop" title="Stoppen &amp; bewaren">■ stop</button>
   </div>
   <div id="pubPanel">
     <div class="pubcard">
@@ -620,12 +637,17 @@ function showMsg(html) {
 
 // ---------- loading ----------
 let pendingFallback = null;
-function loadSrc(src, name, fallback) {
+function loadSrc(src, name, fallback, cross) {
   showMsg('');
   pendingFallback = fallback || null;
   hasVideo = true;
   document.body.classList.add('has-video');
   emptyhint.style.display = 'none';
+  // For the marketing-clip recorder the video frames must be copyable to a
+  // canvas. That needs a CORS request (crossOrigin) so the canvas isn't tainted;
+  // only enable it where the server sends CORS (the ?k= media Worker), otherwise
+  // playback of a non-CORS source would break.
+  if (cross) video.crossOrigin = 'anonymous'; else video.removeAttribute('crossorigin');
   video.src = src;
   video.load();              // iOS needs an explicit load to start fetching
 }
@@ -860,7 +882,7 @@ if (qv) {
     if (e) q.push('e=' + encodeURIComponent(e));
     if (t) q.push('t=' + encodeURIComponent(t));
     if (q.length) u += '?' + q.join('&');
-    loadSrc(u, qk.split('/').pop() || qk);
+    loadSrc(u, qk.split('/').pop() || qk, null, true);   // CORS on: allows the marketing-clip recorder
   }
 } else if (rtag) {
   const owner = location.hostname.split('.')[0];
@@ -1002,22 +1024,26 @@ if (qv) {
     }
     dctx.globalAlpha = 1;
   }
-  function drawMark(m, R) {
-    dctx.strokeStyle = m.color; dctx.fillStyle = m.color;
-    dctx.lineWidth = 4; dctx.lineJoin = 'round'; dctx.lineCap = 'round';
+  function drawMark(m, R, ctx) {
+    ctx = ctx || dctx;
+    // arrow/pen line weight scales a little with the target so it reads on a
+    // full-resolution recording canvas as well as the on-screen overlay.
+    const LW = Math.max(4, Math.round(R.width / 380));
+    ctx.strokeStyle = m.color; ctx.fillStyle = m.color;
+    ctx.lineWidth = LW; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     const X = nx => R.left + nx * R.width, Y = ny => R.top + ny * R.height;
     if (m.k === 'pen') {
-      dctx.beginPath();
-      m.pts.forEach((p, i) => i ? dctx.lineTo(X(p[0]), Y(p[1])) : dctx.moveTo(X(p[0]), Y(p[1])));
-      dctx.stroke();
+      ctx.beginPath();
+      m.pts.forEach((p, i) => i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1])));
+      ctx.stroke();
     } else { // arrow — head at the END point (the direction you drag toward)
       const x1 = X(m.x1), y1 = Y(m.y1), x2 = X(m.x2), y2 = Y(m.y2);
-      dctx.beginPath(); dctx.moveTo(x1, y1); dctx.lineTo(x2, y2); dctx.stroke();
-      const a = Math.atan2(y2 - y1, x2 - x1), L = 16;   // travel direction start -> end
-      dctx.beginPath(); dctx.moveTo(x2, y2);
-      dctx.lineTo(x2 - L * Math.cos(a - 0.4), y2 - L * Math.sin(a - 0.4));
-      dctx.lineTo(x2 - L * Math.cos(a + 0.4), y2 - L * Math.sin(a + 0.4));
-      dctx.closePath(); dctx.fill();
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      const a = Math.atan2(y2 - y1, x2 - x1), L = LW * 4;   // travel direction start -> end
+      ctx.beginPath(); ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - L * Math.cos(a - 0.4), y2 - L * Math.sin(a - 0.4));
+      ctx.lineTo(x2 - L * Math.cos(a + 0.4), y2 - L * Math.sin(a + 0.4));
+      ctx.closePath(); ctx.fill();
     }
   }
 
@@ -1859,6 +1885,121 @@ if (qv) {
     prevTime = t;
   }
 
+  // ---------- marketing clip recorder ----------
+  // Record the FULL experience (video + drawings/notes overlaid + memo audio,
+  // with the auto-pauses, memo playback and skips) to one WebM file. A hidden
+  // canvas at native video size is composited each frame and captured; memo
+  // audio is mixed in through a WebAudio graph. Convert the WebM to MP4 with the
+  // "Publish a plain video to R2" workflow. Laptop/edit only.
+  const WATERMARK = (new URLSearchParams(location.search).get('wm')) || 'swimanalyses';
+  let recCanvas = null, rctx = null, clipRec = null, clipChunks = [], recording = false;
+  let audioCtx = null, audioDest = null, memoSrcNode = null;
+
+  function drawRecCaption(text, W, H) {
+    const pad = Math.round(H * 0.016), fs = Math.max(18, Math.round(H * 0.040));
+    rctx.font = '600 ' + fs + 'px system-ui, sans-serif';
+    rctx.textAlign = 'center'; rctx.textBaseline = 'middle';
+    const tw = Math.min(W * 0.9, rctx.measureText(text).width + pad * 2);
+    const bh = fs + pad * 1.4, x = (W - tw) / 2, y = H - bh - Math.round(H * 0.05);
+    rctx.fillStyle = 'rgba(0,0,0,.62)';
+    rctx.fillRect(x, y, tw, bh);
+    rctx.fillStyle = '#fff';
+    rctx.fillText(text, W / 2, y + bh / 2, tw - pad * 2);
+    rctx.textAlign = 'left';
+  }
+  function drawWatermark(W, H) {
+    if (!WATERMARK) return;
+    const fs = Math.max(14, Math.round(H * 0.030)), m = Math.round(H * 0.032);
+    rctx.font = '800 ' + fs + 'px system-ui, sans-serif';
+    rctx.textAlign = 'right'; rctx.textBaseline = 'alphabetic';
+    rctx.globalAlpha = 0.9; rctx.lineWidth = Math.max(2, fs / 6); rctx.strokeStyle = 'rgba(0,0,0,.55)';
+    rctx.strokeText(WATERMARK, W - m, H - m);
+    rctx.fillStyle = '#fff'; rctx.fillText(WATERMARK, W - m, H - m);
+    rctx.globalAlpha = 1; rctx.textAlign = 'left';
+  }
+  function recDrawFrame() {
+    if (!recording || !rctx) return;
+    const vw = video.videoWidth || 16, vh = video.videoHeight || 9;
+    if (recCanvas.width !== vw || recCanvas.height !== vh) { recCanvas.width = vw; recCanvas.height = vh; }
+    try { rctx.drawImage(video, 0, 0, vw, vh); } catch (_) {}
+    const R = { left: 0, top: 0, width: vw, height: vh }, t = video.currentTime || 0;
+    for (const m of marks) {
+      if (m.k === 'note' || !markVisibleNow(m, t)) continue;
+      const revealing = memoRevealElapsed(m) != null;
+      rctx.globalAlpha = revealing ? 1 : (m.pin ? 0.9 : Math.max(0.5, 1 - Math.abs(m.t - t) / WINDOW));
+      drawMark(m, R, rctx);
+    }
+    rctx.globalAlpha = 1;
+    if (shownNote && shownNote.text) drawRecCaption(shownNote.text, vw, vh);
+    drawWatermark(vw, vh);
+  }
+  function buildAudioGraph() {
+    if (audioDest) return audioDest;
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioDest = audioCtx.createMediaStreamDestination();
+      memoSrcNode = audioCtx.createMediaElementSource(getAudio());
+      memoSrcNode.connect(audioDest);            // into the recording
+      memoSrcNode.connect(audioCtx.destination); // and still audible while recording
+    } catch (_) { audioDest = null; }
+    return audioDest;
+  }
+  function startClipRecording() {
+    if (!hasVideo) { toast('Laad eerst een video.'); return; }
+    if (recording) return;
+    if (!window.MediaRecorder) { toast('Opnemen wordt niet ondersteund in deze browser.'); return; }
+    primeAudio();
+    recCanvas = recCanvas || document.createElement('canvas');
+    recCanvas.width = video.videoWidth || 1920; recCanvas.height = video.videoHeight || 1080;
+    rctx = recCanvas.getContext('2d');
+    let stream;
+    try {
+      const vstream = recCanvas.captureStream(30);
+      const tracks = vstream.getVideoTracks();
+      const dest = buildAudioGraph();
+      if (dest) dest.stream.getAudioTracks().forEach(tr => tracks.push(tr));
+      stream = new MediaStream(tracks);
+    } catch (_) { toast('Kon de opname niet starten.'); return; }
+    const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+      .find(m => { try { return MediaRecorder.isTypeSupported(m); } catch (_) { return false; } }) || '';
+    try { clipRec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 6000000 } : undefined); }
+    catch (_) { try { clipRec = new MediaRecorder(stream); } catch (e) { toast('Opnemen mislukt.'); return; } }
+    clipChunks = [];
+    clipRec.ondataavailable = e => { if (e.data && e.data.size) clipChunks.push(e.data); };
+    clipRec.onstop = finishClip;
+    stopMemoAudio(); holdUntil = 0; prevTime = 0;
+    try { video.currentTime = 0; } catch (_) {}
+    if (audioCtx && audioCtx.state === 'suspended') { try { audioCtx.resume(); } catch (_) {} }
+    recording = true;
+    $('clipRecInd').classList.add('show'); $('recClipBtn').classList.add('active');
+    clipRec.start();
+    const p = video.play(); if (p && p.catch) p.catch(() => {});
+    toast('Opname gestart — laat de video helemaal doorlopen, dan ■ stop (of hij stopt vanzelf aan het eind).');
+  }
+  function stopClipRecording() {
+    if (!recording) return;
+    recording = false;
+    $('clipRecInd').classList.remove('show'); $('recClipBtn').classList.remove('active');
+    try { if (clipRec && clipRec.state !== 'inactive') clipRec.stop(); } catch (_) {}
+    try { video.pause(); } catch (_) {}
+    stopMemoAudio();
+  }
+  function finishClip() {
+    if (!clipChunks.length) { toast('Opname leeg — probeer opnieuw.'); return; }
+    const blob = new Blob(clipChunks, { type: (clipRec && clipRec.mimeType) || 'video/webm' });
+    const url = URL.createObjectURL(blob);
+    const p = new URLSearchParams(location.search);
+    const base = (p.get('k') || p.get('r') || 'clip').split('/').pop().replace(/\.[^.]+$/, '');
+    const name = 'marketingclip-' + base.replace(/[^\w.-]+/g, '_') + '.webm';
+    const a = document.createElement('a'); a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    toast('Marketingclip opgeslagen: <b>' + name + '</b>. Zet ’m om naar MP4 met de workflow “Publish a plain video to R2”.');
+  }
+  $('recClipBtn').addEventListener('click', () => { recording ? stopClipRecording() : startClipRecording(); });
+  $('clipRecStop').addEventListener('click', e => { e.stopPropagation(); stopClipRecording(); });
+  video.addEventListener('ended', () => { if (recording) stopClipRecording(); });
+
   // ---------- render loop ----------
   function loop() {
     const active = marks.length || skips.length || document.body.classList.contains('trainer');
@@ -1869,6 +2010,7 @@ if (qv) {
     }
     if (active) { renderAnnotations(); updateNoteCaption(); updateMemoBadge(); autoStop(); }
     if (hasVideo) updateTimelineFill();          // keep the scrub playhead in sync for any video
+    recDrawFrame();                              // composite the marketing-clip frame while recording
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);

@@ -44,6 +44,19 @@ workflow output).
 First run may need: `powershell -ExecutionPolicy Bypass -File .\publish-to-r2.ps1 …`
 (or `Unblock-File .\publish-to-r2.ps1` if you downloaded it).
 
+## webm-to-mp4.ps1
+
+Convert a **marketing clip** recorded in the viewer (the `⏺ clip` button, which
+saves a `.webm` with the video + annotations + memo audio baked in) to a widely
+playable **MP4** (H.264/AAC, +faststart) for LinkedIn/Instagram/YouTube.
+
+```powershell
+.\webm-to-mp4.ps1 C:\Downloads\marketingclip-sjoerd3.webm      # -> ...-sjoerd3.mp4
+.\webm-to-mp4.ps1 clip.webm -Out promo.mp4 -Crf 18             # higher quality
+```
+
+Needs `ffmpeg` on PATH (same as `publish-to-r2.ps1`).
+
 ## migrate-releases-to-r2.ps1
 
 One-shot migration of the old GitHub-release videos into R2, building a `?k=`
