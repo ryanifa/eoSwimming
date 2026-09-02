@@ -1896,6 +1896,7 @@ if (qv) {
   let recCanvas = null, rctx = null, clipRec = null, clipChunks = [], recording = false;
   let audioCtx = null, audioDest = null, memoSrcNode = null;
   let clipTrack = null, clipManualFrame = false;   // 1:1 frame capture to avoid judder
+  let rvfcOn = false;                              // drawing driven by real video frames
 
   function drawRecCaption(text, W, H) {
     const pad = Math.round(H * 0.016), fs = Math.max(18, Math.round(H * 0.040));
@@ -1933,7 +1934,12 @@ if (qv) {
     }
     rctx.globalAlpha = 1; rctx.textAlign = 'left';
   }
+  // rAF path: only composite when NOT driven by real video frames (i.e. while
+  // paused during a memo/hold, or if requestVideoFrameCallback is unavailable).
   function recDrawFrame() {
+    if (recording && (video.paused || !rvfcOn)) recComposite();
+  }
+  function recComposite() {
     if (!recording || !rctx) return;
     const vw = video.videoWidth || 16, vh = video.videoHeight || 9;
     if (recCanvas.width !== vw || recCanvas.height !== vh) { recCanvas.width = vw; recCanvas.height = vh; }
@@ -2031,11 +2037,19 @@ if (qv) {
     $('clipRecInd').classList.add('show'); $('recClipBtn').classList.add('active');
     clipRec.start();
     const p = video.play(); if (p && p.catch) p.catch(() => {});
+    // Capture on each real decoded video frame → matches the source fps (60 if
+    // the source is 60) with no judder. The rAF path covers the paused stretches.
+    rvfcOn = false;
+    if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+      rvfcOn = true;
+      const cb = () => { if (!recording) { rvfcOn = false; return; } recComposite(); try { video.requestVideoFrameCallback(cb); } catch (_) { rvfcOn = false; } };
+      try { video.requestVideoFrameCallback(cb); } catch (_) { rvfcOn = false; }
+    }
     toast('Opname gestart — laat de video helemaal doorlopen, dan ■ stop (of hij stopt vanzelf aan het eind).');
   }
   function stopClipRecording() {
     if (!recording) return;
-    recording = false;
+    recording = false; rvfcOn = false;
     $('clipRecInd').classList.remove('show'); $('recClipBtn').classList.remove('active');
     try { if (clipRec && clipRec.state !== 'inactive') clipRec.stop(); } catch (_) {}
     try { video.pause(); } catch (_) {}
