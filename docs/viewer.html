@@ -1982,7 +1982,11 @@ if (qv) {
         video.src = clipBlobUrl; video.load();
       });
       return true;
-    } catch (_) { toast('Kon de video niet voorbereiden voor opname.'); return false; }
+    } catch (_) {
+      toast('⚠️ Kon de video niet ophalen voor opname (media-Worker moet bijgewerkt zijn voor CORS). ' +
+            'Werkt nu al: sleep het <b>lokale mp4-bestand</b> in beeld en neem daarvan op.');
+      return false;
+    }
   }
   function restoreSource() {
     if (clipOrigSrc) { pendingFallback = null; video.src = clipOrigSrc; video.load(); clipOrigSrc = null; }
