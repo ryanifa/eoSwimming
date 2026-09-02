@@ -63,6 +63,9 @@ jobs:
           VIDEO_URL: ${{ inputs.video_url }}
         run: |
           set -e
+          R2_KEY="${R2_KEY%\"}"; R2_KEY="${R2_KEY#\"}"   # tolerate surrounding quotes
+          R2_KEY="${R2_KEY%\'}"; R2_KEY="${R2_KEY#\'}"
+          R2_KEY="${R2_KEY#/}"                            # and a leading slash
           if [ -n "$R2_KEY" ]; then
             echo "Fetching from R2: $R2_KEY"
             rclone copyto "r2:${BUCKET}/${R2_KEY}" input.mp4 -v

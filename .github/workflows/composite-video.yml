@@ -116,6 +116,9 @@ jobs:
         run: |
           set -e
           mkdir -p input
+          R2_KEY="${R2_KEY%\"}"; R2_KEY="${R2_KEY#\"}"   # tolerate surrounding quotes
+          R2_KEY="${R2_KEY%\'}"; R2_KEY="${R2_KEY#\'}"
+          R2_KEY="${R2_KEY#/}"                            # and a leading slash
           if [ -n "$R2_KEY" ]; then
             echo "Fetching from R2: $R2_KEY"
             rclone copyto "r2:${BUCKET}/${R2_KEY}" input/source.mp4 -v
