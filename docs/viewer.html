@@ -882,7 +882,7 @@ if (qv) {
     if (e) q.push('e=' + encodeURIComponent(e));
     if (t) q.push('t=' + encodeURIComponent(t));
     if (q.length) u += '?' + q.join('&');
-    loadSrc(u, qk.split('/').pop() || qk, null, true);   // CORS on: allows the marketing-clip recorder
+    loadSrc(u, qk.split('/').pop() || qk);
   }
 } else if (rtag) {
   const owner = location.hostname.split('.')[0];
