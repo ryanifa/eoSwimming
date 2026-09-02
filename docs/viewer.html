@@ -380,6 +380,18 @@
   .tlspan.draw { top: 28px; background: #ffcf33; }   /* pijl/pen lane */
   .tlspan.note { top: 16px; background: #34d399; }   /* notitie lane */
 
+  /* "overslaan" (skip) ranges: a hatched band over the scrub track that the
+     player jumps over on play. Shown to everyone (the cursist sees the skipped
+     part greyed/hatched); the ✕ to remove one only appears in edit mode. */
+  .tlskip { position: absolute; top: 42px; height: 11px; border-radius: 3px;
+            background: repeating-linear-gradient(45deg,
+              rgba(148,163,184,.55) 0 5px, rgba(148,163,184,.2) 5px 10px);
+            outline: 1px solid rgba(203,213,225,.55); pointer-events: none; }
+  .tlskip-x { position: absolute; top: 30px; width: 16px; height: 16px; margin-left: -8px;
+              border-radius: 50%; background: #0e1a17; color: #fff; border: 1px solid #9fffe0;
+              font: 700 11px/15px system-ui, sans-serif; text-align: center; cursor: pointer; z-index: 6; }
+  body:not(.trainer) .tlskip-x { display: none; }
+
   /* note input bar — floats over the video so the frame stays visible */
   #noteInput {
     position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
@@ -474,6 +486,7 @@
     <button class="tool" id="micBtn"  title="Spraakmemo op dit frame">🎙️ memo</button>
     <button class="tool" id="pinDrawBtn" title="Pijl/pen vastzetten — blijft staan tot je het weer uitzet">📌 pijl/pen</button>
     <button class="tool" id="pinNoteBtn" title="Notitie vastzetten — blijft staan tot je het weer uitzet">📌 notitie</button>
+    <button class="tool" id="skipBtn" title="Overbodig stuk overslaan — markeer begin- en eindframe; bij afspelen springt de video hier overheen">⏩ overslaan</button>
   </div>
   <div class="sep"></div>
   <div class="group">
@@ -876,6 +889,8 @@ if (qv) {
   const COLORS = ['#ff3b30', '#ffcf33', '#22c55e', '#3b82f6'];
   const WINDOW = 0.20;          // s: a non-pinned mark shows within ±WINDOW of its time
   let marks = [];               // {t,k:'pen'|'arrow'|'note',color,pin, pts|x1..y2 | text}
+  let skips = [];               // [[a,b], ...] time ranges the player skips over on play
+  let skipStart = null;         // set to the first frame while marking a skip range
   let tool = 'pen', color = COLORS[0], pinDraw = false, pinNote = false, liveMark = null;
   let prevTime = 0, holdUntil = 0;   // auto play/pause state
   const HOLD_MS = 2200;          // base hold on a drawing/short-note frame
@@ -1094,6 +1109,33 @@ if (qv) {
               : 'Notitie vastzetten uit — nieuwe notities horen bij hun frame');
     }
   });
+  // ---------- "overslaan" (skip) ranges ----------
+  function fmtT(s) { s = Math.max(0, Math.floor(s || 0)); const m = (s / 60) | 0; return m + ':' + String(s % 60).padStart(2, '0'); }
+  function mergeSkips() {
+    skips = skips.map(r => [Math.min(r[0], r[1]), Math.max(r[0], r[1])]).sort((a, b) => a[0] - b[0]);
+    const out = [];
+    for (const [a, b] of skips) {
+      if (out.length && a <= out[out.length - 1][1] + 0.05) out[out.length - 1][1] = Math.max(out[out.length - 1][1], b);
+      else out.push([a, b]);
+    }
+    skips = out;
+  }
+  // Mark a skip in two taps: first sets the begin frame, second the end frame.
+  $('skipBtn').addEventListener('click', () => {
+    if (!hasVideo) { toast('Laad eerst een video.'); return; }
+    const t = video.currentTime || 0;
+    if (skipStart == null) {
+      skipStart = t; $('skipBtn').classList.add('active');
+      toast('Overslaan: beginpunt op <b>' + fmtT(t) + '</b> — ga naar het eindframe en tik nogmaals op ⏩ overslaan.');
+    } else {
+      const a = Math.min(skipStart, t), b = Math.max(skipStart, t);
+      skipStart = null; $('skipBtn').classList.remove('active');
+      if (b - a < 0.2) { toast('Overslaan geannuleerd (begin en eind te dicht op elkaar).'); return; }
+      skips.push([a, b]); mergeSkips(); updateTimeline();
+      toast('Overslaan-stuk toegevoegd: <b>' + fmtT(a) + '–' + fmtT(b) + '</b>. Bij afspelen springt de video hier overheen.');
+    }
+  });
+
   // undo / redo with feedback so you can see what happens
   let redoStack = [];
   function describeMark(m) {
@@ -1136,11 +1178,12 @@ if (qv) {
   });
   // RESET: wipe ALL annotations and start from scratch (confirmed — not undoable)
   $('resetAll').addEventListener('click', () => {
-    if (!marks.length) { toast('Er zijn nog geen annotaties.'); return; }
-    const n = marks.length;
+    if (!marks.length && !skips.length) { toast('Er zijn nog geen annotaties.'); return; }
+    const n = marks.length + skips.length;
     if (!confirm('Alle ' + n + ' annotatie(s) wissen en helemaal opnieuw beginnen?\n\nDit kan niet ongedaan worden gemaakt.')) return;
     stopMemoAudio();                          // in case a memo is playing/recording
-    marks = []; redoStack = []; liveMark = null;
+    marks = []; skips = []; skipStart = null; redoStack = []; liveMark = null;
+    $('skipBtn').classList.remove('active');
     pinDraw = pinNote = false;
     $('pinDrawBtn').classList.remove('active');
     $('pinNoteBtn').classList.remove('active');
@@ -1458,7 +1501,7 @@ if (qv) {
   // ---------- timeline (dots + scrub) ----------
   function updateTimeline() {
     const dur = video.duration || 0;
-    tl.querySelectorAll('.tldot, .tlspan').forEach(d => d.remove());
+    tl.querySelectorAll('.tldot, .tlspan, .tlskip, .tlskip-x').forEach(d => d.remove());
     if (dur > 0) {
       const laneOf = m => m.k === 'note' ? 'note' : m.k === 'memo' ? 'memo' : 'draw';
       const dotClass = k => 'tldot' + (k === 'note' ? ' audio' : k === 'memo' ? ' memo' : '');
@@ -1492,8 +1535,28 @@ if (qv) {
         dot.style.left = pct(m.t);
         tl.appendChild(dot);
       }
+      // "overslaan" (skip) bands over the scrub track, with a ✕ (edit mode) to remove
+      const handle = $('tlhandle');
+      for (const r of skips) {
+        const [a, b] = r;
+        const l = Math.max(0, Math.min(1, a / dur)), w = Math.max(0, Math.min(1, b / dur)) - l;
+        const band = document.createElement('div');
+        band.className = 'tlskip';
+        band.style.left = (l * 100) + '%'; band.style.width = (w * 100) + '%';
+        tl.insertBefore(band, handle);
+        const x = document.createElement('div');
+        x.className = 'tlskip-x'; x.textContent = '✕'; x.title = 'Dit overslaan-stuk verwijderen';
+        x.style.left = (l * 100) + '%';
+        x.addEventListener('pointerdown', ev => ev.stopPropagation());
+        x.addEventListener('click', ev => {
+          ev.stopPropagation();
+          skips = skips.filter(s => s !== r);
+          updateTimeline(); toast('Overslaan-stuk verwijderd.');
+        });
+        tl.insertBefore(x, handle);
+      }
     }
-    document.body.classList.toggle('has-annot', marks.length > 0);
+    document.body.classList.toggle('has-annot', marks.length > 0 || skips.length > 0);
     if (draftReady) saveDraft();
   }
   function updateTimelineFill() {
@@ -1547,7 +1610,7 @@ if (qv) {
   }
   const round = (n, d) => Math.round(n * 10 ** d) / 10 ** d;
   function serialize() {
-    return { v: 1, m: marks.map(m => {
+    const out = { v: 1, m: marks.map(m => {
       const o = { t: round(m.t, 3), k: m.k[0] };
       if (m.pin) { o.P = 1; if (isFinite(m.end)) o.e = round(m.end, 3); }
       if (m.md != null) o.md = round(m.md, 2);   // memo offset (drawn/typed during a memo)
@@ -1558,8 +1621,12 @@ if (qv) {
       else { o.d = round(m.dur, 2); o.mi = m.mime; o.au = m.au; if (m.track) o.tr = m.track; }   // memo (audio + optional film track)
       return o;
     }) };
+    if (skips.length) out.s = skips.map(r => [round(r[0], 3), round(r[1], 3)]);   // overslaan-ranges
+    return out;
   }
   function deserialize(obj) {
+    skips = (((obj && obj.s) || [])).map(r => [r[0] || 0, r[1] || 0]);
+    mergeSkips();
     marks = ((obj && obj.m) || []).map(o => {
       const k = o.k === 'p' ? 'pen' : o.k === 'a' ? 'arrow' : o.k === 'm' ? 'memo' : 'note';
       const m = { t: o.t || 0, k, pin: !!o.P, color: COLORS[o.c || 0] || COLORS[0] };
@@ -1575,7 +1642,7 @@ if (qv) {
 
   // ---------- publish (save to the repo, share a short ?a=<id> link) ----------
   async function publish() {
-    if (!marks.length) { toast('Nog niets om te publiceren — teken, typ of spreek eerst iets in.'); return; }
+    if (!marks.length && !skips.length) { toast('Nog niets om te publiceren — teken, typ of spreek eerst iets in.'); return; }
     const jsonStr = JSON.stringify(serialize());
     const id = 'a' + Math.random().toString(36).slice(2, 8);
     const owner = location.hostname.split('.')[0];
@@ -1630,7 +1697,7 @@ if (qv) {
 
   // ---------- download / upload annotations as a file (continue on another pc) ----------
   $('dlAnnot').addEventListener('click', () => {
-    if (!marks.length) { toast('Nog niets om te downloaden.'); return; }
+    if (!marks.length && !skips.length) { toast('Nog niets om te downloaden.'); return; }
     const blob = new Blob([JSON.stringify(serialize())], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const d = new Date(), pad = n => String(n).padStart(2, '0');
@@ -1673,7 +1740,7 @@ if (qv) {
   function saveDraft() {
     if (!document.body.classList.contains('can-edit')) return;
     try {
-      if (!marks.length) { localStorage.removeItem(DRAFT_KEY); return; }
+      if (!marks.length && !skips.length) { localStorage.removeItem(DRAFT_KEY); return; }
       localStorage.setItem(DRAFT_KEY, JSON.stringify({ at: Date.now(), data: serialize() }));
     } catch (e) {
       // couldn't store the current work (usually audio memos > localStorage limit).
@@ -1688,9 +1755,10 @@ if (qv) {
     if (!document.body.classList.contains('can-edit')) { draftReady = true; return; }
     let raw = null; try { raw = localStorage.getItem(DRAFT_KEY); } catch (_) {}
     let d = null; try { d = raw && JSON.parse(raw); } catch (_) {}
-    if (d && d.data && d.data.m && d.data.m.length) {
+    const dItems = d && d.data ? ((d.data.m ? d.data.m.length : 0) + (d.data.s ? d.data.s.length : 0)) : 0;
+    if (dItems) {
       const when = d.at ? new Date(d.at).toLocaleString() : '';
-      if (confirm('Niet-gepubliceerd concept gevonden (' + d.data.m.length + ' item(s)' + (when ? ', ' + when : '') + ').\nTerugzetten? (Annuleren wist het concept.)')) {
+      if (confirm('Niet-gepubliceerd concept gevonden (' + dItems + ' item(s)' + (when ? ', ' + when : '') + ').\nTerugzetten? (Annuleren wist het concept.)')) {
         deserialize(d.data); updateNoteCaption(); updateMemoBadge();
         toast('Concept teruggezet — vergeet niet te ⇪ publiceren.');
       } else { clearDraft(); }
@@ -1700,7 +1768,7 @@ if (qv) {
   }
   // warn before losing unpublished work on refresh/close
   window.addEventListener('beforeunload', e => {
-    if (document.body.classList.contains('can-edit') && marks.length) { e.preventDefault(); e.returnValue = ''; }
+    if (document.body.classList.contains('can-edit') && (marks.length || skips.length)) { e.preventDefault(); e.returnValue = ''; }
   });
 
   // ---------- load annotations: ?a=<id> from the repo, or #n= inline ----------
@@ -1709,7 +1777,8 @@ if (qv) {
     const dr = marks.filter(m => m.k === 'pen' || m.k === 'arrow').length;
     const nt = marks.filter(m => m.k === 'note').length;
     const me = marks.filter(m => m.k === 'memo').length;
-    toast('Geladen: <b>' + dr + '</b> tekening(en), <b>' + nt + '</b> notitie(s), <b>' + me + "</b> memo('s).");
+    const sk = skips.length ? (', <b>' + skips.length + "</b> overslaan-stuk(ken)") : '';
+    toast('Geladen: <b>' + dr + '</b> tekening(en), <b>' + nt + '</b> notitie(s), <b>' + me + "</b> memo('s)" + sk + '.');
   }
   (function loadAnnotations() {
     const aid = new URLSearchParams(location.search).get('a');
@@ -1756,6 +1825,11 @@ if (qv) {
       prevTime = t; return;
     }
     if (!video.paused && !memoPlaying) {
+      // "overslaan": while playing, jump over a skip range (soft — manual
+      // scrubbing can still go through it). Skips take precedence over marks.
+      for (const [a, b] of skips) {
+        if (t >= a - 0.02 && t < b - 0.05) { try { video.currentTime = b; } catch (_) {} prevTime = b; return; }
+      }
       // A memo recorded in the first second would otherwise auto-play the moment
       // the film starts; defer its trigger to EARLY_MEMO so it plays just after.
       const trig = m => (m.k === 'memo' && m.t < EARLY_MEMO) ? EARLY_MEMO : m.t;
@@ -1787,7 +1861,7 @@ if (qv) {
 
   // ---------- render loop ----------
   function loop() {
-    const active = marks.length || document.body.classList.contains('trainer');
+    const active = marks.length || skips.length || document.body.classList.contains('trainer');
     // while a memo with a film track plays, scrub the film to the recorded position
     if (currentMemoMark && currentMemoMark.track && memoAudio && !memoAudio.paused) {
       const tt = trackAt(currentMemoMark.track, memoAudio.currentTime || 0);
