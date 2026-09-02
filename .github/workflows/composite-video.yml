@@ -110,15 +110,18 @@ jobs:
         run: python fetch_one_swim.py
 
       - name: Get the source video (from an R2 key or a URL)
+        env:
+          R2_KEY: ${{ inputs.r2_key }}
+          VIDEO_URL: ${{ inputs.video_url }}
         run: |
           set -e
           mkdir -p input
-          if [ -n "${{ inputs.r2_key }}" ]; then
-            echo "Fetching from R2: ${{ inputs.r2_key }}"
-            rclone copyto "r2:${BUCKET}/${{ inputs.r2_key }}" input/source.mp4 -v
-          elif [ -n "${{ inputs.video_url }}" ]; then
+          if [ -n "$R2_KEY" ]; then
+            echo "Fetching from R2: $R2_KEY"
+            rclone copyto "r2:${BUCKET}/${R2_KEY}" input/source.mp4 -v
+          elif [ -n "$VIDEO_URL" ]; then
             echo "Downloading from URL"
-            curl -L --fail --max-time 600 -o input/source.mp4 "${{ inputs.video_url }}"
+            curl -L --fail --max-time 600 -o input/source.mp4 "$VIDEO_URL"
           else
             echo "::error::Provide either r2_key or video_url."; exit 1
           fi
@@ -170,11 +173,13 @@ jobs:
       - name: Upload to R2 and build the private viewer link
         env:
           SIGNING_SECRET: ${{ secrets.MEDIA_SIGNING_SECRET }}
+          FOLDER: ${{ inputs.folder }}
+          TAG_IN: ${{ inputs.tag }}
+          SWIM_ID: ${{ inputs.swim_id }}
         run: |
           set -e
-          FOLDER="${{ inputs.folder }}"
-          TAG="${{ inputs.tag }}"
-          [ -n "$TAG" ] || TAG="composite-${{ inputs.swim_id }}"
+          TAG="$TAG_IN"
+          [ -n "$TAG" ] || TAG="composite-${SWIM_ID}"
           KEY="${FOLDER%/}/${TAG}.mp4"
 
           echo "Uploading -> r2:${BUCKET}/${KEY}"
