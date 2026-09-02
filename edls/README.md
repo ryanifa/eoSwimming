@@ -5,6 +5,12 @@ opnieuw gerenderd kan worden zonder hem in `edit.html` over te doen. Elk
 `.json`-bestand bevat exact wat je in het `edl`-veld van de workflow
 **Edit video (trim & rotate/zoom) → R2** plakt.
 
+> **Vanaf nu automatisch:** elke Edit-run schrijft de gebruikte EDL zelf weg
+> naast de video in R2 als `<folder>/<tag>.edl.json` (én als artifact bij de
+> run). Deze map is voor het handmatige archief / oudere edits; nieuwe hoef je
+> hier niet meer bij te zetten. Een EDL uit R2 halen:
+> `rclone cat r2:media-private/swim/demo/sjoerd2.edl.json`.
+
 ## Zo render je er één opnieuw
 
 1. Open de JSON, kopieer de **hele inhoud** (de `{"regions":[…]}`-regel).

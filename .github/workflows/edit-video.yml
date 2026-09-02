@@ -85,13 +85,18 @@ jobs:
           EDL: ${{ inputs.edl }}
         run: |
           echo "EDL: $EDL"
+          # Keep the render-opdracht next to the result so the edit can always be
+          # reproduced (uploaded to R2 and attached as an artifact below).
+          printf '%s' "$EDL" > out.edl.json
           python3 edit_video.py source.mp4 out.mp4
-          ls -lh out.mp4
+          ls -lh out.mp4 out.edl.json
 
       - uses: actions/upload-artifact@v4     # a downloadable copy too (optional)
         with:
           name: edited-${{ inputs.tag }}
-          path: out.mp4
+          path: |
+            out.mp4
+            out.edl.json
           if-no-files-found: error
           retention-days: 30
 
@@ -107,6 +112,12 @@ jobs:
           echo "Uploading -> r2:${BUCKET}/${KEY}"
           rclone copyto out.mp4 "r2:${BUCKET}/${KEY}" -v
 
+          # Store the render-opdracht (EDL) next to the video so this edit can be
+          # re-rendered later without redoing it in the editor.
+          EDL_KEY="${FOLDER%/}/${TAG}.edl.json"
+          echo "Uploading EDL -> r2:${BUCKET}/${EDL_KEY}"
+          rclone copyto out.edl.json "r2:${BUCKET}/${EDL_KEY}" -v
+
           EXP=$(( $(date +%s) + 365*86400 ))
           SIG=$(printf '%s\n%s' "$KEY" "$EXP" \
             | openssl dgst -sha256 -hmac "$SIGNING_SECRET" -binary \
@@ -121,4 +132,5 @@ jobs:
             echo "[▶ Open in de frame viewer]($VIEWER)"
             echo ""
             echo "R2 object: \`${BUCKET}/${KEY}\`"
+            echo "EDL (render-opdracht): \`${BUCKET}/${EDL_KEY}\`"
           } >> "$GITHUB_STEP_SUMMARY"
