@@ -153,7 +153,8 @@ def main() -> int:
     TW += TW % 2
     TH += TH % 2
 
-    def vf(rot, zoom):
+    def pre_filter(rot, zoom):
+        """crop (zoom) + rotate — applied before the frame is fitted to canvas."""
         f = []
         if zoom:                                   # crop into the box, then scale up
             fw = float(zoom.get("w", 1.0))
@@ -162,9 +163,33 @@ def main() -> int:
             f.append(f"crop=iw*{fw:.4f}:ih*{fw:.4f}:iw*{x:.4f}:ih*{y:.4f}")
         if rot in ROT:
             f.append(ROT[rot])
-        f += [f"scale={TW}:{TH}:force_original_aspect_ratio=decrease",
-              f"pad={TW}:{TH}:(ow-iw)/2:(oh-ih)/2", "setsar=1"]
         return ",".join(f)
+
+    def piece_dims(rot, zoom):
+        if zoom:
+            return 1, 1                            # square crop
+        return (H, W) if rot in ("90_cw", "90_ccw") else (W, H)
+
+    def filter_args(rot, zoom):
+        """ffmpeg filter args to fit a piece onto the TWxTH canvas. When the
+        piece has the same shape as the canvas it just scales to fill. When it
+        doesn't (a sideways 90° clip in a landscape canvas), the empty side/top
+        bars are filled with a blurred, zoomed copy of the frame — the sharp
+        clip stays whole and centred on top — instead of black bars."""
+        pre = pre_filter(rot, zoom)
+        pw, ph = piece_dims(rot, zoom)
+        if abs(pw * TH - ph * TW) <= 1:            # same aspect -> fills exactly
+            chain = (pre + "," if pre else "") + f"scale={TW}:{TH},setsar=1"
+            return ["-vf", chain]
+        p = "[0:v]" + (pre + "," if pre else "")
+        fc = (
+            p + "split=2[pbg][pfg];"
+            f"[pbg]scale={TW}:{TH}:force_original_aspect_ratio=increase,"
+            f"crop={TW}:{TH},gblur=sigma=20[bg];"
+            f"[pfg]scale={TW}:{TH}:force_original_aspect_ratio=decrease[fg];"
+            "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[v]"
+        )
+        return ["-filter_complex", fc, "-map", "[v]", "-map", "0:a?"]
 
     workdir = args.out.parent
     workdir.mkdir(parents=True, exist_ok=True)
@@ -176,7 +201,7 @@ def main() -> int:
         print(f"  piece {i + 1}/{len(segs)}: {s:.2f}-{e:.2f}s rot={rot or 'none'}{zlbl}")
         subprocess.run(
             ["ffmpeg", "-y", "-ss", f"{s:.3f}", "-i", str(args.video), "-t", f"{e - s:.3f}",
-             "-vf", vf(rot, zoom),
+             *filter_args(rot, zoom),
              "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "fast", "-crf", "20",
              "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(part)],
             check=True)
