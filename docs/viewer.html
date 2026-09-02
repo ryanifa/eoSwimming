@@ -995,13 +995,13 @@ if (qv) {
       dctx.beginPath();
       m.pts.forEach((p, i) => i ? dctx.lineTo(X(p[0]), Y(p[1])) : dctx.moveTo(X(p[0]), Y(p[1])));
       dctx.stroke();
-    } else { // arrow — head at the START point, pointing away from the line
+    } else { // arrow — head at the END point (the direction you drag toward)
       const x1 = X(m.x1), y1 = Y(m.y1), x2 = X(m.x2), y2 = Y(m.y2);
       dctx.beginPath(); dctx.moveTo(x1, y1); dctx.lineTo(x2, y2); dctx.stroke();
-      const a = Math.atan2(y1 - y2, x1 - x2), L = 16;
-      dctx.beginPath(); dctx.moveTo(x1, y1);
-      dctx.lineTo(x1 - L * Math.cos(a - 0.4), y1 - L * Math.sin(a - 0.4));
-      dctx.lineTo(x1 - L * Math.cos(a + 0.4), y1 - L * Math.sin(a + 0.4));
+      const a = Math.atan2(y2 - y1, x2 - x1), L = 16;   // travel direction start -> end
+      dctx.beginPath(); dctx.moveTo(x2, y2);
+      dctx.lineTo(x2 - L * Math.cos(a - 0.4), y2 - L * Math.sin(a - 0.4));
+      dctx.lineTo(x2 - L * Math.cos(a + 0.4), y2 - L * Math.sin(a + 0.4));
       dctx.closePath(); dctx.fill();
     }
   }
