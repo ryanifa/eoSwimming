@@ -17,7 +17,13 @@
     Uses `rclone link` (presigned, max 7 days) and builds viewer.html?v=<url>.
     Handy before the Worker is deployed.
 
-  Upload is always `rclone copy` (never sync — sync deletes on the R2 side).
+  Upload uses `rclone copyto` (never sync — sync deletes on the R2 side).
+
+  By default the video is first NORMALISED with ffmpeg (rotation baked in, square
+  pixels, +faststart, max 1080p) so it always fills the viewer — a raw camera file
+  can otherwise show up small/rotated. Pass -NoReencode to skip this and upload the
+  file as-is (only safe when it's already a clean, upright MP4, e.g. a workflow
+  output).
 
 .PARAMETER File     Path to the local video, e.g. C:\media\test.mp4
 .PARAMETER Dest     Folder (key prefix) in the bucket. Default: swim/2026
@@ -25,10 +31,12 @@
 .PARAMETER Annot    Optional annotation id to append as &a=<id>.
 .PARAMETER ExpireDays  Link validity in days. Default 365 (token mode).
                        Presigned mode is capped at 7 days regardless.
+.PARAMETER NoReencode  Skip the ffmpeg normalise step; upload the file unchanged.
 
 .EXAMPLE
   .\publish-to-r2.ps1 C:\media\test.mp4
   .\publish-to-r2.ps1 C:\media\jeroen.mp4 -Dest swim/2026 -Edit
+  .\publish-to-r2.ps1 C:\media\already-clean.mp4 -NoReencode
 #>
 
 [CmdletBinding()]
@@ -37,7 +45,8 @@ param(
   [Parameter(Position = 1)] [string] $Dest = "swim/2026",
   [switch] $Edit,
   [string] $Annot = "",
-  [int] $ExpireDays = 365
+  [int] $ExpireDays = 365,
+  [switch] $NoReencode
 )
 
 # ---- config (no secrets here; R2 credentials live in the rclone "r2" remote) --
@@ -68,30 +77,55 @@ if ($ExpireDays -lt 1) { throw "ExpireDays must be >= 1." }
 $name   = Split-Path -Leaf $File
 $dst    = $Dest.Trim("/")
 $key    = "$dst/$name"                       # object key inside the bucket
-$target = "${Remote}:${Bucket}/${dst}/"
+$dest   = "${Remote}:${Bucket}/${key}"
 
-Write-Host "1/3  Uploading $name -> ${Remote}:${Bucket}/${key}" -ForegroundColor Cyan
-rclone copy --progress $File $target         # copy, never sync
-if ($LASTEXITCODE -ne 0) { throw "rclone copy failed (exit $LASTEXITCODE)." }
+# --- normalise (default) so the video always fills the viewer ---
+$uploadFrom = $File
+$tmp = $null
+if (-not $NoReencode) {
+  if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+    throw "ffmpeg not found on PATH. Install it (e.g. 'winget install Gyan.FFmpeg'), " +
+          "or pass -NoReencode to upload as-is (only safe for an already-clean, upright MP4)."
+  }
+  Write-Host "1/4  Normalising video (bake rotation, square pixels, faststart)…" -ForegroundColor Cyan
+  $tmp = Join-Path $env:TEMP ("eoswim-norm-" + [guid]::NewGuid().ToString('N').Substring(0, 8) + ".mp4")
+  # ffmpeg auto-applies any rotation flag on decode -> upright frames, no rotate tag.
+  # setsar=1 fixes non-square (anamorphic) pixels; scale caps width at 1080p.
+  ffmpeg -y -hide_banner -loglevel error -stats -i $File `
+    -vf "scale='min(1920,iw)':-2,setsar=1" `
+    -c:v libx264 -pix_fmt yuv420p -preset fast -crf 20 `
+    -c:a aac -b:a 160k -movflags +faststart $tmp
+  if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $tmp)) {
+    if ($tmp) { Remove-Item -LiteralPath $tmp -ErrorAction SilentlyContinue }
+    throw "ffmpeg normalise failed (exit $LASTEXITCODE)."
+  }
+  $uploadFrom = $tmp
+}
+
+Write-Host "2/4  Uploading $name -> ${Remote}:${Bucket}/${key}" -ForegroundColor Cyan
+rclone copyto --progress $uploadFrom $dest    # copyto: lands at the exact key
+$rc = $LASTEXITCODE
+if ($tmp) { Remove-Item -LiteralPath $tmp -ErrorAction SilentlyContinue }
+if ($rc -ne 0) { throw "rclone copyto failed (exit $rc)." }
 
 $tokenMode = $MediaBase -and $Secret
 if ($tokenMode) {
-  Write-Host "2/3  Signing a private token (valid $ExpireDays days)" -ForegroundColor Cyan
+  Write-Host "3/4  Signing a private token (valid $ExpireDays days)" -ForegroundColor Cyan
   $exp = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + ($ExpireDays * 86400)
   $sig = New-SignedToken $Secret "$key`n$exp"     # HMAC over "<key>\n<exp>"
   $base = $MediaBase.TrimEnd('/')
   $mediaUrl = "$base/$(EncodeKey $key)?e=$exp&t=$(Encode $sig)"
   $validNote = "$ExpireDays days"
-  Write-Host "3/3  Building the short private viewer link" -ForegroundColor Cyan
+  Write-Host "4/4  Building the short private viewer link" -ForegroundColor Cyan
   $viewer = "$ViewerBase`?k=$(EncodeKey $key)&e=$exp&t=$(Encode $sig)"
 } else {
-  Write-Host "2/3  No Worker configured -> presigned link (max 7 days)" -ForegroundColor DarkYellow
+  Write-Host "3/4  No Worker configured -> presigned link (max 7 days)" -ForegroundColor DarkYellow
   $hours = [Math]::Min($ExpireDays * 24, 168)
   $presigned = (rclone link "${Remote}:${Bucket}/${key}" --expire "${hours}h").Trim()
   if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($presigned)) { throw "rclone link failed." }
   $mediaUrl = $presigned
   $validNote = "$([Math]::Round($hours/24,1)) days (presigned limit)"
-  Write-Host "3/3  Building the viewer link" -ForegroundColor Cyan
+  Write-Host "4/4  Building the viewer link" -ForegroundColor Cyan
   $viewer = "$ViewerBase`?v=$(Encode $presigned)"
 }
 

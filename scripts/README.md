@@ -32,8 +32,14 @@ setx EOSWIM_R2_TOKEN_SECRET "<the same secret you gave the Worker>"
 ```powershell
 .\publish-to-r2.ps1 C:\media\test.mp4                       # upload -> link on clipboard
 .\publish-to-r2.ps1 C:\media\jeroen.mp4 -Dest swim/2026 -Edit   # open in annotate mode
-.\publish-to-r2.ps1 C:\media\test.mp4 -Annot ar4knmu -ExpireDays 90
+.\publish-to-r2.ps1 C:\media\clean.mp4 -NoReencode          # skip normalise (already-clean MP4)
 ```
+
+By default the video is first **normalised with ffmpeg** (rotation baked in,
+square pixels, +faststart, max 1080p) so a raw camera file always fills the
+viewer instead of showing up small/rotated. This needs `ffmpeg` on PATH; pass
+`-NoReencode` to skip it (safe only for an already-clean, upright MP4 like a
+workflow output).
 
 First run may need: `powershell -ExecutionPolicy Bypass -File .\publish-to-r2.ps1 …`
 (or `Unblock-File .\publish-to-r2.ps1` if you downloaded it).
