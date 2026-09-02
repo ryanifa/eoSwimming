@@ -1,0 +1,128 @@
+name: Combine videos into one → R2
+run-name: "${{ inputs.note != '' && format('{0} — ', inputs.note) || '' }}Combine → ${{ inputs.tag }}"
+
+# Join several finished videos (already in R2) into ONE new video with hard cuts,
+# then upload the result to the private R2 bucket and print a private viewer link.
+# Each input is normalised to a common 1920x1080 canvas (blurred fill for odd
+# shapes) so the clips concatenate cleanly and fill the frame.
+#
+# Requires repo secrets: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT,
+# MEDIA_SIGNING_SECRET (the same secret the media Worker uses). See ARCHITECTURE.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      note:
+        description: "Label for the run title so you can find it back later."
+        required: false
+        default: ""
+      keys:
+        description: "R2 keys of the videos to join, IN ORDER — one per line (or separated by |). e.g. swim/demo/sjoerd2.mp4"
+        required: true
+      tag:
+        description: "Share name for the result — R2 filename and ?k= link (e.g. sjoerd-samen)."
+        required: true
+      folder:
+        description: "R2 output folder / key prefix"
+        required: false
+        default: "swim/2026"
+
+permissions:
+  contents: read
+
+env:
+  RCLONE_CONFIG_R2_TYPE: s3
+  RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+  RCLONE_CONFIG_R2_REGION: auto
+  RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+  RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  RCLONE_CONFIG_R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+  RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+  BUCKET: media-private
+
+jobs:
+  combine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4          # needed for combine_videos.py
+
+      - name: Install ffmpeg + rclone
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg rclone
+
+      - name: Fetch the source videos from R2 (in order)
+        env:
+          KEYS: ${{ inputs.keys }}
+        run: |
+          set -e
+          mkdir -p input
+          # accept | as a separator too, then read one key per line
+          mapfile -t LINES < <(printf '%s\n' "$KEYS" | tr '|' '\n')
+          i=0
+          : > sources.txt
+          for raw in "${LINES[@]}"; do
+            key="$(printf '%s' "$raw" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+            [ -n "$key" ] || continue
+            key="${key%\"}"; key="${key#\"}"   # tolerate surrounding quotes
+            key="${key%\'}"; key="${key#\'}"
+            key="${key#/}"                      # and a leading slash
+            dest="$(printf 'input/clip_%03d.mp4' "$i")"
+            echo "Fetching [$i] $key"
+            rclone copyto "r2:${BUCKET}/${key}" "$dest" -v
+            echo "$key" >> sources.txt
+            i=$((i+1))
+          done
+          if [ "$i" -lt 1 ]; then
+            echo "::error::No keys given. Put one R2 key per line."; exit 1
+          fi
+          echo "Fetched $i clip(s):"
+          ls -lh input/
+
+      - name: Combine into one video
+        run: |
+          set -e
+          python3 combine_videos.py out.mp4 $(ls -1 input/clip_*.mp4 | sort)
+          ls -lh out.mp4
+
+      - uses: actions/upload-artifact@v4     # a downloadable copy + the source list
+        with:
+          name: combined-${{ inputs.tag }}
+          path: |
+            out.mp4
+            sources.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload to R2 and build the private viewer link
+        env:
+          SIGNING_SECRET: ${{ secrets.MEDIA_SIGNING_SECRET }}
+          FOLDER: ${{ inputs.folder }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -e
+          KEY="${FOLDER%/}/${TAG}.mp4"
+
+          echo "Uploading -> r2:${BUCKET}/${KEY}"
+          rclone copyto out.mp4 "r2:${BUCKET}/${KEY}" -v
+
+          # Store the source list next to the result so the combine is reproducible.
+          SRC_KEY="${FOLDER%/}/${TAG}.sources.txt"
+          echo "Uploading source list -> r2:${BUCKET}/${SRC_KEY}"
+          rclone copyto sources.txt "r2:${BUCKET}/${SRC_KEY}" -v
+
+          EXP=$(( $(date +%s) + 365*86400 ))
+          SIG=$(printf '%s\n%s' "$KEY" "$EXP" \
+            | openssl dgst -sha256 -hmac "$SIGNING_SECRET" -binary \
+            | base64 | tr '+/' '-_' | tr -d '=')
+          KEY_ENC=${KEY// /%20}
+          VIEWER="https://ryanifa.github.io/eoSwimming/viewer.html?k=${KEY_ENC}&e=${EXP}&t=${SIG}"
+
+          echo "Viewer: $VIEWER"
+          {
+            echo "### Gecombineerde video klaar — privé viewer-link (365 dagen)"
+            echo ""
+            echo "[▶ Open in de frame viewer]($VIEWER)"
+            echo ""
+            echo "R2 object: \`${BUCKET}/${KEY}\`"
+            echo "Bronlijst: \`${BUCKET}/${SRC_KEY}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
