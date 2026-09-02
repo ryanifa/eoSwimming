@@ -1944,11 +1944,41 @@ if (qv) {
     } catch (_) { audioDest = null; }
     return audioDest;
   }
-  function startClipRecording() {
+  // For the recorder the video frames must be copyable to a canvas without
+  // tainting it. Rather than put crossOrigin on the player (which broke ?k=
+  // playback), fetch the media ONCE as a same-origin blob and record from that.
+  // The Worker already allows CORS fetch (used by edit.html/frames.html).
+  let clipOrigSrc = null, clipBlobUrl = null;
+  async function ensureRecordableSource() {
+    const cur = video.currentSrc || video.src || '';
+    if (!cur || cur.indexOf('blob:') === 0 || cur.indexOf(location.origin) === 0) return true;   // already canvas-safe
+    toast('Even de video voorbereiden voor opname…');
+    try {
+      const resp = await fetch(cur, { cache: 'no-store' });
+      if (!resp.ok) throw 0;
+      const blob = await resp.blob();
+      clipOrigSrc = cur; clipBlobUrl = URL.createObjectURL(blob);
+      pendingFallback = null;                    // don't let the global error-fallback fire on the swap
+      await new Promise((res, rej) => {
+        const ok = () => { cleanup(); res(); };
+        const bad = () => { cleanup(); rej(); };
+        const cleanup = () => { video.removeEventListener('loadeddata', ok); video.removeEventListener('error', bad); };
+        video.addEventListener('loadeddata', ok); video.addEventListener('error', bad);
+        video.src = clipBlobUrl; video.load();
+      });
+      return true;
+    } catch (_) { toast('Kon de video niet voorbereiden voor opname.'); return false; }
+  }
+  function restoreSource() {
+    if (clipOrigSrc) { pendingFallback = null; video.src = clipOrigSrc; video.load(); clipOrigSrc = null; }
+    if (clipBlobUrl) { const u = clipBlobUrl; clipBlobUrl = null; setTimeout(() => URL.revokeObjectURL(u), 60000); }
+  }
+  async function startClipRecording() {
     if (!hasVideo) { toast('Laad eerst een video.'); return; }
     if (recording) return;
     if (!window.MediaRecorder) { toast('Opnemen wordt niet ondersteund in deze browser.'); return; }
     primeAudio();
+    if (!(await ensureRecordableSource())) return;
     recCanvas = recCanvas || document.createElement('canvas');
     recCanvas.width = video.videoWidth || 1920; recCanvas.height = video.videoHeight || 1080;
     rctx = recCanvas.getContext('2d');
@@ -1983,6 +2013,7 @@ if (qv) {
     try { if (clipRec && clipRec.state !== 'inactive') clipRec.stop(); } catch (_) {}
     try { video.pause(); } catch (_) {}
     stopMemoAudio();
+    restoreSource();                             // back to the streaming ?k= source
   }
   function finishClip() {
     if (!clipChunks.length) { toast('Opname leeg — probeer opnieuw.'); return; }
