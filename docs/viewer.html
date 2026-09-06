@@ -525,7 +525,10 @@
 </div>
 
 <div class="stage" id="stage">
-  <video id="video" muted playsinline webkit-playsinline preload="auto"></video>
+  <!-- Not muted: play the film's own audio when it has an audio track (non-swim
+       clips). Swim renders are encoded without audio, so they stay silent.
+       Playback is always user-initiated (no autoplay), so no muted requirement. -->
+  <video id="video" playsinline webkit-playsinline preload="auto"></video>
   <canvas id="draw"></canvas>
   <button id="trainerToggle" title="Bewerken / voorvertonen">✏️</button>
   <button id="flRefresh" title="Refresh">↻</button>
