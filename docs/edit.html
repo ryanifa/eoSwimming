@@ -480,7 +480,9 @@ $('copyEdl').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(txt); setStatus('Render-opdracht gekopieerd ✓ — plak bij de workflow als "edl" (en dezelfde video-URL).'); }
   catch (_) { $('edlOut').select(); setStatus('Selecteer en kopieer de tekst hieronder.'); }
 });
-$('keepAudio').addEventListener('change', updateEdl);   // reflect the audio flag in the EDL text
+// reflect the audio flag in the EDL text, and let you actually HEAR it in the
+// editor preview when it's on (default off = muted, so pool noise stays silent).
+$('keepAudio').addEventListener('change', () => { updateEdl(); video.muted = !$('keepAudio').checked; });
 
 // ---------- zoom helpers ----------
 function zoomAt(t) {
