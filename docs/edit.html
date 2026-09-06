@@ -140,9 +140,11 @@
 
 <div class="row">
   <button id="fromStart" disabled>⏮ Naar begin</button>
-  <button id="stepBack" disabled title="1 frame terug — toets ← (Shift+← = 10 frames)">◀ frame</button>
+  <button id="stepBack10" disabled title="10 frames terug (Shift+←)">◀◀ 10</button>
+  <button id="stepBack" disabled title="1 frame terug — toets ← ">◀ frame</button>
   <button id="playBtn" disabled>▶ Afspelen</button>
-  <button id="stepFwd" disabled title="1 frame vooruit — toets → (Shift+→ = 10 frames)">frame ▶</button>
+  <button id="stepFwd" disabled title="1 frame vooruit — toets → ">frame ▶</button>
+  <button id="stepFwd10" disabled title="10 frames vooruit (Shift+→)">10 ▶▶</button>
   <span class="label" style="font-family:monospace;"><span id="curLabel">0:00,00</span> · <span id="curFrame">f0</span>
     · resultaat <span id="resLabel">0:00,00</span></span>
   <span class="label">fps <input id="fpsInput" type="number" min="1" max="240" step="1" value="30"
@@ -427,6 +429,8 @@ function stepFrame(n) {
 }
 $('stepBack').addEventListener('click', () => stepFrame(-1));
 $('stepFwd').addEventListener('click', () => stepFrame(1));
+$('stepBack10').addEventListener('click', () => stepFrame(-10));
+$('stepFwd10').addEventListener('click', () => stepFrame(10));
 $('fpsInput').addEventListener('change', () => {
   FPS = Math.min(240, Math.max(1, Math.round(+$('fpsInput').value || 30)));
   $('fpsInput').value = FPS; fpsAuto = false;        // user set it → stop auto-detect
