@@ -140,9 +140,13 @@
 
 <div class="row">
   <button id="fromStart" disabled>⏮ Naar begin</button>
+  <button id="stepBack" disabled title="1 frame terug — toets ← (Shift+← = 10 frames)">◀ frame</button>
   <button id="playBtn" disabled>▶ Afspelen</button>
-  <span class="label" style="font-family:monospace;"><span id="curLabel">0:00,00</span>
+  <button id="stepFwd" disabled title="1 frame vooruit — toets → (Shift+→ = 10 frames)">frame ▶</button>
+  <span class="label" style="font-family:monospace;"><span id="curLabel">0:00,00</span> · <span id="curFrame">f0</span>
     · resultaat <span id="resLabel">0:00,00</span></span>
+  <span class="label">fps <input id="fpsInput" type="number" min="1" max="240" step="1" value="30"
+    style="width:54px; background:#0b1714; color:#9fe6d8; border:1px solid #2c4540; border-radius:6px; padding:3px 6px;"></span>
 </div>
 
 <div class="timeline-wrap">
@@ -308,8 +312,9 @@ video.addEventListener('error', () => {
 video.addEventListener('loadedmetadata', () => {
   dur = video.duration || 0;
   sel = { a: 0, b: dur, cut: false, rot: 'none', zoom: null };
+  fpsDetected = false; fpsAuto = true;              // re-detect fps for the new video
   document.querySelectorAll('button').forEach(b => { if (!b.classList.contains('dl')) b.disabled = false; });
-  renderAll(); applyView();
+  renderAll(); applyView(); updateCur();
   $('drop').querySelector('b').textContent = '✓ ' + srcLabel;
 });
 
@@ -381,8 +386,8 @@ function renderSel() {
   hStart.style.left = a + '%'; hEnd.style.left = b + '%';
   tlSel.style.left = a + '%'; tlSel.style.width = (b - a) + '%';
   tlSel.classList.toggle('cut', sel.cut);
-  $('tStart').textContent = 'selectie ' + fmt(sel.a);
-  $('tEnd').textContent = '→ ' + fmt(sel.b);
+  $('tStart').textContent = 'begin ' + fmt(sel.a) + ' · f' + frameOf(sel.a);
+  $('tEnd').textContent = '→ ' + fmt(sel.b) + ' · f' + frameOf(sel.b);
   $('selInfo').textContent = sel.cut ? 'wordt verwijderd'
     : sel.zoom ? ('🔍 ' + zoomLbl(sel.zoom) + ' — sleep het kader')
     : (sel.rot !== 'none' ? ROT_LBL[sel.rot] : '');
@@ -405,11 +410,55 @@ $('fromStart').addEventListener('click', () => {
 });
 video.addEventListener('play', () => { $('playBtn').textContent = '⏸ Pauze'; applyView(); });
 video.addEventListener('pause', () => { $('playBtn').textContent = '▶ Afspelen'; applyView(); });
-video.addEventListener('seeked', applyView);
+video.addEventListener('seeked', () => { applyView(); updateCur(); });
 function refreshPreviewRot() { applyView(); }
-video.addEventListener('timeupdate', () => {
+// ---------- frame-precise navigation ----------
+let FPS = 30, fpsAuto = true, fpsDetected = false;
+function frameOf(t) { return Math.round((t || 0) * FPS); }
+function updateCur() {
   $('curLabel').textContent = fmt(video.currentTime);
+  $('curFrame').textContent = 'f' + frameOf(video.currentTime);
   if (dur) tlPlay.style.left = (video.currentTime / dur * 100) + '%';
+}
+function stepFrame(n) {
+  if (!dur) return;
+  if (!video.paused) video.pause();
+  video.currentTime = Math.min(Math.max(0, (video.currentTime || 0) + n / FPS), dur);
+}
+$('stepBack').addEventListener('click', () => stepFrame(-1));
+$('stepFwd').addEventListener('click', () => stepFrame(1));
+$('fpsInput').addEventListener('change', () => {
+  FPS = Math.min(240, Math.max(1, Math.round(+$('fpsInput').value || 30)));
+  $('fpsInput').value = FPS; fpsAuto = false;        // user set it → stop auto-detect
+  updateCur(); renderAll();
+});
+document.addEventListener('keydown', e => {
+  const tag = ((e.target && e.target.tagName) || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+  if (e.key === 'ArrowLeft')  { stepFrame(e.shiftKey ? -10 : -1); e.preventDefault(); }
+  else if (e.key === 'ArrowRight') { stepFrame(e.shiftKey ? 10 : 1); e.preventDefault(); }
+});
+// best-effort fps auto-detect from the real decoded frames (bonus; overridable)
+function detectFps() {
+  if (fpsDetected || !fpsAuto || !('requestVideoFrameCallback' in HTMLVideoElement.prototype)) return;
+  let base = null;
+  const cb = (now, meta) => {
+    if (fpsDetected || !fpsAuto) return;
+    if (base == null) base = { t: meta.mediaTime, f: meta.presentedFrames };
+    else {
+      const dt = meta.mediaTime - base.t, df = meta.presentedFrames - base.f;
+      if (dt >= 0.5 && df > 0) {
+        const f = Math.round(df / dt);
+        if (f >= 5 && f <= 240) { FPS = f; $('fpsInput').value = f; fpsDetected = true; updateCur(); renderAll(); return; }
+      }
+    }
+    if (!video.paused) video.requestVideoFrameCallback(cb);
+  };
+  video.requestVideoFrameCallback(cb);
+}
+video.addEventListener('play', detectFps);
+video.addEventListener('timeupdate', () => {
+  updateCur();
   refreshPreviewRot(false);
   if (video.paused || dragging) return;
   for (const [a, b] of mergedCuts()) {
