@@ -194,6 +194,9 @@
        href="https://github.com/ryanifa/eoSwimming/actions/workflows/edit-video.yml"
        target="_blank" rel="noopener">Open Edit-video workflow →</a>
   </div>
+  <label style="display:inline-flex; align-items:center; gap:7px; margin-top:8px; font-size:13px; color:#cfe9ff; cursor:pointer;">
+    <input type="checkbox" id="keepAudio"> 🔊 Geluid behouden <span class="muted">(aanvinken voor niet-zwemfilmpjes; standaard uit)</span>
+  </label>
   <textarea id="edlOut" readonly rows="3"
     style="width:100%; margin-top:8px; background:#0b1714; color:#9fe6d8; border:1px solid #2c4540;
            border-radius:8px; font-family:monospace; font-size:12px; padding:8px;"></textarea>
@@ -258,7 +261,8 @@ function buildEDL() {
     if (r.rot !== 'none') return { ...base, op: r.rot };
     return null;
   }).filter(Boolean);
-  return { regions: rs };
+  const ka = $('keepAudio');
+  return { regions: rs, audio: !!(ka && ka.checked) };   // keep the source audio track?
 }
 function updateEdl() { const el = $('edlOut'); if (el) el.value = JSON.stringify(buildEDL()); }
 
@@ -476,6 +480,7 @@ $('copyEdl').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(txt); setStatus('Render-opdracht gekopieerd ✓ — plak bij de workflow als "edl" (en dezelfde video-URL).'); }
   catch (_) { $('edlOut').select(); setStatus('Selecteer en kopieer de tekst hieronder.'); }
 });
+$('keepAudio').addEventListener('change', updateEdl);   // reflect the audio flag in the EDL text
 
 // ---------- zoom helpers ----------
 function zoomAt(t) {
@@ -633,10 +638,12 @@ $('makeBtn').addEventListener('click', async () => {
     for (let i = 0; i < segs.length; i++) {
       setStatus(`Stuk ${i + 1}/${segs.length} verwerken…`);
       const name = `p${i}.mp4`;
+      const keepAudio = !!($('keepAudio') && $('keepAudio').checked);
+      const audioArgs = keepAudio ? ['-c:a', 'aac', '-b:a', '160k'] : ['-an'];
       await ff.exec(['-ss', segs[i].s.toFixed(3), '-i', fileName, '-t', (segs[i].e - segs[i].s).toFixed(3),
         '-vf', segVf(segs[i]),
         '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '23',
-        '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', name]);
+        ...audioArgs, '-movflags', '+faststart', name]);
       parts.push(name);
     }
     if (parts.length === 1) {
