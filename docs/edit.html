@@ -133,6 +133,19 @@
   <button id="loadUrl">Laad van URL</button>
 </div>
 
+<div class="row" style="margin:-4px 0 14px; flex-wrap:wrap;">
+  <input id="r2keyInput" placeholder="…of R2-sleutel, bijv. swim/2026/MarkenMonickendam/mm1.mp4"
+         style="flex:1 1 240px; min-width:0; background:#0b1714; color:#cfe9ff;
+                border:1px solid #2c4540; border-radius:10px; padding:10px 12px; font-size:14px;">
+  <button id="loadR2">Laad R2-sleutel</button>
+  <input id="r2secret" type="password" placeholder="R2-secret (eenmalig)"
+         style="flex:1 1 180px; min-width:0; background:#0b1714; color:#cfe9ff;
+                border:1px solid #2c4540; border-radius:10px; padding:10px 12px; font-size:13px;">
+  <span class="muted" style="flex:1 1 100%; font-size:12px;">
+    De R2-sleutel is dezelfde als voor de workflow (zónder <code>media-private/</code>). Het secret is hetzelfde als
+    <code>MEDIA_SIGNING_SECRET</code> en wordt <b>alleen in je browser</b> bewaard (niet in de code).</span>
+</div>
+
 <div class="stage" id="stage">
   <video id="video" playsinline muted></video>
   <div id="zoomBox"><div id="zHandle"></div></div>
@@ -288,6 +301,43 @@ function loadFile(f) {
 }
 $('loadUrl').addEventListener('click', loadFromUrl);
 $('urlInput').addEventListener('keydown', e => { if (e.key === 'Enter') loadFromUrl(); });
+
+// ---------- load straight from an R2 key (signs the media link in-browser) ----------
+// The signing secret is NOT in the page code — you enter it once and it lives
+// only in this browser's localStorage. Same secret as MEDIA_SIGNING_SECRET.
+const R2_MEDIA_BASE = 'https://eoswim-media.swimanalyses.workers.dev';
+const R2_SECRET_LS = 'eoswim_sign_secret';
+try { const s = localStorage.getItem(R2_SECRET_LS); if (s) $('r2secret').value = s; } catch (_) {}
+function b64url(bytes) {
+  let s = ''; for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+async function signR2(key, secret, exp) {
+  const enc = new TextEncoder();
+  const k = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return b64url(new Uint8Array(await crypto.subtle.sign('HMAC', k, enc.encode(key + '\n' + exp))));
+}
+async function loadFromR2Key() {
+  let key = ($('r2keyInput').value || '').trim();
+  if (!key) return;
+  key = key.replace(/^\/+/, '').replace(/^media-private\//, '');   // tolerate bucket prefix / leading slash
+  const secret = ($('r2secret').value || '').trim();
+  if (!secret) { setStatus('Vul eerst je R2-secret in (eenmalig; blijft alleen in je browser).'); return; }
+  try { localStorage.setItem(R2_SECRET_LS, secret); } catch (_) {}
+  const exp = Math.floor(Date.now() / 1000) + 365 * 24 * 3600;
+  let sig;
+  try { sig = await signR2(key, secret, exp); }
+  catch (_) { setStatus('Kon de link niet ondertekenen (Web Crypto niet beschikbaar?).'); return; }
+  const url = R2_MEDIA_BASE + '/' + key.split('/').map(encodeURIComponent).join('/') + '?e=' + exp + '&t=' + sig;
+  fileObj = null; srcUrl = url; srcLabel = key.split('/').pop() || key;
+  fileName = 'input.' + ((srcLabel.split('.').pop() || 'mp4').toLowerCase());
+  committed = []; lastRot = null;
+  video.removeAttribute('crossorigin');
+  $('drop').querySelector('b').textContent = '⏳ Laden van R2…';
+  video.src = url; video.load();
+}
+$('loadR2').addEventListener('click', loadFromR2Key);
+$('r2keyInput').addEventListener('keydown', e => { if (e.key === 'Enter') loadFromR2Key(); });
 function loadFromUrl() {
   const u = $('urlInput').value.trim();
   if (!u) return;
