@@ -521,6 +521,7 @@
   <a class="tool" href="handleiding-trainer.html" target="_blank" rel="noopener"
      style="text-decoration:none;" title="Handleiding voor de trainer">❔ handleiding</a>
   <button class="tool" id="recClipBtn" title="Marketingclip opnemen — video + annotatie + memo-geluid samen in één bestand">⏺ clip</button>
+  <button class="tool" id="copyViewBtn" title="Kijk-link voor de cursist kopiëren (volledige getekende link, zónder bewerken)">📋 kijk-link</button>
   <button class="tool" id="publishBtn" title="Annotaties opslaan & deellink maken">⇪ publiceer</button>
 </div>
 
@@ -1742,6 +1743,31 @@ if (qv) {
     $('pubPanel').classList.add('show');
   }
   $('publishBtn').addEventListener('click', publish);
+
+  // Copy a full, signed VIEW link (no &edit=1) for the cursist — for the current
+  // ?k= video, signed here with your locally-stored secret.
+  async function copyViewLink() {
+    const key = new URLSearchParams(location.search).get('k');
+    if (!key) { toast('Deze video is niet via een R2-sleutel (?k=) geladen — geen kijk-link te maken.'); return; }
+    let secret = '';
+    try { secret = localStorage.getItem('eoswim_sign_secret') || ''; } catch (_) {}
+    if (!secret) {
+      secret = (prompt('Voer je R2-secret in (eenmalig; blijft alleen in deze browser):') || '').trim();
+      if (secret) { try { localStorage.setItem('eoswim_sign_secret', secret); } catch (_) {} }
+    }
+    if (!secret) { toast('Geen secret — kan geen kijk-link maken.'); return; }
+    try {
+      const exp = Math.floor(Date.now() / 1000) + 365 * 24 * 3600;
+      const enc = new TextEncoder();
+      const kk = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+      const sig = b64url(new Uint8Array(await crypto.subtle.sign('HMAC', kk, enc.encode(key + '\n' + exp))));
+      const keyEnc = key.split('/').map(encodeURIComponent).join('/');
+      const url = location.origin + location.pathname + '?k=' + keyEnc + '&e=' + exp + '&t=' + sig;   // view link (no edit)
+      try { await navigator.clipboard.writeText(url); toast('Kijk-link gekopieerd (1 jaar geldig) — klaar om naar de cursist te sturen.'); }
+      catch (_) { showMsg('Kijk-link (kopieer handmatig):<br><code>' + url + '</code>'); }
+    } catch (_) { toast('Kon de kijk-link niet maken.'); }
+  }
+  $('copyViewBtn').addEventListener('click', copyViewLink);
   // opening GitHub to commit = the work is being saved for real; drop the draft
   $('pubGo').addEventListener('click', () => clearDraft());
   $('pubClose').addEventListener('click', () => $('pubPanel').classList.remove('show'));
