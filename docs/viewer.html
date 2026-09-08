@@ -858,6 +858,33 @@ function tick() {
 }
 requestAnimationFrame(tick);
 
+// Sign a short ?k= link that has no token, using a secret kept ONLY in this
+// browser (same store as the editor's R2-key field). Lets you use short annotate
+// links on your own device; links you share with others still carry a full token.
+async function signAndLoadKey(key, base) {
+  let secret = '';
+  try { secret = localStorage.getItem('eoswim_sign_secret') || ''; } catch (_) {}
+  if (!secret) {
+    secret = (prompt('Deze korte link heeft geen token.\nVoer je R2-secret in (eenmalig; blijft alleen in deze browser):') || '').trim();
+    if (secret) { try { localStorage.setItem('eoswim_sign_secret', secret); } catch (_) {} }
+  }
+  if (!secret) {
+    showMsg('Deze <code>?k=</code>-link mist een token en er is geen secret opgeslagen. Gebruik een volledige gedeelde link, of ververs en voer je secret in.');
+    return;
+  }
+  try {
+    const exp = Math.floor(Date.now() / 1000) + 365 * 24 * 3600;
+    const enc = new TextEncoder();
+    const kk = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const sb = new Uint8Array(await crypto.subtle.sign('HMAC', kk, enc.encode(key + '\n' + exp)));
+    let s = ''; for (const b of sb) s += String.fromCharCode(b);
+    const sig = btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    loadSrc(base + '?e=' + exp + '&t=' + sig, key.split('/').pop() || key);
+  } catch (_) {
+    showMsg('Kon de link niet ondertekenen (Web Crypto niet beschikbaar?).');
+  }
+}
+
 // ---------- auto-load from the query string ----------
 //   ?v=<full-url>       any direct video / release download link
 //   ?k=<key>            an object key served by the private media Worker
@@ -880,12 +907,12 @@ if (qv) {
     showMsg('Deze link gebruikt <code>?k=</code> maar <code>MEDIA_BASE</code> is nog niet ingesteld in de viewer.');
   } else {
     const t = qp.get('t'), e = qp.get('e');
-    let u = MEDIA_BASE.replace(/\/+$/, '') + '/' + qk.split('/').map(encodeURIComponent).join('/');
-    const q = [];
-    if (e) q.push('e=' + encodeURIComponent(e));
-    if (t) q.push('t=' + encodeURIComponent(t));
-    if (q.length) u += '?' + q.join('&');
-    loadSrc(u, qk.split('/').pop() || qk);
+    const base = MEDIA_BASE.replace(/\/+$/, '') + '/' + qk.split('/').map(encodeURIComponent).join('/');
+    if (e && t) {
+      loadSrc(base + '?e=' + encodeURIComponent(e) + '&t=' + encodeURIComponent(t), qk.split('/').pop() || qk);
+    } else {
+      signAndLoadKey(qk, base);   // short link without a token — sign it on your own device
+    }
   }
 } else if (rtag) {
   const owner = location.hostname.split('.')[0];
