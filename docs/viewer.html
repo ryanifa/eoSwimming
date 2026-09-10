@@ -362,6 +362,10 @@
      scaffolding — hide them so only the clean scrub bar remains. */
   body:not(.trainer) .tllane,
   body:not(.trainer) .tldot { display: none; }
+  /* view mode: no manual memo controls — memos just auto-play; the cursist
+     can't pause (▶/⏸ memo) or skip them. */
+  body:not(.trainer) #memoBadge,
+  body:not(.trainer) #skipMemo { display: none !important; }
 
   #tlbar { position: absolute; left: 0; right: 0; top: 44px; height: 7px;
            background: rgba(255,255,255,.28); border-radius: 4px; }
