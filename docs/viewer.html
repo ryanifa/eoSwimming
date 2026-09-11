@@ -105,12 +105,12 @@
      above the scrub bar. */
   #wm { position: absolute; z-index: 3; pointer-events: none; display: none;
         right: calc(var(--vpad, 0px) + 12px); top: 12px; text-align: right;
-        text-shadow: 0 1px 3px rgba(0,0,0,.9); }
+        opacity: .68; text-shadow: 0 1px 3px rgba(0,0,0,.9); }
   body.has-video:not(.trainer) #wm { display: block; }
-  #wm .wm-tag  { display: block; font: 600 10px/1 system-ui, sans-serif;
-                 letter-spacing: .5px; color: #e5e7eb; opacity: .8; }
-  #wm .wm-name { display: block; font: 800 clamp(12px, 2.6vw, 18px)/1.05 system-ui, sans-serif;
-                 color: #fff; }
+  #wm .wm-tag  { display: block; font: 500 10px/1.15 system-ui, sans-serif;
+                 letter-spacing: .5px; color: #e5e7eb; opacity: .85; }
+  #wm .wm-name { display: block; font: 700 11px/1.15 system-ui, sans-serif;
+                 letter-spacing: .3px; color: #fff; }
 
   #emptyhint {
     position: absolute; inset: 0; z-index: 2; display: flex;
