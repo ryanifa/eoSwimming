@@ -99,6 +99,19 @@
   /* dev/version stamp: only for edit mode — the cursist never sees it */
   body:not(.trainer) #build { display: none; }
 
+  /* branding watermark on the video, bottom-right — two lines: small "Powered
+     by" over a larger, bold name. Shown to the viewer (view mode); pointer-events
+     off so it never blocks the film. Sits just inside the video's right edge and
+     above the scrub bar. */
+  #wm { position: absolute; z-index: 3; pointer-events: none; display: none;
+        right: calc(var(--vpad, 0px) + 14px); bottom: 116px; text-align: right;
+        text-shadow: 0 1px 3px rgba(0,0,0,.9); }
+  body.has-video:not(.trainer) #wm { display: block; }
+  #wm .wm-tag  { display: block; font: 600 10px/1 system-ui, sans-serif;
+                 letter-spacing: .5px; color: #e5e7eb; opacity: .8; }
+  #wm .wm-name { display: block; font: 800 clamp(14px, 3.2vw, 22px)/1.05 system-ui, sans-serif;
+                 color: #fff; }
+
   #emptyhint {
     position: absolute; inset: 0; z-index: 2; display: flex;
     align-items: center; justify-content: center; text-align: center; padding: 24px;
@@ -599,6 +612,7 @@
   </div>
 
   <div id="readout"></div>
+  <div id="wm" aria-hidden="true"><span class="wm-tag">Powered by</span><span class="wm-name">Ryan Douglas</span></div>
   <div id="build">build __BUILD_VERSION__</div>
   <div id="emptyhint">Tap to choose a video — or open a <code>?r=&lt;release-tag&gt;</code> share link</div>
   <div id="vmsg"></div>
