@@ -786,15 +786,23 @@ function layoutBars() {
   document.documentElement.style.setProperty('--bar', bar.toFixed(1) + 'px');
   document.documentElement.style.setProperty('--vpad', vpad.toFixed(1) + 'px');
 }
-video.addEventListener('loadedmetadata', layoutBars);
-// Mobile reports the new screen size LATE after a rotation, so a single layout
-// leaves the video/overlay offset until a manual refresh. Re-run it a few times
-// with growing delays so at least one runs after the dimensions settle.
-function relayoutSettling() { layoutBars(); [120, 350, 700, 1100].forEach(ms => setTimeout(layoutBars, ms)); }
-window.addEventListener('resize', layoutBars);
+// Mobile reports the screen/stage size LATE — after a rotation, when the address
+// bar collapses, or even at first load — so a single layout can leave the video
+// and controls offset until a manual refresh. Re-run layout a few times with
+// growing delays so at least one runs after the dimensions settle; debounced so
+// rapid resizes don't pile up pending timers.
+let relayoutTimers = [];
+function relayoutSettling() {
+  layoutBars();
+  relayoutTimers.forEach(clearTimeout);
+  relayoutTimers = [120, 350, 700, 1100].map(ms => setTimeout(layoutBars, ms));
+}
+video.addEventListener('loadedmetadata', relayoutSettling);
+video.addEventListener('loadeddata', relayoutSettling);
+window.addEventListener('resize', relayoutSettling);
 window.addEventListener('orientationchange', relayoutSettling);
 try { if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', relayoutSettling); } catch (_) {}
-layoutBars();
+relayoutSettling();
 
 // iOS can leave the video frozen after switching apps. Refresh everything when
 // the phone is rotated to portrait, so rotating back to landscape shows a fresh
