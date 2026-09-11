@@ -774,7 +774,13 @@ function layoutBars() {
   document.documentElement.style.setProperty('--vpad', vpad.toFixed(1) + 'px');
 }
 video.addEventListener('loadedmetadata', layoutBars);
+// Mobile reports the new screen size LATE after a rotation, so a single layout
+// leaves the video/overlay offset until a manual refresh. Re-run it a few times
+// with growing delays so at least one runs after the dimensions settle.
+function relayoutSettling() { layoutBars(); [120, 350, 700, 1100].forEach(ms => setTimeout(layoutBars, ms)); }
 window.addEventListener('resize', layoutBars);
+window.addEventListener('orientationchange', relayoutSettling);
+try { if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', relayoutSettling); } catch (_) {}
 layoutBars();
 
 // iOS can leave the video frozen after switching apps. Refresh everything when
@@ -787,9 +793,10 @@ const onOrient = () => {
   if (portraitMQ.matches && window.matchMedia('(pointer: coarse)').matches) {
     location.reload();
   } else {
-    // rotated to landscape: re-measure, then let the viewer tap to start so
-    // that first tap unlocks audio (memos can then auto-play uninterrupted)
-    setTimeout(() => { layoutBars(); showStart(); }, 250);
+    // rotated to landscape: re-measure repeatedly (dims settle late), then let
+    // the viewer tap to start so that first tap unlocks audio.
+    relayoutSettling();
+    setTimeout(showStart, 250);
   }
 };
 if (portraitMQ.addEventListener) portraitMQ.addEventListener('change', onOrient);
