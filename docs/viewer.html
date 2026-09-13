@@ -1469,6 +1469,7 @@ if (qv) {
   function pauseMemo() {
     if (!(currentMemoMark && memoAudio && !memoAudio.paused)) return false;
     try { memoAudio.pause(); } catch (_) {}
+    try { video.pause(); } catch (_) {}          // freeze the film while the memo is paused
     clearTimeout(memoWatchdog);
     updateMemoBadge();
     return true;
@@ -1537,6 +1538,9 @@ if (qv) {
     clearTimeout(memoWatchdog);
     try { if (memoAudio) { memoAudio.onended = null; memoAudio.onerror = null; memoAudio.pause(); } } catch (_) {}
     currentMemoFinish = null; currentMemoMark = null; memoPlaying = false; pendingMemo = null;
+    // undo the memo-track playback state: un-mute the film and restore normal speed
+    try { video.pause(); video.muted = false; } catch (_) {}
+    if (typeof applyPlaybackRate === 'function') try { applyPlaybackRate(); } catch (_) {}
     memoBadge.classList.remove('playing'); memoBadge.classList.remove('await'); memoBadge.classList.remove('paused');
     $('skipMemo').classList.remove('show');
     setAnnotLock(false);
@@ -1930,6 +1934,7 @@ if (qv) {
   };
   function finishMemo() {
     memoPlaying = false; prevTime = video.currentTime || 0;
+    try { video.muted = false; } catch (_) {}      // restore the film's own audio (rate restores on resume)
     setAnnotLock(false); resumeAfterMemo();
   }
   function autoStop() {
@@ -2163,10 +2168,24 @@ if (qv) {
   // ---------- render loop ----------
   function loop() {
     const active = marks.length || skips.length || document.body.classList.contains('trainer');
-    // while a memo with a film track plays, scrub the film to the recorded position
+    // While a memo with a film track plays, follow the recorded position — but
+    // play the film SMOOTHLY (muted, so it doesn't talk over the memo) so frames
+    // stay sharp, instead of hard-seeking every frame (which renders soft). Only
+    // snap when it drifts too far; nudge playbackRate to close small drift.
     if (currentMemoMark && currentMemoMark.track && memoAudio && !memoAudio.paused) {
+      if (!video.muted) { try { video.muted = true; } catch (_) {} }
       const tt = trackAt(currentMemoMark.track, memoAudio.currentTime || 0);
-      if (tt != null && Math.abs((video.currentTime || 0) - tt) > 0.03) { try { video.currentTime = tt; } catch (_) {} }
+      if (tt != null) {
+        const drift = (video.currentTime || 0) - tt;   // + ahead of the narration, - behind
+        if (video.paused) {
+          try { video.currentTime = tt; } catch (_) {}
+          const p = video.play(); if (p && p.catch) p.catch(() => {});
+        } else if (drift < -0.5 || drift > 0.3) {
+          try { video.currentTime = tt; } catch (_) {}          // too far off (or track jumped back) → snap
+        } else {
+          try { video.playbackRate = drift < -0.05 ? 1.2 : drift > 0.05 ? 0.85 : 1; } catch (_) {}
+        }
+      }
     }
     if (active) { renderAnnotations(); updateNoteCaption(); updateMemoBadge(); autoStop(); }
     if (hasVideo) updateTimelineFill();          // keep the scrub playhead in sync for any video
