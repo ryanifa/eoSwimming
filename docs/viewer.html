@@ -532,6 +532,7 @@
     <button class="tool" id="dlAnnot" title="Annotaties als bestand downloaden (verder op andere pc)">⬇</button>
     <button class="tool" id="ulAnnot" title="Annotaties uit een bestand laden">⬆</button>
     <input type="file" id="annotFile" accept=".json,application/json" style="display:none">
+    <button class="tool" id="autoSaveBtn" title="Auto-opslaan naar een bestand op je pc — kies één keer een bestand, daarna wordt je werk vanzelf bewaard (Chrome/Edge)">💾 auto-save</button>
   </div>
   <div class="sep"></div>
   <!-- memo controls dock here in edit mode (moved out of the video overlay) -->
@@ -1892,6 +1893,7 @@ if (qv) {
   })();
   function saveDraft() {
     if (!document.body.classList.contains('can-edit')) return;
+    scheduleAutoSave();                 // also auto-save to the chosen file (if enabled)
     try {
       if (!marks.length && !skips.length) { localStorage.removeItem(DRAFT_KEY); return; }
       localStorage.setItem(DRAFT_KEY, JSON.stringify({ at: Date.now(), data: serialize() }));
@@ -1904,6 +1906,59 @@ if (qv) {
     }
   }
   function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (_) {} }
+
+  // ---------- auto-save to a file on disk (survives crashes; Chrome/Edge) ----------
+  // Unlike the localStorage draft, this handles big annotations (voice memos):
+  // pick a file once, then the editor writes to it a few seconds after each change
+  // and every 30s as a safety net.
+  let fsHandle = null, fsSaveTimer = null, fsPeriodic = null, fsWriting = false;
+  function autoSaveSuggestedName() {
+    const p = new URLSearchParams(location.search);
+    const base = ((p.get('k') || p.get('a') || p.get('r') || p.get('v') || 'video')
+      .split('/').pop() || 'video').replace(/\.[^.]+$/, '').replace(/[^\w.-]+/g, '_') || 'video';
+    const d = new Date(), pad = n => String(n).padStart(2, '0');
+    const stamp = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes());
+    return 'annotaties-' + base + '-' + stamp + '.json';
+  }
+  async function fsWrite() {
+    if (!fsHandle || fsWriting) return;
+    fsWriting = true;
+    try {
+      const w = await fsHandle.createWritable();
+      await w.write(JSON.stringify(serialize()));
+      await w.close();
+    } catch (_) {
+      toast('⚠️ Auto-save mislukt — bestand niet meer beschikbaar. Zet auto-save opnieuw aan.');
+      disableAutoSave();
+    } finally { fsWriting = false; }
+  }
+  function scheduleAutoSave() {
+    if (!fsHandle) return;
+    clearTimeout(fsSaveTimer);
+    fsSaveTimer = setTimeout(fsWrite, 3000);        // ~3s after the last change
+  }
+  function disableAutoSave() {
+    fsHandle = null; clearTimeout(fsSaveTimer); clearInterval(fsPeriodic); fsPeriodic = null;
+    const b = $('autoSaveBtn'); if (b) { b.classList.remove('active'); b.textContent = '💾 auto-save'; }
+  }
+  async function toggleAutoSave() {
+    if (fsHandle) { disableAutoSave(); toast('Auto-save uit.'); return; }
+    if (!window.showSaveFilePicker) {
+      toast('Auto-save naar bestand werkt in Chrome/Edge (desktop). Gebruik anders ⬇ of ⇪ publiceer om te bewaren.');
+      return;
+    }
+    try {
+      fsHandle = await window.showSaveFilePicker({
+        suggestedName: autoSaveSuggestedName(),
+        types: [{ description: 'Annotatie (JSON)', accept: { 'application/json': ['.json'] } }]
+      });
+    } catch (_) { return; }                          // user cancelled the picker
+    await fsWrite();
+    fsPeriodic = setInterval(fsWrite, 30000);        // safety net every 30s
+    const b = $('autoSaveBtn'); if (b) { b.classList.add('active'); b.textContent = '💾 auto-save AAN'; }
+    toast('Auto-save aan — je werk wordt vanzelf naar dat bestand geschreven. (Bij herladen even opnieuw aanzetten.)');
+  }
+  $('autoSaveBtn').addEventListener('click', toggleAutoSave);
   function maybeRestoreDraft() {
     if (!document.body.classList.contains('can-edit')) { draftReady = true; return; }
     let raw = null; try { raw = localStorage.getItem(DRAFT_KEY); } catch (_) {}
