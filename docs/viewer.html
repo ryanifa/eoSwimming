@@ -137,6 +137,17 @@
     border: 0; background: rgba(255,255,255,.18); color: #fff; border-radius: 8px;
     font-size: 18px; cursor: pointer; }
 
+  /* one-time invite to turn on file auto-save when you start annotating */
+  #asPrompt { position: fixed; left: 50%; top: 10px; transform: translateX(-50%); z-index: 21;
+    display: none; align-items: center; gap: 10px; max-width: 94%; font-size: 13.5px;
+    background: #0e1a17; color: #eaf6ff; border: 1px solid #1f6bff; border-radius: 12px;
+    padding: 10px 12px; box-shadow: 0 4px 18px rgba(0,0,0,.6); }
+  #asPrompt.show { display: flex; }
+  #asPrompt button { -webkit-tap-highlight-color: transparent; border: 0; border-radius: 9px;
+    font-size: 13px; font-weight: 700; padding: 8px 12px; cursor: pointer; flex: 0 0 auto; }
+  #asPrompt #asYes { background: #1f6bff; color: #fff; }
+  #asPrompt #asNo { background: #16241f; color: #cfe9ff; border: 1px solid #284038; }
+
   /* "Tik om te starten" — shown after rotating so the first tap unlocks audio,
      letting voice memos auto-play later without an interruption. */
   #startOverlay {
@@ -481,6 +492,12 @@
 <div id="editBlock">
   🔒 <b>Bewerken kan alleen op een laptop of computer.</b> Inspreken en annoteren werkt niet goed op een telefoon — open deze link op je laptop. Je kunt de beelden hier wel <b>bekijken</b>.
   <button class="x" title="Sluiten" onclick="this.parentNode.classList.remove('show')">✕</button>
+</div>
+
+<div id="asPrompt">
+  <span>💾 <b>Auto-save aanzetten?</b> Dan wordt je werk vanzelf naar een bestand op je pc bewaard.</span>
+  <button id="asYes">Aanzetten</button>
+  <button id="asNo">Nee</button>
 </div>
 
 <div id="rotate">
@@ -1150,6 +1167,7 @@ if (qv) {
     if (mc) { liveMark.t = mc.frame; liveMark.md = mc.elapsed; }
     marks.push(liveMark); renderAnnotations();
     if (typeof redoStack !== 'undefined') redoStack.length = 0;   // a new edit invalidates redo
+    maybeOfferAutoSave();
   }
   function moveDraw(e) {
     if (!liveMark) return; e.preventDefault();
@@ -1224,7 +1242,7 @@ if (qv) {
       const a = Math.min(skipStart, t), b = Math.max(skipStart, t);
       skipStart = null; $('skipBtn').classList.remove('active');
       if (b - a < 0.2) { toast('Overslaan geannuleerd (begin en eind te dicht op elkaar).'); return; }
-      skips.push([a, b]); mergeSkips(); updateTimeline();
+      skips.push([a, b]); mergeSkips(); updateTimeline(); maybeOfferAutoSave();
       toast('Overslaan-stuk toegevoegd: <b>' + fmtT(a) + '–' + fmtT(b) + '</b>. Bij afspelen springt de video hier overheen.');
     }
   });
@@ -1306,6 +1324,7 @@ if (qv) {
     marks.push(mark);
     redoStack.length = 0;
     updateTimeline(); updateNoteCaption();
+    maybeOfferAutoSave();
     toast('Notitie bewaard.');
     if (!pendingNoteMemo) { const p = video.play(); if (p && p.catch) p.catch(() => {}); }   // carry on (not during a memo)
     pendingNoteMemo = null;
@@ -1455,7 +1474,7 @@ if (qv) {
       toast('Spraakmemo bewaard (' + dur.toFixed(1).replace('.', ',') + 's).');
       video.pause();                                  // stay paused after saving a memo
     };
-    recStart = performance.now(); mediaRec.start();
+    recStart = performance.now(); mediaRec.start(); maybeOfferAutoSave();
     $('recBar').classList.add('show');
     recTimer = setInterval(() => {
       const el = (performance.now() - recStart) / 1000;
@@ -1959,6 +1978,17 @@ if (qv) {
     toast('Auto-save aan — je werk wordt vanzelf naar dat bestand geschreven. (Bij herladen even opnieuw aanzetten.)');
   }
   $('autoSaveBtn').addEventListener('click', toggleAutoSave);
+
+  // one-time invite to enable auto-save the first time you annotate this session
+  let autoSavePrompted = false;
+  function maybeOfferAutoSave() {
+    if (autoSavePrompted || fsHandle) return;
+    if (!document.body.classList.contains('can-edit') || !window.showSaveFilePicker) return;
+    autoSavePrompted = true;
+    $('asPrompt').classList.add('show');
+  }
+  $('asYes').addEventListener('click', () => { $('asPrompt').classList.remove('show'); toggleAutoSave(); });
+  $('asNo').addEventListener('click', () => { $('asPrompt').classList.remove('show'); });
   function maybeRestoreDraft() {
     if (!document.body.classList.contains('can-edit')) { draftReady = true; return; }
     let raw = null; try { raw = localStorage.getItem(DRAFT_KEY); } catch (_) {}
