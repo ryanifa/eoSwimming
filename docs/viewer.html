@@ -512,6 +512,9 @@
   <div class="group">
     <button class="tool" id="noteBtn" title="Tekstnotitie op dit frame">📝 notitie</button>
     <button class="tool" id="micBtn"  title="Spraakmemo op dit frame">🎙️ memo</button>
+    <select id="micSel" title="Microfoon voor het inspreken van memo's"
+      style="background:#0e1a17; color:#cfe9ff; border:1px solid #284038; border-radius:10px;
+             padding:8px 8px; max-width:170px; font-size:13px;"></select>
     <button class="tool" id="pinDrawBtn" title="Pijl/pen vastzetten — blijft staan tot je het weer uitzet">📌 pijl/pen</button>
     <button class="tool" id="pinNoteBtn" title="Notitie vastzetten — blijft staan tot je het weer uitzet">📌 notitie</button>
     <button class="tool" id="skipBtn" title="Overbodig stuk overslaan — markeer begin- en eindframe; bij afspelen springt de video hier overheen">⏩ overslaan</button>
@@ -1381,6 +1384,34 @@ if (qv) {
     return new Promise(res => { const fr = new FileReader();
       fr.onload = () => res(String(fr.result).split(',')[1] || ''); fr.readAsDataURL(blob); });
   }
+  // ---------- microphone selection for memos ----------
+  const MIC_LS = 'eoswim_mic_id';
+  let selectedMicId = '';
+  try { selectedMicId = localStorage.getItem(MIC_LS) || ''; } catch (_) {}
+  async function populateMics() {
+    const sel = $('micSel');
+    if (!sel || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    let mics = [];
+    try { mics = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput'); } catch (_) { return; }
+    sel.innerHTML = '';
+    const def = document.createElement('option'); def.value = ''; def.textContent = '🎙 Standaard'; sel.appendChild(def);
+    mics.forEach((d, i) => {
+      const o = document.createElement('option'); o.value = d.deviceId;
+      o.textContent = d.label || ('Microfoon ' + (i + 1)); sel.appendChild(o);
+    });
+    if (selectedMicId && mics.some(d => d.deviceId === selectedMicId)) sel.value = selectedMicId;
+    else if (selectedMicId) { selectedMicId = ''; try { localStorage.removeItem(MIC_LS); } catch (_) {} }
+  }
+  const micSelEl = $('micSel');
+  if (micSelEl) micSelEl.addEventListener('change', () => {
+    selectedMicId = micSelEl.value || '';
+    try { localStorage.setItem(MIC_LS, selectedMicId); } catch (_) {}
+    const name = micSelEl.selectedOptions[0] ? micSelEl.selectedOptions[0].textContent : '';
+    toast(selectedMicId ? ('Microfoon: ' + name) : 'Standaard microfoon');
+  });
+  try { if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) navigator.mediaDevices.addEventListener('devicechange', populateMics); } catch (_) {}
+  if (document.body.classList.contains('can-edit')) populateMics();
+
   async function startRecording() {
     if (!hasVideo) { toast('Laad eerst een video.'); return; }
     if (mediaRec && mediaRec.state === 'recording') return;
@@ -1390,11 +1421,19 @@ if (qv) {
     if (!navigator.mediaDevices || !window.MediaRecorder) { toast('Opnemen wordt niet ondersteund op dit toestel.'); return; }
     if (!video.paused) video.pause();
     let stream;
-    try { stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } }); }
-    catch (_) { toast('Geen toegang tot de microfoon.'); return; }
+    // Use the chosen microphone (default = browser default). Clean-voice
+    // constraints; fall back to the default device if the chosen one is gone.
+    const aud = { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: selectedMicId ? { ...aud, deviceId: { exact: selectedMicId } } : aud });
+    } catch (_) {
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio: aud }); }
+      catch (e) { toast('Geen toegang tot de microfoon.'); return; }
+    }
+    populateMics();                                  // labels are available now → refresh the picker
     const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac']
       .find(m => { try { return MediaRecorder.isTypeSupported(m); } catch (_) { return false; } }) || '';
-    try { mediaRec = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 24000 } : undefined); }
+    try { mediaRec = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 64000 } : undefined); }
     catch (_) { mediaRec = new MediaRecorder(stream); }
     const at = video.currentTime || 0;               // pin the memo to the frame it started on
     recFrame = at;                                   // drawings during recording sync to this memo
