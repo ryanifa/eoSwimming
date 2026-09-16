@@ -98,7 +98,8 @@
       <div class="node">3</div>
       <div class="card">
         <h3>Bewerken &amp; overlay <span class="opt-tag">optioneel</span></h3>
-        <p><b>Bijsnijden/roteren/inzoomen:</b> open <a href="edit.html">edit.html</a>, sleep het lokale bestand erin, maak je knippen en klik <b>📋 Kopieer render-opdracht (EDL)</b> — of render lokaal met 🎬.</p>
+        <p><b>Bijsnijden/roteren/inzoomen:</b> open <a href="edit.html">edit.html</a>, sleep het lokale bestand erin <b>óf laad de bron rechtstreeks via z'n R2-sleutel</b> (typ bijv. <code>raw/shing/mydji.MP4</code> + één keer je secret — geen link vooraf nodig). Maak je knippen en klik <b>📋 Kopieer render-opdracht (EDL)</b> — of render lokaal met 🎬.</p>
+        <p><b>Handig bij het knippen:</b> frame-voor-frame met <b>◀ frame / frame ▶</b> en <b>◀◀10 / 10▶▶</b> (of de pijltjestoetsen), met een <b>fps-veld</b> en framenummers voor een exact punt. Voor een <b>niet-zwemvideo mét geluid</b>: vink <b>🔊 Geluid behouden</b> aan vóór je de EDL kopieert.</p>
         <p><b>Sensor-overlay:</b> start de <b>Composite → R2</b>-workflow met de swim-ID en <code>r2_key</code> = je ruwe bron. Voor knippen/roteren zonder data: de <b>Edit video → R2</b>-workflow met de EDL.</p>
         <div class="note">De workflows leveren het resultaat rechtstreeks in R2 op <code>swim/2026/…</code> mét een kant-en-klare privé-link in de run-samenvatting — dan kun je fase 4 overslaan.</div>
       </div>
@@ -119,6 +120,7 @@
       <div class="card">
         <h3>Trainer-link versturen</h3>
         <p>Geef de trainer de viewer-link <b>met <code>&amp;edit=1</code></b> erachter, zodat hij in de bewerk-stand kan inspreken. <b>Bewerken kan alleen op een laptop</b> — op een telefoon ziet de trainer een melding. Verwijs 'm naar de <a href="handleiding-trainer.html">trainer-handleiding</a>.</p>
+        <div class="note">Snelste manier: open de video (een korte <code>?k=&lt;key&gt;</code>-link volstaat op jóuw apparaat — die tekent de viewer zelf met je secret), klik <b>📋 kijk-link</b> om een volledige getekende link te kopiëren, en plak er <code>&amp;edit=1</code> achter voor de trainer.</div>
       </div>
     </div>
 
@@ -135,7 +137,7 @@
       <div class="card">
         <h3>Publiceren &amp; kijk-link voor de cursist</h3>
         <p>Open de viewer met de video en <code>&amp;edit=1</code>, klik <b>⬆</b> en laad het annotatie-bestand van de trainer. Klik dan <b>⇪ publiceer</b> — dat legt de annotatie vast en geeft je een <code>?a=&lt;id&gt;</code>.</p>
-        <p>Stuur de cursist de <b>kijk-link zonder edit</b>: de video-<code>?k=…</code> plus <code>&amp;a=&lt;id&gt;</code>. Hij ziet de beelden, de pijlen én de ingesproken uitleg — op telefoon of laptop, zonder account.</p>
+        <p>Stuur de cursist de <b>kijk-link zonder edit</b>: klik <b>📋 kijk-link</b> (kopieert een volledige getekende video-link zónder <code>&amp;edit=1</code>) en plak er <code>&amp;a=&lt;id&gt;</code> achter. Hij ziet de beelden, de pijlen én de ingesproken uitleg — op telefoon of laptop, zonder account.</p>
       </div>
     </div>
 
@@ -146,7 +148,13 @@
     <div class="refrow"><code class="k">publish-to-r2.ps1</code><span>Video → R2 + korte privé-link (op je klembord).</span></div>
     <div class="refrow"><code class="k">migrate-releases-to-r2.ps1</code><span>Eenmalig: oude release-video's naar R2 (al gedaan).</span></div>
     <div class="refrow"><code class="k">raw/ · swim/2026/</code><span>Ruw bronmateriaal in <code>raw/</code>, eindresultaten in <code>swim/2026/</code>.</span></div>
-    <div class="refrow"><code class="k">?k= · &amp;a= · &amp;edit=1</code><span>Welke video · welke annotatie · bewerk-stand.</span></div>
+    <div class="refrow"><code class="k">?k= · &amp;a= · &amp;edit=1</code><span>Welke video · welke annotatie · bewerk-stand. Een korte <code>?k=&lt;key&gt;</code> zonder token tekent de viewer/editor zelf met je secret (alleen op jóuw apparaat).</span></div>
+    <div class="refrow"><code class="k">R2-sleutel laden</code><span>In <a href="edit.html">edit.html</a> én de viewer kun je een bron laden via z'n R2-key + je secret (één keer) — geen link vooraf maken.</span></div>
+    <div class="refrow"><code class="k">📋 kijk-link</code><span>Kopieert een volledige getekende kijk-link (video, zónder edit). Voeg <code>&amp;a=&lt;id&gt;</code> toe voor de cursist, of <code>&amp;edit=1</code> voor de trainer.</span></div>
+    <div class="refrow"><code class="k">mount-r2.bat / rclone mount</code><span>Koppel R2 als schijf in Verkenner om je bestanden te bladeren en af te spelen (VLC voor ruwe HEVC).</span></div>
+    <div class="refrow"><code class="k">directe R2-link</code><span>Een bestand rechtstreeks delen (geen viewer): Worker-URL + token, of snel <code>rclone link --expire 168h r2:media-private/&lt;key&gt;</code> (max 7 dagen).</span></div>
+    <div class="refrow"><code class="k">webm-to-mp4.ps1</code><span>Marketingclip (⏺ in de viewer) van WebM naar deelbare MP4.</span></div>
+    <div class="refrow"><code class="k">💾 auto-save · 🎙️ mic</code><span>De trainer zet auto-save aan en kiest z'n microfoon — zie de <a href="handleiding-trainer.html">trainer-handleiding</a>.</span></div>
     <div class="refrow"><code class="k">env-vars</code><span><code>EOSWIM_MEDIA_BASE</code> + <code>EOSWIM_R2_TOKEN_SECRET</code> (= de Worker-secret) op je PC.</span></div>
   </div>
   <p style="color:var(--ink-soft);margin-top:1rem;">Meer techniek en probleemoplossing staat in <a href="https://github.com/ryanifa/eoSwimming/blob/main/ARCHITECTURE.md">ARCHITECTURE.md</a>.</p>
