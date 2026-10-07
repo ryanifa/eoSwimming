@@ -2285,6 +2285,29 @@ if (qv) {
   video.addEventListener('ended', () => { if (recording) stopClipRecording(); });
 
   // ---------- render loop ----------
+  // iOS can leave the <video> frozen after a rotation — the image sticks while
+  // the memo audio plays on — until a manual refresh. Detect that stall (reports
+  // playing, but currentTime isn't advancing, and we're NOT in a memo/hold/end)
+  // and re-kick the decoder with pause→play. Never fires during a memo, a hold,
+  // or at the end of the film, and not during normal/slow-mo playback.
+  let stallRef = -1, stallSince = 0, stallKickAt = 0;
+  function stallWatch() {
+    if (!hasVideo) return;
+    const t = video.currentTime || 0, now = performance.now();
+    const shouldPlay = !video.paused && !video.ended && !annotLock
+      && !(memoActive && memoActive())
+      && isFinite(video.duration) && t < video.duration - 0.25;
+    if (!shouldPlay) { stallRef = t; stallSince = now; return; }
+    if (Math.abs(t - stallRef) > 0.03) { stallRef = t; stallSince = now; return; }   // advancing → fine
+    if (now - stallSince > 900 && now - stallKickAt > 2000) {                          // stuck ~0.9s → re-kick
+      stallKickAt = now; stallSince = now;
+      try { video.pause(); } catch (_) {}
+      setTimeout(() => {
+        if (!annotLock && !(memoActive && memoActive())) { const p = video.play(); if (p && p.catch) p.catch(() => {}); }
+      }, 70);
+    }
+  }
+
   function loop() {
     const active = marks.length || skips.length || document.body.classList.contains('trainer');
     // while a memo with a film track plays, scrub the film to the recorded position
@@ -2294,6 +2317,7 @@ if (qv) {
     }
     if (active) { renderAnnotations(); updateNoteCaption(); updateMemoBadge(); autoStop(); }
     if (hasVideo) updateTimelineFill();          // keep the scrub playhead in sync for any video
+    stallWatch();                                // un-freeze an iOS-stalled video (e.g. after a rotation)
     recDrawFrame();                              // composite the marketing-clip frame while recording
     requestAnimationFrame(loop);
   }
