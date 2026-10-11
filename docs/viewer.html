@@ -1509,7 +1509,7 @@ if (qv) {
     a.muted = false;
     a.src = 'data:' + (m.mime || 'audio/webm') + ';base64,' + m.au;
     memoBadge.classList.add('playing');
-    $('skipMemo').classList.add('show');           // offer to skip while it plays
+    if (document.body.classList.contains('trainer')) $('skipMemo').classList.add('show');   // skip only in edit mode
     let done = false;
     const finish = () => {                          // run exactly once, however we get here
       if (done) return; done = true;
@@ -1556,13 +1556,15 @@ if (qv) {
     const near = active || marks.some(m => m.k === 'memo' && (m.pin || Math.abs(m.t - t) <= WINDOW));
     const anyMemo = marks.some(m => m.k === 'memo');
     const edit = document.body.classList.contains('trainer');
-    memoBadge.classList.toggle('show', near);
+    // View mode (cursist): no manual memo controls at all — memos just auto-play,
+    // the viewer can't pause/resume (▶/⏸ memo) or skip. Only show them in edit mode.
+    memoBadge.classList.toggle('show', near && edit);
     memoBadge.classList.toggle('playing', active);
     memoBadge.classList.toggle('paused', paused);
     // one memo play/pause control: ▶ memo = tap to play or resume, ⏸ memo = playing
     memoBadge.textContent = playing ? '⏸ memo' : '▶ memo';
     memoBadge.title = playing ? 'Memo pauzeren' : (paused ? 'Memo hervatten' : 'Memo afspelen');
-    $('skipMemo').classList.toggle('show', active);
+    $('skipMemo').classList.toggle('show', active && edit);
     $('memoDel').classList.toggle('show', near && edit);
     $('replaceMemo').classList.toggle('show', near && edit);
     $('prevMemo').classList.toggle('show', anyMemo);
