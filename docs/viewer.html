@@ -2051,12 +2051,17 @@ if (qv) {
   // retry MUTED (iOS always allows that) and unmute again once it's actually
   // running. Desktop plays unmuted straight away and never hits the fallback.
   const resumePlay = () => {
-    const unmute = () => { try { video.muted = false; } catch (_) {} };
     let p; try { p = video.play(); } catch (_) { p = null; }
-    if (p && p.then) p.then(unmute).catch(() => {
+    // iOS Safari REJECTS resuming an UNMUTED <video> outside a user gesture —
+    // which is why the film stopped at a memo after we unmuted it (it always
+    // worked while the film was muted). Fall back to a MUTED resume so the film
+    // keeps running. Do NOT unmute again here: unmuting without a gesture makes
+    // iOS pause the video right back. Memos stay audible regardless — they play
+    // through their own <audio> element, not the film's track. Desktop plays
+    // unmuted on the first try and never reaches the fallback.
+    if (p && p.catch) p.catch(() => {
       try { video.muted = true; } catch (_) {}
-      const q = video.play();
-      if (q && q.then) q.then(unmute).catch(() => {}); else unmute();
+      const q = video.play(); if (q && q.catch) q.catch(() => {});
     });
   };
   // After a memo, the video can also report playing while staying frozen (the
