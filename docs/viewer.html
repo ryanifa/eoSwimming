@@ -646,6 +646,14 @@
 <script>
 const $ = id => document.getElementById(id);
 const video = $('video');
+// iOS/iPadOS Safari won't let a script resume an UNMUTED <video> outside a user
+// gesture: at the end of a voice memo the film either froze completely or played
+// on with a frozen image (time advancing). The film historically ran muted and
+// resumed cleanly, so keep it muted on iOS. The coach's spoken memos stay audible
+// — they play through their own <audio> element, not the film's audio track.
+const IS_IOS = /iP(hone|od|ad)/.test(navigator.userAgent)
+  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+if (IS_IOS) { try { video.muted = true; video.setAttribute('muted', ''); } catch (_) {} }
 const readout = $('readout');
 const fpsInput = $('fps');
 const vmsg = $('vmsg');
@@ -2050,20 +2058,11 @@ if (qv) {
   // the film stays frozen on the frame. So if the unmuted resume is blocked,
   // retry MUTED (iOS always allows that) and unmute again once it's actually
   // running. Desktop plays unmuted straight away and never hits the fallback.
-  const resumePlay = () => {
-    let p; try { p = video.play(); } catch (_) { p = null; }
-    // iOS Safari REJECTS resuming an UNMUTED <video> outside a user gesture —
-    // which is why the film stopped at a memo after we unmuted it (it always
-    // worked while the film was muted). Fall back to a MUTED resume so the film
-    // keeps running. Do NOT unmute again here: unmuting without a gesture makes
-    // iOS pause the video right back. Memos stay audible regardless — they play
-    // through their own <audio> element, not the film's track. Desktop plays
-    // unmuted on the first try and never reaches the fallback.
-    if (p && p.catch) p.catch(() => {
-      try { video.muted = true; } catch (_) {}
-      const q = video.play(); if (q && q.catch) q.catch(() => {});
-    });
-  };
+  // Single clean play() — the proven path. On iOS the film is already muted
+  // (see IS_IOS above) so this resumes cleanly; on desktop it plays unmuted.
+  // A double play() (reject-then-retry) left the iOS image frozen while time
+  // advanced, so we don't do that anymore.
+  const resumePlay = () => { const p = video.play(); if (p && p.catch) p.catch(() => {}); };
   // After a memo, the video can also report playing while staying frozen (the
   // audio stole the media session). Re-kick it the way a manual pause→play
   // does: pause now, play again a tick later (via the muted-safe resume above).
