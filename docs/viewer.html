@@ -386,9 +386,11 @@
   body:not(.trainer) .tllane,
   body:not(.trainer) .tldot { display: none; }
   /* view mode: no manual memo controls — memos just auto-play; the cursist
-     can't pause (▶/⏸ memo) or skip them. */
+     can't pause (▶/⏸ memo), skip them, or step prev/next memo. Hide the whole
+     memo navigation bar (⏮ ↻🎙️ ⏭ 🗑) too — it's for the coach only. */
   body:not(.trainer) #memoBadge,
-  body:not(.trainer) #skipMemo { display: none !important; }
+  body:not(.trainer) #skipMemo,
+  body:not(.trainer) #memoBar { display: none !important; }
 
   #tlbar { position: absolute; left: 0; right: 0; top: 44px; height: 7px;
            background: rgba(255,255,255,.28); border-radius: 4px; }
@@ -1567,8 +1569,8 @@ if (qv) {
     $('skipMemo').classList.toggle('show', active && edit);
     $('memoDel').classList.toggle('show', near && edit);
     $('replaceMemo').classList.toggle('show', near && edit);
-    $('prevMemo').classList.toggle('show', anyMemo);
-    $('nextMemo').classList.toggle('show', anyMemo);
+    $('prevMemo').classList.toggle('show', anyMemo && edit);
+    $('nextMemo').classList.toggle('show', anyMemo && edit);
     // during a memo you can only replace or delete it — block recording a new one
     $('micBtn').disabled = active;
     $('micBtn').title = active ? 'Memo bezig — gebruik ↻🎙️ (vervangen) of 🗑 (verwijderen)'
