@@ -2044,10 +2044,24 @@ if (qv) {
   // a moment (a note scales with its length so it can be read), then resumes.
   // Pinned marks span a range and stay on screen, so they don't trigger a pause.
   // Crossing detection (prev<t<=now) fires once per pass, never while stepping.
-  const resumePlay = () => { const p = video.play(); if (p && p.catch) p.catch(() => {}); };
-  // After a memo, the muted video can report playing while staying frozen
-  // (the audio stole the media session). Re-kick it the way a manual
-  // pause→play does: pause now, play again a tick later.
+  // Resume the film after an auto-pause (a note hold or a voice memo). iOS
+  // Safari will NOT let a script resume an UNMUTED <video> outside a user
+  // gesture: after a memo's <audio> element ends, video.play() is rejected and
+  // the film stays frozen on the frame. So if the unmuted resume is blocked,
+  // retry MUTED (iOS always allows that) and unmute again once it's actually
+  // running. Desktop plays unmuted straight away and never hits the fallback.
+  const resumePlay = () => {
+    const unmute = () => { try { video.muted = false; } catch (_) {} };
+    let p; try { p = video.play(); } catch (_) { p = null; }
+    if (p && p.then) p.then(unmute).catch(() => {
+      try { video.muted = true; } catch (_) {}
+      const q = video.play();
+      if (q && q.then) q.then(unmute).catch(() => {}); else unmute();
+    });
+  };
+  // After a memo, the video can also report playing while staying frozen (the
+  // audio stole the media session). Re-kick it the way a manual pause→play
+  // does: pause now, play again a tick later (via the muted-safe resume above).
   const resumeAfterMemo = () => {
     try { video.pause(); } catch (_) {}
     setTimeout(resumePlay, 90);
@@ -2303,7 +2317,7 @@ if (qv) {
       stallKickAt = now; stallSince = now;
       try { video.pause(); } catch (_) {}
       setTimeout(() => {
-        if (!annotLock && !(memoActive && memoActive())) { const p = video.play(); if (p && p.catch) p.catch(() => {}); }
+        if (!annotLock && !(memoActive && memoActive())) resumePlay();   // muted-safe (iOS)
       }, 70);
     }
   }
