@@ -2301,6 +2301,11 @@ if (qv) {
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
     toast('Marketingclip opgeslagen: <b>' + name + '</b>. Zet ’m om naar MP4 met de workflow “Publish a plain video to R2”.');
+    // signal the headless burn-in workflow that the file is ready (it catches
+    // the download above); also expose the name for logging.
+    if (new URLSearchParams(location.search).has('record')) {
+      window.__recordName = name; window.__recordState = 'done';
+    }
   }
   $('recClipBtn').addEventListener('click', () => { recording ? stopClipRecording() : startClipRecording(); });
   $('clipRecStop').addEventListener('click', e => { e.stopPropagation(); stopClipRecording(); });
@@ -2346,6 +2351,33 @@ if (qv) {
   requestAnimationFrame(loop);
   video.addEventListener('loadedmetadata', updateTimeline);
   if (editable) layoutBars();
+
+  // ---------- headless burn-in recording (?record=1) ----------
+  // Used by the "Flatten annotations into one MP4" render workflow: a headless
+  // Chromium opens this page, we wait until the video + annotations are loaded,
+  // then auto-play the whole analysis while the clip recorder bakes the
+  // drawings, notes and memo audio into one file (freeze-frames while a memo
+  // plays, exactly like the viewer). On 'ended' the recorder stops and hands the
+  // WebM back as a download. No taps, no UI. window.__recordState lets the
+  // workflow poll progress: init → recording → done (or error-*).
+  if (new URLSearchParams(location.search).has('record')) {
+    window.__recordState = 'init';
+    document.body.classList.add('recording-headless');
+    let started = false;
+    const ready = () => hasVideo && isFinite(video.duration) && video.duration > 0
+      && (marks.length > 0 || skips.length > 0);
+    const tryStart = async () => {
+      if (started || !ready()) return;
+      started = true;
+      try { hideStart(); } catch (_) {}
+      window.__recordState = 'recording';
+      try { await startClipRecording(); }
+      catch (_) { window.__recordState = 'error-exception'; return; }
+      if (!recording) window.__recordState = 'error-start';
+    };
+    const iv = setInterval(() => { if (started) clearInterval(iv); else tryStart(); }, 200);
+    setTimeout(() => { if (!started) { clearInterval(iv); window.__recordState = 'error-notready'; } }, 60000);
+  }
 })();
 </script>
 </body>
