@@ -561,6 +561,7 @@
      style="text-decoration:none;" title="Handleiding voor de trainer">❔ handleiding</a>
   <button class="tool" id="recClipBtn" title="Marketingclip opnemen — video + annotatie + memo-geluid samen in één bestand">⏺ clip</button>
   <button class="tool" id="copyViewBtn" title="Kijk-link voor de cursist kopiëren (volledige getekende link, zónder bewerken)">📋 kijk-link</button>
+  <button class="tool" id="dlVideoBtn" title="Maak één platgeslagen MP4 (video + annotaties + memo-geluid ingebrand) via de render-workflow — om te downloaden/delen zonder de viewer">📦 download-video</button>
   <button class="tool" id="publishBtn" title="Annotaties opslaan & deellink maken">⇪ publiceer</button>
 </div>
 
@@ -1871,6 +1872,45 @@ if (qv) {
     } catch (_) { toast('Kon de kijk-link niet maken.'); }
   }
   $('copyViewBtn').addEventListener('click', copyViewLink);
+  // "📦 download-video": build the signed VIEW link (incl. its ?a= annotation),
+  // copy it, and open the private render repo's "Flatten annotations" workflow so
+  // the coach can paste it and run the server-side burn-in. The render-repo name
+  // is kept out of the public source — it's prompted once and stored per-browser.
+  async function makeDownloadVideo() {
+    const key = new URLSearchParams(location.search).get('k');
+    if (!key) { toast('Deze video is niet via een ?k=-link geladen — geen download-video te maken.'); return; }
+    const aid = new URLSearchParams(location.search).get('a');
+    let secret = '';
+    try { secret = localStorage.getItem('eoswim_sign_secret') || ''; } catch (_) {}
+    if (!secret) {
+      secret = (prompt('Voer je R2-secret in (eenmalig; blijft alleen in deze browser):') || '').trim();
+      if (secret) { try { localStorage.setItem('eoswim_sign_secret', secret); } catch (_) {} }
+    }
+    if (!secret) { toast('Geen secret — kan geen link maken.'); return; }
+    let repo = '';
+    try { repo = localStorage.getItem('eoswim_render_repo') || ''; } catch (_) {}
+    if (!repo) {
+      repo = (prompt('Naam van je render-repo (eenmalig; blijft in deze browser), bijv. jouwnaam/zwemanalyses:') || '').trim().replace(/^https?:\/\/github\.com\//, '').replace(/\/+$/, '');
+      if (repo) { try { localStorage.setItem('eoswim_render_repo', repo); } catch (_) {} }
+    }
+    try {
+      const exp = Math.floor(Date.now() / 1000) + 365 * 24 * 3600;
+      const enc = new TextEncoder();
+      const kk = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+      const sig = b64url(new Uint8Array(await crypto.subtle.sign('HMAC', kk, enc.encode(key + '\n' + exp))));
+      const keyEnc = key.split('/').map(encodeURIComponent).join('/');
+      let url = location.origin + location.pathname + '?k=' + keyEnc + '&e=' + exp + '&t=' + sig;
+      if (aid) url += '&a=' + encodeURIComponent(aid);
+      try { await navigator.clipboard.writeText(url); } catch (_) {}
+      if (repo) {
+        window.open('https://github.com/' + repo + '/actions/workflows/flatten-annotations.yml', '_blank', 'noopener');
+        showMsg('De render-workflow is geopend (link is al gekopieerd). Klik <b>Run workflow</b>, <b>plak</b> de link bij <code>viewer_url</code>, kies een naam bij <code>tag</code> en start. Je krijgt daarna een downloadbare MP4 + kijk-link.');
+      } else {
+        showMsg('Link gekopieerd. Start de workflow <b>“Flatten annotations into one MP4”</b> in je render-repo met deze link als <code>viewer_url</code>:<br><code>' + url + '</code>');
+      }
+    } catch (_) { toast('Kon de download-video-link niet maken.'); }
+  }
+  $('dlVideoBtn').addEventListener('click', makeDownloadVideo);
   // opening GitHub to commit = the work is being saved for real; drop the draft
   $('pubGo').addEventListener('click', () => clearDraft());
   $('pubClose').addEventListener('click', () => $('pubPanel').classList.remove('show'));
@@ -2127,6 +2167,11 @@ if (qv) {
   // "Publish a plain video to R2" workflow. Laptop/edit only.
   const WATERMARK = (new URLSearchParams(location.search).get('wm')) || 'Ryan Douglas';
   const WATERMARK_TAG = (new URLSearchParams(location.search).get('wmtag'));   // null -> default 'Powered by'
+  // Cap the recording resolution. Real-time capture + encode of a native 4K/60fps
+  // source overwhelms a 2-core render runner and drops frames (stutter). Encoding
+  // a smaller frame keeps up at full frame rate → smooth. 1280 (long side) is the
+  // default; override with ?rmax= for more detail at the risk of stutter.
+  const REC_MAXDIM = parseInt((new URLSearchParams(location.search).get('rmax')) || '1280', 10) || 1280;
   let recCanvas = null, rctx = null, clipRec = null, clipChunks = [], recording = false;
   let audioCtx = null, audioDest = null, memoSrcNode = null;
   let clipTrack = null, clipManualFrame = false;   // 1:1 frame capture to avoid judder
@@ -2176,9 +2221,16 @@ if (qv) {
   function recComposite() {
     if (!recording || !rctx) return;
     const vw = video.videoWidth || 16, vh = video.videoHeight || 9;
-    if (recCanvas.width !== vw || recCanvas.height !== vh) { recCanvas.width = vw; recCanvas.height = vh; }
-    try { rctx.drawImage(video, 0, 0, vw, vh); } catch (_) {}
-    const R = { left: 0, top: 0, width: vw, height: vh }, t = video.currentTime || 0;
+    // scale the canvas down to REC_MAXDIM on its long side (keeps aspect, even dims)
+    let cw = vw, ch = vh, big = Math.max(vw, vh);
+    if (REC_MAXDIM && big > REC_MAXDIM) {
+      const s = REC_MAXDIM / big;
+      cw = Math.max(2, Math.round(vw * s / 2) * 2);
+      ch = Math.max(2, Math.round(vh * s / 2) * 2);
+    }
+    if (recCanvas.width !== cw || recCanvas.height !== ch) { recCanvas.width = cw; recCanvas.height = ch; }
+    try { rctx.drawImage(video, 0, 0, cw, ch); } catch (_) {}
+    const R = { left: 0, top: 0, width: cw, height: ch }, t = video.currentTime || 0;
     for (const m of marks) {
       if (m.k === 'note' || !markVisibleNow(m, t)) continue;
       const revealing = memoRevealElapsed(m) != null;
@@ -2259,7 +2311,7 @@ if (qv) {
     } catch (_) { toast('Kon de opname niet starten.'); return; }
     const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
       .find(m => { try { return MediaRecorder.isTypeSupported(m); } catch (_) { return false; } }) || '';
-    try { clipRec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 6000000 } : undefined); }
+    try { clipRec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 8000000 } : undefined); }
     catch (_) { try { clipRec = new MediaRecorder(stream); } catch (e) { toast('Opnemen mislukt.'); return; } }
     clipChunks = [];
     clipRec.ondataavailable = e => { if (e.data && e.data.size) clipChunks.push(e.data); };
