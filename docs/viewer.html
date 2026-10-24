@@ -2476,15 +2476,80 @@ if (qv) {
       });
     }
 
+    // --- hybrid plan: motion RANGES (ffmpeg cuts these straight from the source,
+    // no per-frame render) + freeze BLOCKS (rendered here, dups reused). ---
+    function buildSegments(fps, targetH) {
+      RFPS = Math.max(1, fps | 0) || 30;
+      const dur = video.duration || 0, vw = video.videoWidth || 16, vh = video.videoHeight || 9;
+      const scale = (targetH && targetH < vh) ? (targetH / vh) : 1;
+      RW = Math.max(2, Math.round(vw * scale / 2) * 2);
+      RH = Math.max(2, Math.round(vh * scale / 2) * 2);
+      rCanvas = rCanvas || document.createElement('canvas');
+      rCanvas.width = RW; rCanvas.height = RH; rctx2 = rCanvas.getContext('2d');
+
+      const step = 1 / RFPS, EPS = 0.05;
+      const memos = marks.filter(m => m.k === 'memo').sort((a, b) => a.t - b.t);
+      MEMO_T = memos.map(m => m.t);
+      MEMOS = memos.map(m => ({ mime: m.mime || 'audio/webm', au: m.au || '', dur: m.dur || 0 }));
+      const trig = m => (m.k === 'memo' && m.t < EARLY_MEMO) ? EARLY_MEMO : m.t;
+      const mt = marks.filter(m => !m.pin).map(m => ({ m, tt: trig(m) })).sort((a, b) => a.tt - b.tt);
+
+      const segs = []; let pos = 0, idx = 0, guard = 0;
+      while (pos < dur - 1e-6 && guard++ < 500000) {
+        let jumped = false;
+        for (const [a, b] of skips) { if (pos >= a - 0.02 && pos < b - 0.05) { pos = b; jumped = true; break; } }
+        if (jumped) continue;
+        while (idx < mt.length && mt[idx].tt <= pos + 1e-6) idx++;
+        const next = idx < mt.length ? Math.min(mt[idx].tt, dur) : dur;
+        if (next > pos + 1e-6) segs.push({ k: 'm', a: +pos.toFixed(3), b: +next.toFixed(3) });
+        pos = next;
+        if (pos >= dur - 1e-6) break;
+        const group = mt.filter(x => Math.abs(x.tt - next) <= EPS).map(x => x.m);
+        const memo = group.find(m => m.k === 'memo');
+        const note = group.find(m => m.k === 'note');
+        if (memo) {
+          const mi = memos.indexOf(memo), D = memo.dur || 4, n = Math.max(1, Math.round(D * RFPS));
+          const mds = marks.filter(m => m.md != null && Math.abs(m.t - memo.t) <= 0.06).map(m => m.md);
+          let dups = '';
+          for (let k = 0; k < n; k++) { const el = k * step; let rev = false; for (const md of mds) { const now = (el + 0.06 >= md), prev = (k > 0 && ((k - 1) * step + 0.06 >= md)); if (now && !prev) { rev = true; break; } } dups += (k > 0 && !rev) ? '1' : '0'; }
+          segs.push({ k: 'f', src: +memo.t.toFixed(3), n: n, memo: mi, note: null, dups: dups });
+        } else {
+          const holdMs = note ? Math.min(9000, Math.max(HOLD_MS, 1200 + 70 * (note.text || '').length)) : HOLD_MS;
+          const n = Math.max(1, Math.round((holdMs / 1000) * RFPS)), nt = note ? (note.text || '') : null;
+          let dups = ''; for (let k = 0; k < n; k++) dups += (k > 0 ? '1' : '0');
+          segs.push({ k: 'f', src: +next.toFixed(3), n: n, memo: -1, note: nt, dups: dups });
+        }
+        while (idx < mt.length && mt[idx].tt <= next + EPS) idx++;
+      }
+      const totalFrames = segs.reduce((s, g) => s + (g.k === 'm' ? Math.round((g.b - g.a) * RFPS) : g.n), 0);
+      return { fps: RFPS, w: RW, h: RH, dur: totalFrames / RFPS, segs: segs, memos: MEMOS };
+    }
+
+    // render ONE freeze frame (fixed src, optional memo reveal + note caption)
+    function renderF(src, memoIdx, el, noteText) {
+      return new Promise(resolve => {
+        const done = () => { roDraw({ s: src, m: (memoIdx == null ? -1 : memoIdx), e: el || 0, n: noteText || null }); resolve(rCanvas.toDataURL('image/jpeg', 0.92)); };
+        if (Math.abs((video.currentTime || 0) - src) > 0.002) {
+          const onSeek = () => { video.removeEventListener('seeked', onSeek); done(); };
+          video.addEventListener('seeked', onSeek);
+          try { video.currentTime = src; } catch (_) { video.removeEventListener('seeked', onSeek); done(); }
+        } else { done(); }
+      });
+    }
+
     return {
       ready: () => hasVideo && isFinite(video.duration) && video.duration > 0 && (marks.length > 0 || skips.length > 0),
       meta: () => ({ dur: video.duration || 0, vw: video.videoWidth || 0, vh: video.videoHeight || 0, marks: marks.length }),
       // the ?k= video is cross-origin → drawing it taints the canvas and toDataURL
       // throws. Refetch it as a same-origin blob first (same trick as the recorder).
       prepare: async () => { try { return await ensureRecordableSource(); } catch (_) { return false; } },
+      // the original (downloadable) media URL, so ffmpeg can cut motion from it
+      sourceUrl: () => clipOrigSrc || video.currentSrc || video.src || '',
       plan: (fps, h) => buildPlan(fps, h),
-      // render frame i, return it as a data URL (JPEG keeps the pipe light; x264 re-encodes anyway)
-      render: async (i, q) => { await renderFrame(i); return rCanvas.toDataURL('image/jpeg', q || 0.92); }
+      render: async (i, q) => { await renderFrame(i); return rCanvas.toDataURL('image/jpeg', q || 0.92); },
+      // hybrid: segment plan + single freeze render
+      segplan: (fps, h) => buildSegments(fps, h),
+      renderF: (src, mi, el, nt) => renderF(src, mi, el, nt)
     };
   })();
   window.__ro = ro;
