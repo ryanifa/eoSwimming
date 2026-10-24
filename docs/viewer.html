@@ -2422,7 +2422,11 @@ if (qv) {
 
       PLAN = []; AUDIO = [];
       let pos = 0, idx = 0;
-      const pushMotion = (from, to) => { for (let t = from; t < to - 1e-6; t += step) PLAN.push({ s: Math.min(t, dur), m: -1, e: 0, n: null }); };
+      // d:1 marks a frame identical to the one before it — the driver reuses the
+      // last encoded frame for those instead of re-rendering, which makes the
+      // many static freeze frames (holds, and the still stretches of a memo)
+      // nearly free. Motion frames always differ (the film moves) → d:0.
+      const pushMotion = (from, to) => { for (let t = from; t < to - 1e-6; t += step) PLAN.push({ s: Math.min(t, dur), m: -1, e: 0, n: null, d: 0 }); };
       let guard = 0;
       while (pos < dur - 1e-6 && guard++ < 500000) {
         let jumped = false;
@@ -2438,16 +2442,25 @@ if (qv) {
         const note = group.find(m => m.k === 'note');
         if (memo) {
           const mi = memos.indexOf(memo), D = memo.dur || 4, n = Math.max(1, Math.round(D * RFPS));
+          // marks drawn during this memo reveal at their md offset; a frame is a
+          // dup unless a new mark reveals at it (or it's the first frame).
+          const mds = marks.filter(m => m.md != null && Math.abs(m.t - memo.t) <= 0.06).map(m => m.md);
           AUDIO.push({ at: PLAN.length, memo: mi });
-          for (let k = 0; k < n; k++) PLAN.push({ s: memo.t, m: mi, e: k * step, n: null });
+          for (let k = 0; k < n; k++) {
+            const el = k * step;
+            let reveal = false;
+            for (const md of mds) { const now = (el + 0.06 >= md), prev = (k > 0 && ((k - 1) * step + 0.06 >= md)); if (now && !prev) { reveal = true; break; } }
+            PLAN.push({ s: memo.t, m: mi, e: el, n: null, d: (k > 0 && !reveal) ? 1 : 0 });
+          }
         } else {
           const holdMs = note ? Math.min(9000, Math.max(HOLD_MS, 1200 + 70 * (note.text || '').length)) : HOLD_MS;
           const n = Math.max(1, Math.round((holdMs / 1000) * RFPS)), nt = note ? (note.text || '') : null;
-          for (let k = 0; k < n; k++) PLAN.push({ s: next, m: -1, e: 0, n: nt });
+          for (let k = 0; k < n; k++) PLAN.push({ s: next, m: -1, e: 0, n: nt, d: k > 0 ? 1 : 0 });   // static hold → all but the first are dups
         }
         while (idx < mt.length && mt[idx].tt <= next + EPS) idx++;
       }
-      return { frames: PLAN.length, fps: RFPS, w: RW, h: RH, dur: PLAN.length / RFPS, audio: AUDIO, memos: MEMOS };
+      const dups = PLAN.map(f => f.d ? '1' : '0').join('');
+      return { frames: PLAN.length, fps: RFPS, w: RW, h: RH, dur: PLAN.length / RFPS, audio: AUDIO, memos: MEMOS, dups: dups };
     }
 
     function renderFrame(i) {
