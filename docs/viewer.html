@@ -1005,6 +1005,7 @@ if (qv) {
   const draw = $('draw'), dctx = draw.getContext('2d');
   const COLORS = ['#ff3b30', '#ffcf33', '#22c55e', '#3b82f6'];
   const WINDOW = 0.20;          // s: a non-pinned mark shows within ±WINDOW of its time
+  let roMemo = null;            // deterministic render: {markT, el} to reveal a memo's marks offline
   let marks = [];               // {t,k:'pen'|'arrow'|'note',color,pin, pts|x1..y2 | text}
   let skips = [];               // [[a,b], ...] time ranges the player skips over on play
   let skipStart = null;         // set to the first frame while marking a skip range
@@ -1097,6 +1098,7 @@ if (qv) {
   }
   function memoRevealElapsed(m) {   // audio position if m belongs to the playing memo, else null
     if (m.md == null) return null;
+    if (roMemo) return (Math.abs(roMemo.markT - m.t) <= 0.06) ? roMemo.el : null;   // deterministic render
     if (currentMemoMark && currentMemoMark.track) return null;   // film scrubs → use frame visibility instead
     if (currentMemoMark && memoAudio && !memoAudio.paused && Math.abs(currentMemoMark.t - m.t) <= 0.06) return memoAudio.currentTime || 0;
     return null;
@@ -2362,6 +2364,117 @@ if (qv) {
   $('recClipBtn').addEventListener('click', () => { recording ? stopClipRecording() : startClipRecording(); });
   $('clipRecStop').addEventListener('click', e => { e.stopPropagation(); stopClipRecording(); });
   video.addEventListener('ended', () => { if (recording) stopClipRecording(); });
+
+  // ---------- deterministic offline render (window.__ro) ----------
+  // Builds a frame-exact plan from the SAME auto-pause rules the viewer plays by
+  // (motion frames between marks; a freeze while a drawing/note is held; a freeze
+  // for each memo with its drawings revealing over the memo's length), then
+  // renders any frame on demand at full target resolution — reusing drawMark so
+  // it matches the viewer pixel-for-pixel. A headless driver seeks → renders →
+  // grabs each frame and pipes it to ffmpeg: no real-time pressure, no dropped
+  // frames. Memo audio is placed on the same timeline by the workflow.
+  const ro = (function () {
+    let rCanvas = null, rctx2 = null, RW = 0, RH = 0, RFPS = 30;
+    let PLAN = [], MEMOS = [], AUDIO = [], MEMO_T = [];
+
+    function drawCaption(text) {
+      const pad = Math.round(RH * 0.016), fs = Math.max(16, Math.round(RH * 0.040));
+      rctx2.font = '600 ' + fs + 'px system-ui, sans-serif';
+      rctx2.textAlign = 'center'; rctx2.textBaseline = 'middle';
+      const tw = Math.min(RW * 0.9, rctx2.measureText(text).width + pad * 2);
+      const bh = fs + pad * 1.4, x = (RW - tw) / 2, y = RH - bh - Math.round(RH * 0.05);
+      rctx2.fillStyle = 'rgba(0,0,0,.62)'; rctx2.fillRect(x, y, tw, bh);
+      rctx2.fillStyle = '#fff'; rctx2.fillText(text, RW / 2, y + bh / 2, tw - pad * 2);
+      rctx2.textAlign = 'left';
+    }
+    function roDraw(f) {
+      roMemo = (f.m >= 0) ? { markT: MEMO_T[f.m], el: f.e } : null;
+      rctx2.clearRect(0, 0, RW, RH);
+      try { rctx2.drawImage(video, 0, 0, RW, RH); } catch (_) {}
+      const R = { left: 0, top: 0, width: RW, height: RH }, t = f.s;
+      for (const m of marks) {
+        if (m.k === 'note' || !markVisibleNow(m, t)) continue;
+        const revealing = memoRevealElapsed(m) != null;
+        rctx2.globalAlpha = revealing ? 1 : (m.pin ? 0.9 : Math.max(0.5, 1 - Math.abs(m.t - t) / WINDOW));
+        drawMark(m, R, rctx2);
+      }
+      rctx2.globalAlpha = 1;
+      if (f.n) drawCaption(f.n);
+      roMemo = null;
+    }
+
+    function buildPlan(fps, targetH) {
+      RFPS = Math.max(1, fps | 0) || 30;
+      const dur = video.duration || 0;
+      const vw = video.videoWidth || 16, vh = video.videoHeight || 9;
+      const scale = (targetH && targetH < vh) ? (targetH / vh) : 1;   // never upscale
+      RW = Math.max(2, Math.round(vw * scale / 2) * 2);
+      RH = Math.max(2, Math.round(vh * scale / 2) * 2);
+      rCanvas = rCanvas || document.createElement('canvas');
+      rCanvas.width = RW; rCanvas.height = RH; rctx2 = rCanvas.getContext('2d');
+
+      const step = 1 / RFPS, EPS = 0.05;
+      const memos = marks.filter(m => m.k === 'memo').sort((a, b) => a.t - b.t);
+      MEMO_T = memos.map(m => m.t);
+      MEMOS = memos.map(m => ({ mime: m.mime || 'audio/webm', au: m.au || '', dur: m.dur || 0 }));
+      const trig = m => (m.k === 'memo' && m.t < EARLY_MEMO) ? EARLY_MEMO : m.t;
+      const mt = marks.filter(m => !m.pin).map(m => ({ m, tt: trig(m) })).sort((a, b) => a.tt - b.tt);
+
+      PLAN = []; AUDIO = [];
+      let pos = 0, idx = 0;
+      const pushMotion = (from, to) => { for (let t = from; t < to - 1e-6; t += step) PLAN.push({ s: Math.min(t, dur), m: -1, e: 0, n: null }); };
+      let guard = 0;
+      while (pos < dur - 1e-6 && guard++ < 500000) {
+        let jumped = false;
+        for (const [a, b] of skips) { if (pos >= a - 0.02 && pos < b - 0.05) { pos = b; jumped = true; break; } }
+        if (jumped) continue;
+        while (idx < mt.length && mt[idx].tt <= pos + 1e-6) idx++;
+        const next = idx < mt.length ? Math.min(mt[idx].tt, dur) : dur;
+        pushMotion(pos, next);
+        pos = next;
+        if (pos >= dur - 1e-6) break;
+        const group = mt.filter(x => Math.abs(x.tt - next) <= EPS).map(x => x.m);
+        const memo = group.find(m => m.k === 'memo');
+        const note = group.find(m => m.k === 'note');
+        if (memo) {
+          const mi = memos.indexOf(memo), D = memo.dur || 4, n = Math.max(1, Math.round(D * RFPS));
+          AUDIO.push({ at: PLAN.length, memo: mi });
+          for (let k = 0; k < n; k++) PLAN.push({ s: memo.t, m: mi, e: k * step, n: null });
+        } else {
+          const holdMs = note ? Math.min(9000, Math.max(HOLD_MS, 1200 + 70 * (note.text || '').length)) : HOLD_MS;
+          const n = Math.max(1, Math.round((holdMs / 1000) * RFPS)), nt = note ? (note.text || '') : null;
+          for (let k = 0; k < n; k++) PLAN.push({ s: next, m: -1, e: 0, n: nt });
+        }
+        while (idx < mt.length && mt[idx].tt <= next + EPS) idx++;
+      }
+      return { frames: PLAN.length, fps: RFPS, w: RW, h: RH, dur: PLAN.length / RFPS, audio: AUDIO, memos: MEMOS };
+    }
+
+    function renderFrame(i) {
+      return new Promise(resolve => {
+        const f = PLAN[i];
+        if (!f) { resolve(false); return; }
+        const done = () => { roDraw(f); resolve(true); };
+        if (Math.abs((video.currentTime || 0) - f.s) > 0.002) {
+          const onSeek = () => { video.removeEventListener('seeked', onSeek); done(); };
+          video.addEventListener('seeked', onSeek);
+          try { video.currentTime = f.s; } catch (_) { video.removeEventListener('seeked', onSeek); done(); }
+        } else { done(); }
+      });
+    }
+
+    return {
+      ready: () => hasVideo && isFinite(video.duration) && video.duration > 0 && (marks.length > 0 || skips.length > 0),
+      meta: () => ({ dur: video.duration || 0, vw: video.videoWidth || 0, vh: video.videoHeight || 0, marks: marks.length }),
+      // the ?k= video is cross-origin → drawing it taints the canvas and toDataURL
+      // throws. Refetch it as a same-origin blob first (same trick as the recorder).
+      prepare: async () => { try { return await ensureRecordableSource(); } catch (_) { return false; } },
+      plan: (fps, h) => buildPlan(fps, h),
+      // render frame i, return it as a data URL (JPEG keeps the pipe light; x264 re-encodes anyway)
+      render: async (i, q) => { await renderFrame(i); return rCanvas.toDataURL('image/jpeg', q || 0.92); }
+    };
+  })();
+  window.__ro = ro;
 
   // ---------- render loop ----------
   // iOS can leave the <video> frozen after a rotation — the image sticks while
