@@ -2427,16 +2427,22 @@ if (qv) {
       // many static freeze frames (holds, and the still stretches of a memo)
       // nearly free. Motion frames always differ (the film moves) → d:0.
       const pushMotion = (from, to) => { for (let t = from; t < to - 1e-6; t += step) PLAN.push({ s: Math.min(t, dur), m: -1, e: 0, n: null, d: 0 }); };
+      // skip ranges honoured anywhere (see buildSegments for the same fix)
+      const S = (skips || []).map(r => [r[0], r[1]]).sort((a, b) => a[0] - b[0]);
+      const skipEndAt = (t) => { for (const [a, b] of S) if (t >= a - 0.02 && t < b - 0.05) return b; return null; };
+      const nextSkipStart = (t) => { let best = Infinity; for (const [a, b] of S) if (a > t + 0.02 && a < best) best = a; return best; };
       let guard = 0;
       while (pos < dur - 1e-6 && guard++ < 500000) {
-        let jumped = false;
-        for (const [a, b] of skips) { if (pos >= a - 0.02 && pos < b - 0.05) { pos = b; jumped = true; break; } }
-        if (jumped) continue;
+        const je = skipEndAt(pos);
+        if (je != null) { pos = Math.min(je, dur); while (idx < mt.length && mt[idx].tt <= pos + 1e-6) idx++; continue; }
         while (idx < mt.length && mt[idx].tt <= pos + 1e-6) idx++;
-        const next = idx < mt.length ? Math.min(mt[idx].tt, dur) : dur;
+        const markNext = idx < mt.length ? mt[idx].tt : Infinity;
+        const skipNext = nextSkipStart(pos);
+        const next = Math.min(markNext, skipNext, dur);
         pushMotion(pos, next);
         pos = next;
         if (pos >= dur - 1e-6) break;
+        if (skipNext <= markNext + 1e-6) continue;       // reached a skip boundary → jump it next iteration
         const group = mt.filter(x => Math.abs(x.tt - next) <= EPS).map(x => x.m);
         const memo = group.find(m => m.k === 'memo');
         const note = group.find(m => m.k === 'note');
@@ -2494,17 +2500,26 @@ if (qv) {
       const trig = m => (m.k === 'memo' && m.t < EARLY_MEMO) ? EARLY_MEMO : m.t;
       const mt = marks.filter(m => !m.pin).map(m => ({ m, tt: trig(m) })).sort((a, b) => a.tt - b.tt);
 
+      // Honour "overslaan" ranges ANYWHERE (not only at a mark boundary): clip
+      // each motion stretch at the next skip start and jump over the skip. The
+      // old code only checked skips when pos landed inside one, so a skip in the
+      // middle of a motion stretch (e.g. near the end) was rendered anyway.
+      const S = (skips || []).map(r => [r[0], r[1]]).sort((a, b) => a[0] - b[0]);
+      const skipEndAt = (t) => { for (const [a, b] of S) if (t >= a - 0.02 && t < b - 0.05) return b; return null; };
+      const nextSkipStart = (t) => { let best = Infinity; for (const [a, b] of S) if (a > t + 0.02 && a < best) best = a; return best; };
       const segs = []; let pos = 0, idx = 0, guard = 0;
       while (pos < dur - 1e-6 && guard++ < 500000) {
-        let jumped = false;
-        for (const [a, b] of skips) { if (pos >= a - 0.02 && pos < b - 0.05) { pos = b; jumped = true; break; } }
-        if (jumped) continue;
+        const je = skipEndAt(pos);                       // inside a skip → jump to its end, drop marks there
+        if (je != null) { pos = Math.min(je, dur); while (idx < mt.length && mt[idx].tt <= pos + 1e-6) idx++; continue; }
         while (idx < mt.length && mt[idx].tt <= pos + 1e-6) idx++;
-        const next = idx < mt.length ? Math.min(mt[idx].tt, dur) : dur;
-        if (next > pos + 1e-6) segs.push({ k: 'm', a: +pos.toFixed(3), b: +next.toFixed(3) });
-        pos = next;
+        const markNext = idx < mt.length ? mt[idx].tt : Infinity;
+        const skipNext = nextSkipStart(pos);
+        const stop = Math.min(markNext, skipNext, dur);
+        if (stop > pos + 1e-6) segs.push({ k: 'm', a: +pos.toFixed(3), b: +stop.toFixed(3) });
+        pos = stop;
         if (pos >= dur - 1e-6) break;
-        const group = mt.filter(x => Math.abs(x.tt - next) <= EPS).map(x => x.m);
+        if (skipNext <= markNext + 1e-6) continue;       // reached a skip boundary → jump it next iteration
+        const group = mt.filter(x => Math.abs(x.tt - stop) <= EPS).map(x => x.m);
         const memo = group.find(m => m.k === 'memo');
         const note = group.find(m => m.k === 'note');
         if (memo) {
@@ -2517,9 +2532,9 @@ if (qv) {
           const holdMs = note ? Math.min(9000, Math.max(HOLD_MS, 1200 + 70 * (note.text || '').length)) : HOLD_MS;
           const n = Math.max(1, Math.round((holdMs / 1000) * RFPS)), nt = note ? (note.text || '') : null;
           let dups = ''; for (let k = 0; k < n; k++) dups += (k > 0 ? '1' : '0');
-          segs.push({ k: 'f', src: +next.toFixed(3), n: n, memo: -1, note: nt, dups: dups });
+          segs.push({ k: 'f', src: +stop.toFixed(3), n: n, memo: -1, note: nt, dups: dups });
         }
-        while (idx < mt.length && mt[idx].tt <= next + EPS) idx++;
+        while (idx < mt.length && mt[idx].tt <= stop + EPS) idx++;
       }
       const totalFrames = segs.reduce((s, g) => s + (g.k === 'm' ? Math.round((g.b - g.a) * RFPS) : g.n), 0);
       return { fps: RFPS, w: RW, h: RH, dur: totalFrames / RFPS, segs: segs, memos: MEMOS };
